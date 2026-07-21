@@ -43,7 +43,7 @@ class CourseRepository:
         title: str,
         cover_path: Optional[Path],
         sort_order: int,
-    ) -> None:
+    ) -> int:
         cover_path_value = (
             str(cover_path)
             if cover_path is not None
@@ -75,3 +75,19 @@ class CourseRepository:
                     sort_order,
                 ),
             )
+
+            row = connection.execute(
+                """
+                SELECT id
+                FROM courses
+                WHERE slug = ?
+                """,
+                (slug,),
+            ).fetchone()
+
+            if row is None:
+                raise RuntimeError(
+                    f"Не удалось получить ID курса: {slug}"
+                )
+
+            return int(row["id"])
