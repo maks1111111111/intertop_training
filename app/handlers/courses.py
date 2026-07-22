@@ -1,3 +1,5 @@
+from pathlib import Path
+from app.repositories.progress_repository import ProgressRepository
 from aiogram import F, Router
 from aiogram.types import (
     CallbackQuery,
@@ -9,7 +11,7 @@ from aiogram.types import (
 from app.services.scanner import Course, Lesson, get_course
 
 router = Router()
-
+progress_repository = ProgressRepository()
 
 def _back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -119,8 +121,14 @@ async def show_courses_list(callback: CallbackQuery, base_dir) -> None:
     await callback.answer()
 
 
+
+
 @router.callback_query(F.data.startswith("course:"))
-async def show_course(callback: CallbackQuery, base_dir) -> None:
+async def show_course(
+    callback: CallbackQuery,
+    base_dir: Path,
+    db_path: Path,
+) -> None:
     slug = callback.data.removeprefix("course:")
     course = get_course(base_dir, slug)
 
@@ -137,6 +145,23 @@ async def show_course(callback: CallbackQuery, base_dir) -> None:
         )
         return
 
+    user = callback.from_user
+
+    progress_repository.start_course(
+        db_path=db_path,
+        telegram_id=user.id,
+        course_slug=slug,
+    )
+
+    lesson_index = progress_repository.get_resume_lesson_index(
+        db_path=db_path,
+        telegram_id=user.id,
+        course_slug=slug,
+    )
+
+    if lesson_index >= len(course.lessons):
+        lesson_index = len(course.lessons) - 1
+
     await callback.answer()
 
     if course.cover_path and course.cover_path.is_file():
@@ -150,13 +175,15 @@ async def show_course(callback: CallbackQuery, base_dir) -> None:
     await _send_lesson(
         callback=callback,
         course=course,
-        lesson=course.lessons[0],
-        lesson_index=0,
+        lesson=course.lessons[lesson_index],
+        lesson_index=lesson_index,
     )
-
-
 @router.callback_query(F.data.startswith("lesson:"))
-async def show_lesson(callback: CallbackQuery, base_dir) -> None:
+async def show_lesson(
+    callback: CallbackQuery,
+    base_dir: Path,
+    db_path: Path,
+) -> None:
     parts = callback.data.split(":")
 
     if len(parts) != 3:
@@ -181,6 +208,16 @@ async def show_lesson(callback: CallbackQuery, base_dir) -> None:
         await callback.answer("Урок не найден.", show_alert=True)
         return
 
+    previous_lesson_index = lesson_index - 1
+
+    if previous_lesson_index >= 0:
+        previess_repository.complete_lesson(
+            db_path=db_path,
+            telegram_id=callback.from_user.id,
+            course_slug=course_slug,
+            lesson_slug=previous_lesson.path.name,
+        )
+
     await callback.answer()
 
     await _send_lesson(
@@ -192,7 +229,11 @@ async def show_lesson(callback: CallbackQuery, base_dir) -> None:
 
 
 @router.callback_query(F.data.startswith("course_complete:"))
-async def complete_course(callback: CallbackQuery, base_dir) -> None:
+async def complete_course(
+    callback: CallbackQuery,
+    base_dir: Path,
+    db_path: Path,
+) -> None:
     course_slug = callback.data.removeprefix("course_complete:")
     course = get_course(base_dir, course_slug)
 
@@ -200,9 +241,26 @@ async def complete_course(callback: CallbackQuery, base_dir) -> None:
         await callback.answer("Курс не найден.", show_alert=True)
         return
 
+    if course.lessons:
+        last_lesson = course.lessons[-1]
+
+        progress_repository.complete_lesson(
+            db_path=db_path,
+            telegram_id=callback.from_user.id,
+            course_slug=course_slug,
+            lesson_slug=last_lesson.path.name,
+        )
+
+    progress_repository.complete_course(
+        db_path=db_path,
+        telegram_id=callback.from_user.id,
+        course_slug=course_slug,
+    )
+
     await callback.answer("Курс завершён!")
 
     await callback.message.answer(
-        f"🎉 Курс «{course.title}» завершён.",
+        f"🎉 Поздравляем!\n\n"
+        f"Вы успешно завершили курс «{course.title}».",
         reply_markup=_back_keyboard(),
     )

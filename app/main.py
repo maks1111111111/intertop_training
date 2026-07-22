@@ -31,8 +31,9 @@ async def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
-    base_dir = _get_base_dir()
-    db_path = base_dir / "data" / "training.db"
+    project_dir = _get_base_dir()
+    base_dir = project_dir / "courses"
+    db_path = project_dir / "data" / "training.db"
 
     initialize_database(db_path)
     sync_courses(
@@ -54,7 +55,7 @@ async def main() -> None:
     dp.include_router(courses.router)
 
     logging.info("База данных подготовлена: %s", db_path)
-    logging.info("Бот запущен. Каталог курсов: %s", base_dir / "courses")
+    logging.info("Бот запущен. Каталог курсов: %s", base_dir)
 
     await dp.start_polling(bot)
 
