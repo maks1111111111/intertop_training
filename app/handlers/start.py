@@ -8,24 +8,46 @@ from aiogram.types import (
     Message,
 )
 
+from app.repositories.progress_repository import ProgressRepository
 from app.repositories.user_repository import UserRepository
 from app.services.scanner import scan_courses
 
+
 router = Router()
 user_repository = UserRepository()
+progress_repository = ProgressRepository()
 
-def _courses_keyboard(base_dir: Path) -> InlineKeyboardMarkup:
+
+def _courses_keyboard(
+    base_dir: Path,
+    db_path: Path,
+    telegram_id: int,
+) -> InlineKeyboardMarkup:
     courses = scan_courses(base_dir)
+    buttons: list[list[InlineKeyboardButton]] = []
 
-    buttons = [
-        [
-            InlineKeyboardButton(
-                text=course.title,
-                callback_data=f"course:{course.slug}",
-            )
-        ]
-        for course in courses
-    ]
+    for course in courses:
+        status, progress_percent = progress_repository.get_course_progress(
+            db_path=db_path,
+            telegram_id=telegram_id,
+            course_slug=course.slug,
+        )
+
+        if status == "completed":
+            label = f"✅ {course.title}"
+        elif status == "in_progress":
+            label = f"🟡 {course.title} — {progress_percent}%"
+        else:
+            label = f"⚪ {course.title}"
+
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=label,
+                    callback_data=f"course:{course.slug}",
+                )
+            ]
+        )
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -38,8 +60,13 @@ async def cmd_start(
 ) -> None:
     user = message.from_user
 
-    if user is not None:
-        user_repository.save_telegram_user(
+    if user is None:
+        await message.answer(
+            "Не удалось определить пользователя Telegram."
+        )
+        return
+
+    user_repository.save_telegram_user(
         db_path=db_path,
         telegram_id=user.id,
         username=user.username,
@@ -56,11 +83,16 @@ async def cmd_start(
         )
         return
 
-    name = user.first_name if user and user.first_name else "коллега"
+    name = user.first_name or "коллега"
 
     await message.answer(
         f"Добро пожаловать, <b>{name}</b>! 👋\n\n"
         "Это пространство обучения Intertop.\n"
         "Выберите курс, чтобы продолжить:",
-        reply_markup=_courses_keyboard(base_dir),
+        parse_mode="HTML",
+        reply_markup=_courses_keyboard(
+            base_dir=base_dir,
+            db_path=db_path,
+            telegram_id=user.id,
+        ),
     )

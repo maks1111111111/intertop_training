@@ -207,3 +207,37 @@ class ProgressRepository:
                     course_slug,
                 ),
             )
+    
+    def get_course_progress(
+        self,
+        db_path: Path,
+        telegram_id: int,
+        course_slug: str,
+    ) -> tuple[str, int]:
+        with get_connection(db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    enrollments.status,
+                    enrollments.progress_percent
+                FROM enrollments
+                JOIN users
+                    ON users.id = enrollments.user_id
+                JOIN courses
+                    ON courses.id = enrollments.course_id
+                WHERE users.telegram_id = ?
+                  AND courses.slug = ?
+                """,
+                (
+                    telegram_id,
+                    course_slug,
+                ),
+            ).fetchone()
+
+            if row is None:
+                return "not_started", 0
+
+            return (
+                str(row["status"]),
+                int(row["progress_percent"]),
+            )

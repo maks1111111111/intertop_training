@@ -1,5 +1,5 @@
 from pathlib import Path
-from app.repositories.progress_repository import ProgressRepository
+
 from aiogram import F, Router
 from aiogram.types import (
     CallbackQuery,
@@ -8,10 +8,13 @@ from aiogram.types import (
     InlineKeyboardMarkup,
 )
 
+from app.repositories.progress_repository import ProgressRepository
 from app.services.scanner import Course, Lesson, get_course
+
 
 router = Router()
 progress_repository = ProgressRepository()
+
 
 def _back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -32,7 +35,6 @@ def _lesson_keyboard(
     lessons_count: int,
 ) -> InlineKeyboardMarkup:
     buttons: list[list[InlineKeyboardButton]] = []
-
     navigation: list[InlineKeyboardButton] = []
 
     if lesson_index > 0:
@@ -111,16 +113,23 @@ async def _send_lesson(
 
 
 @router.callback_query(F.data == "courses:list")
-async def show_courses_list(callback: CallbackQuery, base_dir) -> None:
+async def show_courses_list(
+    callback: CallbackQuery,
+    base_dir: Path,
+    db_path: Path,
+) -> None:
     from app.handlers.start import _courses_keyboard
 
     await callback.message.edit_text(
         "Выберите курс:",
-        reply_markup=_courses_keyboard(base_dir),
+        reply_markup=_courses_keyboard(
+            base_dir=base_dir,
+            db_path=db_path,
+            telegram_id=callback.from_user.id,
+        ),
     )
+
     await callback.answer()
-
-
 
 
 @router.callback_query(F.data.startswith("course:"))
@@ -129,8 +138,8 @@ async def show_course(
     base_dir: Path,
     db_path: Path,
 ) -> None:
-    slug = callback.data.removeprefix("course:")
-    course = get_course(base_dir, slug)
+    course_slug = callback.data.removeprefix("course:")
+    course = get_course(base_dir, course_slug)
 
     if course is None:
         await callback.answer("Курс не найден.", show_alert=True)
@@ -150,13 +159,13 @@ async def show_course(
     progress_repository.start_course(
         db_path=db_path,
         telegram_id=user.id,
-        course_slug=slug,
+        course_slug=course_slug,
     )
 
     lesson_index = progress_repository.get_resume_lesson_index(
         db_path=db_path,
         telegram_id=user.id,
-        course_slug=slug,
+        course_slug=course_slug,
     )
 
     if lesson_index >= len(course.lessons):
@@ -178,6 +187,8 @@ async def show_course(
         lesson=course.lessons[lesson_index],
         lesson_index=lesson_index,
     )
+
+
 @router.callback_query(F.data.startswith("lesson:"))
 async def show_lesson(
     callback: CallbackQuery,
@@ -187,7 +198,10 @@ async def show_lesson(
     parts = callback.data.split(":")
 
     if len(parts) != 3:
-        await callback.answer("Некорректная команда.", show_alert=True)
+        await callback.answer(
+            "Некорректная команда.",
+            show_alert=True,
+        )
         return
 
     _, course_slug, lesson_index_raw = parts
@@ -195,23 +209,34 @@ async def show_lesson(
     try:
         lesson_index = int(lesson_index_raw)
     except ValueError:
-        await callback.answer("Некорректный номер урока.", show_alert=True)
+        await callback.answer(
+            "Некорректный номер урока.",
+            show_alert=True,
+        )
         return
 
     course = get_course(base_dir, course_slug)
 
     if course is None:
-        await callback.answer("Курс не найден.", show_alert=True)
+        await callback.answer(
+            "Курс не найден.",
+            show_alert=True,
+        )
         return
 
     if lesson_index < 0 or lesson_index >= len(course.lessons):
-        await callback.answer("Урок не найден.", show_alert=True)
+        await callback.answer(
+            "Урок не найден.",
+            show_alert=True,
+        )
         return
 
     previous_lesson_index = lesson_index - 1
 
     if previous_lesson_index >= 0:
-        previess_repository.complete_lesson(
+        previous_lesson = course.lessons[previous_lesson_index]
+
+        progress_repository.complete_lesson(
             db_path=db_path,
             telegram_id=callback.from_user.id,
             course_slug=course_slug,
@@ -238,7 +263,10 @@ async def complete_course(
     course = get_course(base_dir, course_slug)
 
     if course is None:
-        await callback.answer("Курс не найден.", show_alert=True)
+        await callback.answer(
+            "Курс не найден.",
+            show_alert=True,
+        )
         return
 
     if course.lessons:
