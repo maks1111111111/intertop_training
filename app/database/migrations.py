@@ -39,7 +39,25 @@ def migrate_users_table(connection: sqlite3.Connection) -> None:
             ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             """
         )
+def migrate_lessons_table(connection: sqlite3.Connection) -> None:
+    columns = _get_table_columns(connection, "lessons")
 
+    if "slug" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE lessons
+            ADD COLUMN slug TEXT
+            """
+        )
+
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS
+        idx_lessons_course_id_slug
+        ON lessons(course_id, slug)
+        """
+    )
 
 def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_users_table(connection)
+    migrate_lessons_table(connection)

@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -18,6 +19,9 @@ class Lesson:
     path: Path
     number: int
     title: str
+    description: str
+    image_path: Optional[Path]
+    narration_path: Optional[Path]
 
 
 @dataclass(frozen=True)
@@ -48,20 +52,33 @@ def _scan_lessons(course_dir: Path) -> list[Lesson]:
         return []
 
     lessons: list[Lesson] = []
-    for path in course_dir.iterdir():
-        if not path.is_file():
+
+    for lesson_dir in sorted(course_dir.iterdir()):
+        if not lesson_dir.is_dir():
             continue
-        if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+
+        if not lesson_dir.name.startswith("lesson_"):
             continue
+
+        lesson_json = lesson_dir / "lesson.json"
+        if not lesson_json.exists():
+            continue
+
+        with lesson_json.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+
         lessons.append(
             Lesson(
-                path=path,
-                number=_lesson_number(path.name),
-                title=_lesson_title(path.name),
+                path=lesson_dir,
+                number=data["order"],
+                title=data["title"],
+                description=data["description"],
+                image_path=lesson_dir / "image.jpg",
+                narration_path=lesson_dir / "narration.mp3",
             )
         )
 
-    lessons.sort(key=lambda lesson: (lesson.number, lesson.path.name.lower()))
+    lessons.sort(key=lambda lesson: lesson.number)
     return lessons
 
 
