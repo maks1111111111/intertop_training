@@ -1,3 +1,4 @@
+from typing import Optional, Tuple
 from pathlib import Path
 
 from app.database.db import get_connection
@@ -213,7 +214,7 @@ class ProgressRepository:
         db_path: Path,
         telegram_id: int,
         course_slug: str,
-    ) -> tuple[str, int]:
+    ) -> Optional[Tuple[str, int]]:
         with get_connection(db_path) as connection:
             row = connection.execute(
                 """
@@ -239,5 +240,61 @@ class ProgressRepository:
 
             return (
                 str(row["status"]),
+                int(row["progress_percent"]),
+            )
+
+    def get_latest_in_progress_course(
+        self,
+        db_path: Path,
+        telegram_id: int,
+    ) -> Optional[Tuple[str, int]]:
+        with get_connection(db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    courses.slug,
+                    enrollments.progress_percent
+                FROM enrollments
+                JOIN users
+                    ON users.id = enrollments.user_id
+                JOIN courses
+                    ON courses.id = enrollments.course_id
+                LEFT JOIN (
+                    SELECT
+                        lesson_progress.user_id,
+                        lessons.course_id,
+                        MAX(
+                            COALESCE(
+                                lesson_progress.completed_at,
+                                lesson_progress.started_at
+                            )
+                        ) AS last_activity_at
+                    FROM lesson_progress
+                    JOIN lessons
+                        ON lessons.id = lesson_progress.lesson_id
+                    GROUP BY
+                        lesson_progress.user_id,
+                        lessons.course_id
+                ) AS activity
+                    ON activity.user_id = enrollments.user_id
+                   AND activity.course_id = enrollments.course_id
+                WHERE users.telegram_id = ?
+                  AND enrollments.status = 'in_progress'
+                ORDER BY
+                    COALESCE(
+                        activity.last_activity_at,
+                        enrollments.started_at
+                    ) DESC,
+                    courses.id DESC
+                LIMIT 1
+                """,
+                (telegram_id,),
+            ).fetchone()
+
+            if row is None:
+                return None
+
+            return (
+                str(row["slug"]),
                 int(row["progress_percent"]),
             )

@@ -112,33 +112,101 @@ async def _send_lesson(
     )
 
 
-@router.callback_query(F.data == "courses:list")
-async def show_courses_list(
+@router.callback_query(F.data.startswith("course_card:"))
+async def show_course_card(
     callback: CallbackQuery,
     base_dir: Path,
     db_path: Path,
 ) -> None:
-    from app.handlers.start import _courses_keyboard
+    course_slug = callback.data.removeprefix("course_card:")
+    course = get_course(base_dir, course_slug)
+
+    if course is None:
+        await callback.answer("Курс не найден.", show_alert=True)
+        return
+
+    status, progress_percent = progress_repository.get_course_progress(
+        db_path=db_path,
+        telegram_id=callback.from_user.id,
+        course_slug=course_slug,
+    )
+
+    lessons_count = len(course.lessons)
+
+    if status == "completed":
+        status_text = "✅ Завершён"
+    elif status == "in_progress":
+        status_text = f"🟡 В процессе · {progress_percent}%"
+    else:
+        status_text = "⚪ Не начат"
+
+    if not course.lessons:
+        text = (
+            f"<b>{course.title}</b>\n\n"
+            "Курс готовится к публикации.\n"
+            "Материалы появятся позже."
+        )
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="← К курсам",
+                        callback_data="courses:list",
+                    )
+                ]
+            ]
+        )
+    else:
+        text = (
+            f"<b>{course.title}</b>\n\n"
+            f"Уроков: {lessons_count}\n"
+            f"Статус: {status_text}"
+        )
+
+        if status == "completed":
+            main_button_text = "📖 Открыть"
+        elif status == "in_progress":
+            main_button_text = "▶ Продолжить"
+        else:
+            main_button_text = "▶ Начать"
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=main_button_text,
+                        callback_data=f"course_start:{course_slug}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="← К курсам",
+                        callback_data="courses:list",
+                    )
+                ],
+            ]
+        )
+
+    if callback.message is None:
+        await callback.answer()
+        return
 
     await callback.message.edit_text(
-        "Выберите курс:",
-        reply_markup=_courses_keyboard(
-            base_dir=base_dir,
-            db_path=db_path,
-            telegram_id=callback.from_user.id,
-        ),
+        text=text,
+        parse_mode="HTML",
+        reply_markup=keyboard,
     )
 
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("course:"))
-async def show_course(
+@router.callback_query(F.data.startswith("course_start:"))
+async def start_course(
     callback: CallbackQuery,
     base_dir: Path,
     db_path: Path,
 ) -> None:
-    course_slug = callback.data.removeprefix("course:")
+    course_slug = callback.data.removeprefix("course_start:")
     course = get_course(base_dir, course_slug)
 
     if course is None:
