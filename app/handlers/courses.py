@@ -1,3 +1,4 @@
+from html import escape
 from pathlib import Path
 
 from aiogram import F, Router
@@ -73,6 +74,31 @@ def _lesson_keyboard(
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
+def _progress_bar(current: int, total: int, length: int = 10) -> str:
+    if total <= 0:
+        return "░" * length
+
+    filled = round(current / total * length)
+    filled = max(0, min(filled, length))
+
+    return "█" * filled + "░" * (length - filled)
+
+
+def _lesson_view_text(
+    course: Course,
+    lesson: Lesson,
+    lesson_index: int,
+) -> str:
+    lesson_number = lesson_index + 1
+    lessons_count = len(course.lessons)
+    progress_percent = round(lesson_number / lessons_count * 100)
+
+    return (
+        f"📚 <b>{escape(course.title)}</b>\n\n"
+        f"📖 Урок {lesson_number} из {lessons_count}\n"
+        f"{_progress_bar(lesson_number, lessons_count)} {progress_percent}%\n\n"
+        f"<b>{escape(lesson.title)}</b>"
+    )
 
 async def _send_lesson(
     callback: CallbackQuery,
@@ -80,12 +106,18 @@ async def _send_lesson(
     lesson: Lesson,
     lesson_index: int,
 ) -> None:
-    lesson_number = lesson_index + 1
+    if callback.message is None:
+        await callback.answer()
+        return
+
     lessons_count = len(course.lessons)
 
     await callback.message.answer(
-        f"📖 Урок {lesson_number} из {lessons_count}\n"
-        f"<b>{lesson.title}</b>",
+        _lesson_view_text(
+            course=course,
+            lesson=lesson,
+            lesson_index=lesson_index,
+        ),
         parse_mode="HTML",
     )
 
@@ -103,7 +135,7 @@ async def _send_lesson(
         )
 
     await callback.message.answer(
-        f"Урок {lesson_number} из {lessons_count}",
+        "Выберите действие:",
         reply_markup=_lesson_keyboard(
             course_slug=course.slug,
             lesson_index=lesson_index,
