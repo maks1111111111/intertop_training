@@ -10,7 +10,7 @@ from aiogram.types import (
 from app.keyboards.courses import back_to_courses_keyboard
 from app.ui.lesson import lesson_view_text
 from app.repositories.progress_repository import ProgressRepository
-from app.services.scanner import Course, Lesson, Quiz, QuizQuestion, get_course
+from app.services.scanner import Course, Lesson, get_course
 
 
 router = Router()
@@ -58,42 +58,6 @@ def _lesson_keyboard(
             )
         ]
     )
-
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-
-def _quiz_question_text(
-    quiz: Quiz,
-    question_index: int,
-) -> str:
-    question = quiz.questions[question_index]
-    questions_count = len(quiz.questions)
-
-    return (
-        f"📝 {quiz.title}\n\n"
-        f"Вопрос {question_index + 1} из {questions_count}\n\n"
-        f"{question.text}"
-    )
-
-
-def _quiz_question_keyboard(
-    course_slug: str,
-    question_index: int,
-    question: QuizQuestion,
-) -> InlineKeyboardMarkup:
-    buttons: list[list[InlineKeyboardButton]] = []
-
-    for option in question.options:
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    text=option.text,
-                    callback_data=(
-                        f"quiz_answer:{course_slug}:{question_index}:{option.id}"
-                    ),
-                )
-            ]
-        )
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -416,56 +380,4 @@ async def complete_course(
     await callback.message.answer(
         congratulation_text,
         reply_markup=keyboard,
-    )
-
-
-@router.callback_query(F.data.startswith("quiz_start:"))
-async def start_quiz(
-    callback: CallbackQuery,
-    base_dir: Path,
-) -> None:
-    course_slug = callback.data.removeprefix("quiz_start:")
-    course = get_course(base_dir, course_slug)
-
-    if course is None:
-        await callback.answer("Курс не найден.", show_alert=True)
-        return
-
-    if course.quiz is None:
-        await callback.answer(
-            "Для этого курса тест пока недоступен.",
-            show_alert=True,
-        )
-        return
-
-    if not course.quiz.questions:
-        await callback.answer("Тест пока пуст.", show_alert=True)
-        return
-
-    if callback.message is None:
-        await callback.answer()
-        return
-
-    question_index = 0
-    question = course.quiz.questions[question_index]
-
-    await callback.message.answer(
-        _quiz_question_text(course.quiz, question_index),
-        reply_markup=_quiz_question_keyboard(
-            course_slug=course_slug,
-            question_index=question_index,
-            question=question,
-        ),
-    )
-
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("quiz_answer:"))
-async def answer_quiz(
-    callback: CallbackQuery,
-) -> None:
-    await callback.answer(
-        "Проверка ответов будет добавлена на следующем этапе.",
-        show_alert=True,
     )

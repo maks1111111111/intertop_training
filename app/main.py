@@ -9,7 +9,7 @@ from aiogram.enums import ParseMode
 from dotenv import load_dotenv
 
 from app.database import initialize_database
-from app.handlers import courses, start
+from app.handlers import courses, quiz, start
 from app.services.course_sync import sync_courses
 
 def _get_base_dir() -> Path:
@@ -53,6 +53,7 @@ async def main() -> None:
 
     dp.include_router(start.router)
     dp.include_router(courses.router)
+    dp.include_router(quiz.router)
 
     logging.info("База данных подготовлена: %s", db_path)
     logging.info("Бот запущен. Каталог курсов: %s", base_dir)
