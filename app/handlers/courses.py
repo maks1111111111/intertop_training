@@ -349,8 +349,76 @@ async def complete_course(
 
     await callback.answer("Курс завершён!")
 
-    await callback.message.answer(
+    if callback.message is None:
+        return
+
+    congratulation_text = (
         f"🎉 Поздравляем!\n\n"
-        f"Вы успешно завершили курс «{course.title}».",
-        reply_markup=back_to_courses_keyboard(),
+        f"Вы успешно завершили курс «{course.title}»."
     )
+
+    if course.quiz is not None:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="📝 Пройти тест",
+                        callback_data=f"quiz_start:{course_slug}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="← К списку курсов",
+                        callback_data="courses:list",
+                    )
+                ],
+            ]
+        )
+    else:
+        keyboard = back_to_courses_keyboard()
+
+    await callback.message.answer(
+        congratulation_text,
+        reply_markup=keyboard,
+    )
+
+
+@router.callback_query(F.data.startswith("quiz_start:"))
+async def start_quiz(
+    callback: CallbackQuery,
+    base_dir: Path,
+) -> None:
+    course_slug = callback.data.removeprefix("quiz_start:")
+    course = get_course(base_dir, course_slug)
+
+    if course is None:
+        await callback.answer("Курс не найден.", show_alert=True)
+        return
+
+    if course.quiz is None:
+        await callback.answer(
+            "Для этого курса тест пока недоступен.",
+            show_alert=True,
+        )
+        return
+
+    if callback.message is None:
+        await callback.answer()
+        return
+
+    await callback.message.answer(
+        f"📝 Тест «{course.quiz.title}»\n\n"
+        "Вопросы теста будут доступны на следующем этапе.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="← К курсу",
+                        callback_data=f"course_card:{course_slug}",
+                    )
+                ]
+            ]
+        ),
+    )
+
+    await callback.answer()
