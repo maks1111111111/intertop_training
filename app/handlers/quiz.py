@@ -6,6 +6,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
+from app.repositories import quiz_repository
 from app.services.scanner import Quiz, QuizQuestion, get_course
 
 
@@ -96,6 +97,7 @@ def _quiz_answer_result_keyboard(
 async def start_quiz(
     callback: CallbackQuery,
     base_dir: Path,
+    db_path: Path,
 ) -> None:
     course_slug = callback.data.removeprefix("quiz_start:")
     course = get_course(base_dir, course_slug)
@@ -119,6 +121,14 @@ async def start_quiz(
         await callback.answer()
         return
 
+    quiz_repository.create_attempt(
+        db_path=db_path,
+        telegram_id=callback.from_user.id,
+        course_slug=course_slug,
+        quiz_version=course.quiz.version,
+        questions_count=len(course.quiz.questions),
+    )
+
     question_index = 0
     question = course.quiz.questions[question_index]
 
@@ -138,6 +148,7 @@ async def start_quiz(
 async def answer_quiz(
     callback: CallbackQuery,
     base_dir: Path,
+    db_path: Path,
 ) -> None:
     parts = callback.data.split(":")
 
@@ -190,6 +201,22 @@ async def answer_quiz(
     if callback.message is None:
         await callback.answer()
         return
+
+    attempt = quiz_repository.get_active_attempt(
+        db_path=db_path,
+        telegram_id=callback.from_user.id,
+        course_slug=course_slug,
+    )
+
+    if attempt is not None:
+        is_correct = option_id in question.correct_option_ids
+        quiz_repository.save_answer(
+            db_path=db_path,
+            attempt_id=int(attempt["id"]),
+            question_id=question.id,
+            selected_option_id=option_id,
+            is_correct=is_correct,
+        )
 
     await callback.message.answer(
         _quiz_answer_result_text(question, option_id),
@@ -266,8 +293,21 @@ async def next_quiz_question(
 @router.callback_query(F.data.startswith("quiz_finish:"))
 async def finish_quiz(
     callback: CallbackQuery,
+    db_path: Path,
 ) -> None:
     course_slug = callback.data.removeprefix("quiz_finish:")
+
+    attempt = quiz_repository.get_active_attempt(
+        db_path=db_path,
+        telegram_id=callback.from_user.id,
+        course_slug=course_slug,
+    )
+
+    if attempt is not None:
+        quiz_repository.finish_attempt(
+            db_path=db_path,
+            attempt_id=int(attempt["id"]),
+        )
 
     if callback.message is None:
         await callback.answer()

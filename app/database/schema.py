@@ -92,5 +92,41 @@ def create_tables(connection: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_lesson_progress_user_id
             ON lesson_progress(user_id);
+
+        CREATE TABLE IF NOT EXISTS quiz_attempts (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            course_slug TEXT NOT NULL,
+            quiz_version INTEGER NOT NULL,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            questions_count INTEGER NOT NULL,
+            correct_answers INTEGER DEFAULT 0,
+            score_percent REAL DEFAULT 0,
+            passed INTEGER DEFAULT 0,
+            FOREIGN KEY (user_id)
+                REFERENCES users(id)
+                ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS quiz_answers (
+            id INTEGER PRIMARY KEY,
+            attempt_id INTEGER NOT NULL,
+            question_id TEXT NOT NULL,
+            selected_option_id TEXT NOT NULL,
+            is_correct INTEGER NOT NULL,
+            FOREIGN KEY (attempt_id)
+                REFERENCES quiz_attempts(id)
+                ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user_id
+            ON quiz_attempts(user_id);
+
+        CREATE INDEX IF NOT EXISTS idx_quiz_attempts_course_slug
+            ON quiz_attempts(course_slug);
+
+        CREATE INDEX IF NOT EXISTS idx_quiz_answers_attempt_id
+            ON quiz_answers(attempt_id);
         """
     )
