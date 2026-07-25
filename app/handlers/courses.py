@@ -75,10 +75,10 @@ async def _send_lesson(
     lessons_count = len(course.lessons)
 
     await callback.message.answer(
-    lesson_view_text(
-        course=course,
-        lesson=lesson,
-        lesson_index=lesson_index,
+        lesson_view_text(
+            course=course,
+            lesson=lesson,
+            lesson_index=lesson_index,
         ),
         parse_mode="HTML",
     )

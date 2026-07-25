@@ -238,8 +238,11 @@ def _scan_quiz(course_dir: Path) -> Optional[Quiz]:
         if not isinstance(raw_correct_option_ids, list) or len(raw_correct_option_ids) != 1:
             continue
 
-        correct_option_id = raw_correct_option_ids[0]
-        if not isinstance(correct_option_id, str) or not correct_option_id:
+        correct_option_id_raw = raw_correct_option_ids[0]
+        if not isinstance(correct_option_id_raw, str):
+            continue
+        correct_option_id = correct_option_id_raw.strip()
+        if not correct_option_id:
             continue
 
         if correct_option_id not in option_ids:
@@ -248,6 +251,8 @@ def _scan_quiz(course_dir: Path) -> Optional[Quiz]:
         explanation = raw_question.get("explanation")
         if not isinstance(explanation, str):
             explanation = ""
+        else:
+            explanation = explanation.strip()
 
         lesson_raw = raw_question.get("lesson", "")
         if isinstance(lesson_raw, str):
@@ -271,7 +276,7 @@ def _scan_quiz(course_dir: Path) -> Optional[Quiz]:
 
         ai_context_raw = raw_question.get("ai_context", "")
         if isinstance(ai_context_raw, str):
-            ai_context = ai_context_raw
+            ai_context = ai_context_raw.strip()
         else:
             ai_context = ""
 
