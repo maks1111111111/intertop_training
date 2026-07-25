@@ -93,6 +93,52 @@ def _quiz_answer_result_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+def _format_score_percent(score_percent: float) -> str:
+    if score_percent == int(score_percent):
+        return str(int(score_percent))
+    return f"{score_percent:.2f}".rstrip("0").rstrip(".")
+
+
+def _quiz_finish_result_text(attempt) -> str:
+    correct_answers = int(attempt["correct_answers"])
+    questions_count = int(attempt["questions_count"])
+    score_percent = float(attempt["score_percent"])
+    passed = bool(attempt["passed"])
+
+    text = (
+        "🏁 Тест завершён!\n\n"
+        "📊 Ваш результат\n\n"
+        f"✅ Правильных ответов: {correct_answers} из {questions_count}\n"
+        f"📈 Процент: {_format_score_percent(score_percent)}%"
+    )
+
+    if passed:
+        text = f"{text}\n\n🎉 Статус: СДАН"
+    else:
+        text = f"{text}\n\n❌ Статус: НЕ СДАН"
+
+    return text
+
+
+def _quiz_finish_result_keyboard(course_slug: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔄 Пройти ещё раз",
+                    callback_data=f"quiz_start:{course_slug}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📚 К курсу",
+                    callback_data=f"course_card:{course_slug}",
+                )
+            ],
+        ]
+    )
+
+
 @router.callback_query(F.data.startswith("quiz_start:"))
 async def start_quiz(
     callback: CallbackQuery,
@@ -303,30 +349,43 @@ async def finish_quiz(
         course_slug=course_slug,
     )
 
+    attempt_id: int | None = None
     if attempt is not None:
+        attempt_id = int(attempt["id"])
         quiz_repository.finish_attempt(
             db_path=db_path,
-            attempt_id=int(attempt["id"]),
+            attempt_id=attempt_id,
         )
 
     if callback.message is None:
         await callback.answer()
         return
 
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="← К курсу",
-                    callback_data=f"course_card:{course_slug}",
-                )
-            ]
-        ]
+    keyboard = _quiz_finish_result_keyboard(course_slug)
+
+    if attempt_id is None:
+        await callback.message.answer(
+            "🏁 Тест завершён!",
+            reply_markup=keyboard,
+        )
+        await callback.answer()
+        return
+
+    finished_attempt = quiz_repository.get_attempt(
+        db_path=db_path,
+        attempt_id=attempt_id,
     )
 
+    if finished_attempt is None:
+        await callback.message.answer(
+            "🏁 Тест завершён!",
+            reply_markup=keyboard,
+        )
+        await callback.answer()
+        return
+
     await callback.message.answer(
-        "🏁 Тест завершён.\n\n"
-        "Подсчёт результатов будет реализован на следующем этапе.",
+        _quiz_finish_result_text(finished_attempt),
         reply_markup=keyboard,
     )
 
