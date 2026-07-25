@@ -164,22 +164,35 @@ async def show_course_card(
         else:
             main_button_text = "▶ Начать"
 
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
+        buttons: list[list[InlineKeyboardButton]] = [
+            [
+                InlineKeyboardButton(
+                    text=main_button_text,
+                    callback_data=f"course_start:{course_slug}",
+                )
+            ],
+        ]
+
+        if status == "completed" and course.quiz is not None:
+            buttons.append(
                 [
                     InlineKeyboardButton(
-                        text=main_button_text,
-                        callback_data=f"course_start:{course_slug}",
+                        text="📝 Пройти тест",
+                        callback_data=f"quiz_start:{course_slug}",
                     )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="← К курсам",
-                        callback_data="courses:list",
-                    )
-                ],
+                ]
+            )
+
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text="← К курсам",
+                    callback_data="courses:list",
+                )
             ]
         )
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     if callback.message is None:
         await callback.answer()
