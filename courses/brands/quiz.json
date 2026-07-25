@@ -1,0 +1,135 @@
+{
+  "id": "brands_quiz",
+  "title": "Итоговый тест",
+  "passing_score": 80,
+  "version": 1,
+  "randomize_questions": false,
+  "randomize_options": false,
+  "questions": [
+    {
+      "id": "question_01",
+      "type": "single_choice",
+      "text": "В каком году был основан бренд Rieker?",
+      "options": [
+        {
+          "id": "a",
+          "text": "1874"
+        },
+        {
+          "id": "b",
+          "text": "1894"
+        },
+        {
+          "id": "c",
+          "text": "1974"
+        }
+      ],
+      "correct_option_ids": ["a"],
+      "explanation": "Rieker был основан в 1874 году в Германии как семейная обувная компания.",
+      "lesson": "lesson_01",
+      "difficulty": 1,
+      "tags": ["история", "rieker"],
+      "ai_context": "На инфографике урока указан год основания бренда — 1874."
+    },
+    {
+      "id": "question_02",
+      "type": "single_choice",
+      "text": "В какой стране был основан бренд Rieker?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Германия"
+        },
+        {
+          "id": "b",
+          "text": "Италия"
+        },
+        {
+          "id": "c",
+          "text": "Франция"
+        }
+      ],
+      "correct_option_ids": ["a"],
+      "explanation": "Rieker — немецкий бренд, основанный в Германии как семейная обувная компания.",
+      "lesson": "lesson_01",
+      "difficulty": 1,
+      "tags": ["история", "rieker"],
+      "ai_context": "В блоке «О бренде» указано, что Rieker основан в Германии."
+    },
+    {
+      "id": "question_03",
+      "type": "single_choice",
+      "text": "Сколько технологий комфорта Antistress выделяет бренд Rieker?",
+      "options": [
+        {
+          "id": "a",
+          "text": "3"
+        },
+        {
+          "id": "b",
+          "text": "5"
+        },
+        {
+          "id": "c",
+          "text": "7"
+        }
+      ],
+      "correct_option_ids": ["b"],
+      "explanation": "У Rieker пять технологий Antistress: лёгкость, гибкость, простор, амортизация и дышащие материалы.",
+      "lesson": "lesson_01",
+      "difficulty": 2,
+      "tags": ["технологии", "antistress"],
+      "ai_context": "На инфографике перечислены пять технологий комфорта Antistress."
+    },
+    {
+      "id": "question_04",
+      "type": "single_choice",
+      "text": "Какую функцию выполняет технология Rieker TEX?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Защита от влаги"
+        },
+        {
+          "id": "b",
+          "text": "Эффект памяти стельки"
+        },
+        {
+          "id": "c",
+          "text": "Увеличение амортизации подошвы"
+        }
+      ],
+      "correct_option_ids": ["a"],
+      "explanation": "Rieker TEX — мембранная технология, которая обеспечивает защиту от влаги.",
+      "lesson": "lesson_01",
+      "difficulty": 2,
+      "tags": ["технологии", "rieker_tex"],
+      "ai_context": "В разделе коллабораций указано, что Rieker TEX защищает от влаги."
+    },
+    {
+      "id": "question_05",
+      "type": "single_choice",
+      "text": "Сколько новых моделей Rieker выпускает каждый сезон?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Более 300"
+        },
+        {
+          "id": "b",
+          "text": "Более 3 000"
+        },
+        {
+          "id": "c",
+          "text": "Более 30 000"
+        }
+      ],
+      "correct_option_ids": ["b"],
+      "explanation": "Каждый сезон бренд выпускает более 3 000 новых моделей.",
+      "lesson": "lesson_01",
+      "difficulty": 3,
+      "tags": ["факты", "ассортимент"],
+      "ai_context": "В блоке «Интересные факты» указано, что каждый сезон выходит более 3 000 новых моделей."
+    }
+  ]
+}
