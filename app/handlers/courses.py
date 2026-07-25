@@ -1,4 +1,3 @@
-from html import escape
 from pathlib import Path
 
 from aiogram import F, Router
@@ -8,26 +7,14 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
-
+from app.keyboards.courses import back_to_courses_keyboard
+from app.ui.lesson import lesson_view_text
 from app.repositories.progress_repository import ProgressRepository
 from app.services.scanner import Course, Lesson, get_course
 
 
 router = Router()
 progress_repository = ProgressRepository()
-
-
-def _back_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="← К списку курсов",
-                    callback_data="courses:list",
-                )
-            ]
-        ]
-    )
 
 
 def _lesson_keyboard(
@@ -74,31 +61,6 @@ def _lesson_keyboard(
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def _progress_bar(current: int, total: int, length: int = 10) -> str:
-    if total <= 0:
-        return "░" * length
-
-    filled = round(current / total * length)
-    filled = max(0, min(filled, length))
-
-    return "█" * filled + "░" * (length - filled)
-
-
-def _lesson_view_text(
-    course: Course,
-    lesson: Lesson,
-    lesson_index: int,
-) -> str:
-    lesson_number = lesson_index + 1
-    lessons_count = len(course.lessons)
-    progress_percent = round(lesson_number / lessons_count * 100)
-
-    return (
-        f"📚 <b>{escape(course.title)}</b>\n\n"
-        f"📖 Урок {lesson_number} из {lessons_count}\n"
-        f"{_progress_bar(lesson_number, lessons_count)} {progress_percent}%\n\n"
-        f"<b>{escape(lesson.title)}</b>"
-    )
 
 async def _send_lesson(
     callback: CallbackQuery,
@@ -113,10 +75,10 @@ async def _send_lesson(
     lessons_count = len(course.lessons)
 
     await callback.message.answer(
-        _lesson_view_text(
-            course=course,
-            lesson=lesson,
-            lesson_index=lesson_index,
+    lesson_view_text(
+        course=course,
+        lesson=lesson,
+        lesson_index=lesson_index,
         ),
         parse_mode="HTML",
     )
@@ -250,7 +212,7 @@ async def start_course(
 
         await callback.message.answer(
             "В этом курсе пока нет уроков.",
-            reply_markup=_back_keyboard(),
+            reply_markup=back_to_courses_keyboard(),
         )
         return
 
@@ -390,5 +352,5 @@ async def complete_course(
     await callback.message.answer(
         f"🎉 Поздравляем!\n\n"
         f"Вы успешно завершили курс «{course.title}».",
-        reply_markup=_back_keyboard(),
+        reply_markup=back_to_courses_keyboard(),
     )
