@@ -5,10 +5,110 @@ against the Content Engine contract without invoking the runtime scanner.
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import AbstractSet, Optional
 
 from app.content.json_loader import load_json_file
 from app.content.models import ValidationReport
+
+_COURSE_COVER_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
+_LESSON_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
+_NARRATION_EXTENSIONS = frozenset({".mp3", ".m4a", ".wav", ".ogg"})
+
+
+def _validate_media_slot(
+    directory: Path,
+    stem: str,
+    allowed_extensions: AbstractSet[str],
+    slot_name: str,
+    report: ValidationReport,
+    *,
+    path: Optional[Path] = None,
+    location: Optional[str] = None,
+    multiple_files_code: str,
+    unsupported_format_code: str,
+) -> None:
+    """Validate a single optional media file slot against allowed extensions.
+
+    Scans ``directory`` for files whose stem matches ``stem``, reports
+    unsupported extensions and multiple supported matches.
+    """
+    if not directory.is_dir():
+        return
+
+    error_path = path or directory
+    supported_files: list[Path] = []
+
+    for entry in directory.iterdir():
+        if not entry.is_file() or entry.stem != stem:
+            continue
+
+        extension = entry.suffix.lower()
+        if extension in allowed_extensions:
+            supported_files.append(entry)
+            continue
+
+        report.add_error(
+            code=unsupported_format_code,
+            message=f"Unsupported {slot_name} format",
+            path=entry,
+            location=location,
+        )
+
+    if len(supported_files) > 1:
+        report.add_error(
+            code=multiple_files_code,
+            message=f"Multiple {slot_name} files found",
+            path=error_path,
+            location=location,
+        )
+
+
+def _validate_course_cover(
+    course_dir: Path,
+    report: ValidationReport,
+) -> None:
+    """Validate optional course cover media files."""
+    _validate_media_slot(
+        course_dir,
+        "cover",
+        _COURSE_COVER_EXTENSIONS,
+        "course cover",
+        report,
+        path=course_dir,
+        multiple_files_code="course_cover_multiple_files",
+        unsupported_format_code="course_cover_unsupported_format",
+    )
+
+
+def _validate_lesson_media(
+    lesson_dir: Path,
+    report: ValidationReport,
+    *,
+    location: str,
+) -> None:
+    """Validate optional lesson image and narration media files."""
+    _validate_media_slot(
+        lesson_dir,
+        "image",
+        _LESSON_IMAGE_EXTENSIONS,
+        "lesson image",
+        report,
+        path=lesson_dir,
+        location=location,
+        multiple_files_code="lesson_image_multiple_files",
+        unsupported_format_code="lesson_image_unsupported_format",
+    )
+    _validate_media_slot(
+        lesson_dir,
+        "narration",
+        _NARRATION_EXTENSIONS,
+        "narration",
+        report,
+        path=lesson_dir,
+        location=location,
+        multiple_files_code="lesson_narration_multiple_files",
+        unsupported_format_code="lesson_narration_unsupported_format",
+    )
 
 
 def _validate_course_manifest(
@@ -600,7 +700,8 @@ def validate_course(course_dir: Path) -> ValidationReport:
     Performs structural checks (directory presence, lesson subfolders),
     validates ``course.json`` contents, validates ``lesson.json`` when
     present, and validates ``quiz.json`` including question contents when the
-    file exists. Media assets are not validated in this step.
+    file exists, and validates optional media assets for course cover and
+    lesson image/narration slots.
 
     Args:
         course_dir: Path to the course directory (for example
@@ -631,6 +732,7 @@ def validate_course(course_dir: Path) -> ValidationReport:
 
     course_json_path = course_dir / "course.json"
     _validate_course_manifest(course_json_path, report)
+    _validate_course_cover(course_dir, report)
 
     lesson_dir_count = 0
     lesson_slugs: set[str] = set()
@@ -657,6 +759,8 @@ def validate_course(course_dir: Path) -> ValidationReport:
                 report,
                 location=entry.name,
             )
+
+        _validate_lesson_media(entry, report, location=entry.name)
 
     if lesson_dir_count == 0:
         report.add_warning(
