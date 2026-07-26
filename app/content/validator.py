@@ -5,6 +5,7 @@ against the Content Engine contract without invoking the runtime scanner.
 """
 
 from pathlib import Path
+from typing import Optional
 
 from app.content.json_loader import load_json_file
 from app.content.models import ValidationReport
@@ -125,7 +126,8 @@ def _validate_quiz_manifest(
     """Validate ``quiz.json`` root type and top-level manifest fields.
 
     Adds errors to ``report`` only; does not mutate JSON data or return a
-    separate report. Individual questions are not validated in this step.
+    separate report. Question contents are validated when ``questions`` is a
+    non-empty array.
     """
     if not quiz_json_path.is_file():
         return
@@ -259,14 +261,331 @@ def _validate_quiz_manifest(
             location=f"{location}.randomize_options",
         )
 
+    questions = data.get("questions")
+    if isinstance(questions, list) and len(questions) > 0:
+        _validate_quiz_questions(
+            questions,
+            quiz_json_path,
+            report,
+            location=location,
+        )
+
+
+def _validate_quiz_questions(
+    questions: list,
+    quiz_json_path: Path,
+    report: ValidationReport,
+    *,
+    location: str,
+) -> None:
+    """Validate each question in the quiz ``questions`` array.
+
+    Adds errors to ``report`` only; does not mutate JSON data or return a
+    separate report.
+    """
+    seen_question_ids: set[str] = set()
+
+    for index, raw_question in enumerate(questions):
+        question_location = f"{location}.questions[{index}]"
+
+        if not isinstance(raw_question, dict):
+            report.add_error(
+                code="quiz_question_invalid_type",
+                message="Question must be a JSON object",
+                path=quiz_json_path,
+                location=question_location,
+            )
+            continue
+
+        if "type" not in raw_question:
+            report.add_error(
+                code="quiz_question_type_missing",
+                message="Required field 'type' is missing",
+                path=quiz_json_path,
+                location=f"{question_location}.type",
+            )
+        elif not isinstance(raw_question["type"], str):
+            report.add_error(
+                code="quiz_question_type_invalid_type",
+                message="Field 'type' must be a string",
+                path=quiz_json_path,
+                location=f"{question_location}.type",
+            )
+        elif raw_question["type"] != "single_choice":
+            report.add_error(
+                code="quiz_question_type_unsupported",
+                message="Field 'type' must be 'single_choice'",
+                path=quiz_json_path,
+                location=f"{question_location}.type",
+            )
+
+        if "id" not in raw_question:
+            report.add_error(
+                code="quiz_question_id_missing",
+                message="Required field 'id' is missing",
+                path=quiz_json_path,
+                location=f"{question_location}.id",
+            )
+        elif not isinstance(raw_question["id"], str):
+            report.add_error(
+                code="quiz_question_id_invalid_type",
+                message="Field 'id' must be a string",
+                path=quiz_json_path,
+                location=f"{question_location}.id",
+            )
+        elif not raw_question["id"].strip():
+            report.add_error(
+                code="quiz_question_id_empty",
+                message="Field 'id' must not be empty",
+                path=quiz_json_path,
+                location=f"{question_location}.id",
+            )
+        else:
+            question_id = raw_question["id"].strip()
+            if question_id in seen_question_ids:
+                report.add_error(
+                    code="quiz_question_duplicate_id",
+                    message="Question id must be unique within the quiz",
+                    path=quiz_json_path,
+                    location=f"{question_location}.id",
+                )
+            else:
+                seen_question_ids.add(question_id)
+
+        if "text" not in raw_question:
+            report.add_error(
+                code="quiz_question_text_missing",
+                message="Required field 'text' is missing",
+                path=quiz_json_path,
+                location=f"{question_location}.text",
+            )
+        elif not isinstance(raw_question["text"], str):
+            report.add_error(
+                code="quiz_question_text_invalid_type",
+                message="Field 'text' must be a string",
+                path=quiz_json_path,
+                location=f"{question_location}.text",
+            )
+        elif not raw_question["text"].strip():
+            report.add_error(
+                code="quiz_question_text_empty",
+                message="Field 'text' must not be empty",
+                path=quiz_json_path,
+                location=f"{question_location}.text",
+            )
+
+        valid_option_ids: set[str] = set()
+        duplicate_option_id = False
+        valid_options_count = 0
+
+        if "options" not in raw_question:
+            report.add_error(
+                code="quiz_question_options_missing",
+                message="Required field 'options' is missing",
+                path=quiz_json_path,
+                location=f"{question_location}.options",
+            )
+        elif not isinstance(raw_question["options"], list):
+            report.add_error(
+                code="quiz_question_options_invalid_type",
+                message="Field 'options' must be an array",
+                path=quiz_json_path,
+                location=f"{question_location}.options",
+            )
+        else:
+            for option_index, raw_option in enumerate(raw_question["options"]):
+                option_location = f"{question_location}.options[{option_index}]"
+
+                if not isinstance(raw_option, dict):
+                    report.add_error(
+                        code="quiz_option_invalid_type",
+                        message="Option must be a JSON object",
+                        path=quiz_json_path,
+                        location=option_location,
+                    )
+                    continue
+
+                option_id: Optional[str] = None
+
+                if "id" not in raw_option:
+                    report.add_error(
+                        code="quiz_option_id_missing",
+                        message="Required field 'id' is missing",
+                        path=quiz_json_path,
+                        location=f"{option_location}.id",
+                    )
+                elif not isinstance(raw_option["id"], str):
+                    report.add_error(
+                        code="quiz_option_id_invalid_type",
+                        message="Field 'id' must be a string",
+                        path=quiz_json_path,
+                        location=f"{option_location}.id",
+                    )
+                elif not raw_option["id"].strip():
+                    report.add_error(
+                        code="quiz_option_id_empty",
+                        message="Field 'id' must not be empty",
+                        path=quiz_json_path,
+                        location=f"{option_location}.id",
+                    )
+                else:
+                    option_id = raw_option["id"].strip()
+                    if option_id in valid_option_ids:
+                        duplicate_option_id = True
+                        report.add_error(
+                            code="quiz_option_duplicate_id",
+                            message="Option id must be unique within the question",
+                            path=quiz_json_path,
+                            location=f"{option_location}.id",
+                        )
+
+                if "text" not in raw_option:
+                    report.add_error(
+                        code="quiz_option_text_missing",
+                        message="Required field 'text' is missing",
+                        path=quiz_json_path,
+                        location=f"{option_location}.text",
+                    )
+                elif not isinstance(raw_option["text"], str):
+                    report.add_error(
+                        code="quiz_option_text_invalid_type",
+                        message="Field 'text' must be a string",
+                        path=quiz_json_path,
+                        location=f"{option_location}.text",
+                    )
+                elif not raw_option["text"].strip():
+                    report.add_error(
+                        code="quiz_option_text_empty",
+                        message="Field 'text' must not be empty",
+                        path=quiz_json_path,
+                        location=f"{option_location}.text",
+                    )
+                elif option_id is not None and option_id not in valid_option_ids:
+                    valid_option_ids.add(option_id)
+                    valid_options_count += 1
+
+            if not duplicate_option_id and valid_options_count < 2:
+                report.add_error(
+                    code="quiz_question_not_enough_options",
+                    message="Question must have at least two valid options",
+                    path=quiz_json_path,
+                    location=f"{question_location}.options",
+                )
+
+        if "correct_option_ids" not in raw_question:
+            report.add_error(
+                code="quiz_correct_option_ids_missing",
+                message="Required field 'correct_option_ids' is missing",
+                path=quiz_json_path,
+                location=f"{question_location}.correct_option_ids",
+            )
+        elif not isinstance(raw_question["correct_option_ids"], list):
+            report.add_error(
+                code="quiz_correct_option_ids_invalid_type",
+                message="Field 'correct_option_ids' must be an array",
+                path=quiz_json_path,
+                location=f"{question_location}.correct_option_ids",
+            )
+        else:
+            correct_option_ids = raw_question["correct_option_ids"]
+            if len(correct_option_ids) != 1:
+                report.add_error(
+                    code="quiz_correct_option_ids_invalid_count",
+                    message=(
+                        "Field 'correct_option_ids' must contain exactly one id"
+                    ),
+                    path=quiz_json_path,
+                    location=f"{question_location}.correct_option_ids",
+                )
+            else:
+                correct_option_id_raw = correct_option_ids[0]
+                if not isinstance(correct_option_id_raw, str):
+                    report.add_error(
+                        code="quiz_correct_option_id_empty",
+                        message="Correct option id must not be empty",
+                        path=quiz_json_path,
+                        location=f"{question_location}.correct_option_ids[0]",
+                    )
+                elif not correct_option_id_raw.strip():
+                    report.add_error(
+                        code="quiz_correct_option_id_empty",
+                        message="Correct option id must not be empty",
+                        path=quiz_json_path,
+                        location=f"{question_location}.correct_option_ids[0]",
+                    )
+                elif correct_option_id_raw.strip() not in valid_option_ids:
+                    report.add_error(
+                        code="quiz_correct_option_id_unknown",
+                        message="Correct option id must reference a valid option",
+                        path=quiz_json_path,
+                        location=f"{question_location}.correct_option_ids[0]",
+                    )
+
+        if "explanation" in raw_question and not isinstance(
+            raw_question["explanation"], str
+        ):
+            report.add_error(
+                code="quiz_question_explanation_invalid_type",
+                message="Field 'explanation' must be a string",
+                path=quiz_json_path,
+                location=f"{question_location}.explanation",
+            )
+
+        if "lesson" in raw_question and not isinstance(raw_question["lesson"], str):
+            report.add_error(
+                code="quiz_question_lesson_invalid_type",
+                message="Field 'lesson' must be a string",
+                path=quiz_json_path,
+                location=f"{question_location}.lesson",
+            )
+
+        if "difficulty" in raw_question:
+            difficulty = raw_question["difficulty"]
+            if isinstance(difficulty, bool) or not isinstance(difficulty, int):
+                report.add_error(
+                    code="quiz_question_difficulty_invalid_type",
+                    message="Field 'difficulty' must be an integer",
+                    path=quiz_json_path,
+                    location=f"{question_location}.difficulty",
+                )
+
+        if "tags" in raw_question:
+            tags = raw_question["tags"]
+            if not isinstance(tags, list):
+                report.add_error(
+                    code="quiz_question_tags_invalid_type",
+                    message="Field 'tags' must be an array",
+                    path=quiz_json_path,
+                    location=f"{question_location}.tags",
+                )
+            else:
+                for tag_index, tag in enumerate(tags):
+                    if not isinstance(tag, str):
+                        report.add_error(
+                            code="quiz_question_tag_invalid_type",
+                            message="Tag must be a string",
+                            path=quiz_json_path,
+                            location=f"{question_location}.tags[{tag_index}]",
+                        )
+
+        if "ai_context" in raw_question and not isinstance(
+            raw_question["ai_context"], str
+        ):
+            report.add_error(
+                code="quiz_question_ai_context_invalid_type",
+                message="Field 'ai_context' must be a string",
+                path=quiz_json_path,
+                location=f"{question_location}.ai_context",
+            )
+
 
 def validate_course(course_dir: Path) -> ValidationReport:
     """Validate the directory structure and manifest of a single course.
 
     Performs structural checks (directory presence, lesson subfolders),
     validates ``course.json`` contents, validates ``lesson.json`` when
-    present, and validates top-level ``quiz.json`` fields when the file
-    exists. Quiz questions and media assets are not validated in this step.
+    present, and validates ``quiz.json`` including question contents when the
+    file exists. Media assets are not validated in this step.
 
     Args:
         course_dir: Path to the course directory (for example
