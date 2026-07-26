@@ -1,20 +1,61 @@
-"""Structural validation for course content directories.
+"""Structural and manifest validation for course content directories.
 
-This module validates filesystem layout against the Content Engine contract
-without reading JSON field values or invoking the runtime scanner.
+This module validates filesystem layout and ``course.json`` manifest content
+against the Content Engine contract without invoking the runtime scanner.
 """
 
 from pathlib import Path
 
+from app.content.json_loader import load_json_file
 from app.content.models import ValidationReport
 
 
-def validate_course(course_dir: Path) -> ValidationReport:
-    """Validate the directory structure of a single course.
+def _validate_course_manifest(
+    course_json_path: Path,
+    report: ValidationReport,
+) -> None:
+    """Validate ``course.json`` root type and required manifest fields.
 
-    Performs structural checks only: directory presence, ``course.json``,
-    and lesson subfolders. JSON contents, quiz files, and media assets are
-    not validated in this step.
+    Adds errors to ``report`` only; does not mutate JSON data or return a
+    separate report.
+    """
+    errors_before = len(report.errors)
+
+    data = load_json_file(
+        course_json_path,
+        report,
+        missing_code="missing_course_json",
+        missing_message=f"Required file is missing: {course_json_path.name}",
+    )
+
+    if data is None:
+        if len(report.errors) > errors_before:
+            return
+        report.add_error(
+            code="course_json_invalid_type",
+            message="Root of course.json must be a JSON object",
+            path=course_json_path,
+        )
+        return
+
+    if not isinstance(data, dict):
+        report.add_error(
+            code="course_json_invalid_type",
+            message="Root of course.json must be a JSON object",
+            path=course_json_path,
+        )
+        return
+
+    # Content Contract v1 defines no mandatory JSON fields in course.json.
+    # Optional fields (title, order) are tolerated by the runtime scanner.
+
+
+def validate_course(course_dir: Path) -> ValidationReport:
+    """Validate the directory structure and manifest of a single course.
+
+    Performs structural checks (directory presence, lesson subfolders) and
+    validates ``course.json`` contents. ``lesson.json``, ``quiz.json``, and
+    media assets are not validated in this step.
 
     Args:
         course_dir: Path to the course directory (for example
@@ -22,7 +63,8 @@ def validate_course(course_dir: Path) -> ValidationReport:
 
     Returns:
         A :class:`ValidationReport` describing all discovered structural
-        issues. The report evaluates to ``False`` when errors are present.
+        and manifest issues. The report evaluates to ``False`` when errors
+        are present.
     """
     report = ValidationReport()
 
@@ -43,12 +85,7 @@ def validate_course(course_dir: Path) -> ValidationReport:
         return report
 
     course_json_path = course_dir / "course.json"
-    if not course_json_path.is_file():
-        report.add_error(
-            code="missing_course_json",
-            message=f"Required file is missing: {course_json_path.name}",
-            path=course_dir,
-        )
+    _validate_course_manifest(course_json_path, report)
 
     lesson_dir_count = 0
     for entry in sorted(course_dir.iterdir(), key=lambda path: path.name):
