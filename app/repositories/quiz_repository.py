@@ -1,10 +1,27 @@
 import sqlite3
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TypedDict
 
 from app.database.db import get_connection
 
 DEFAULT_PASSING_SCORE = 80
+
+_USER_COURSE_ATTEMPTS_FROM = """
+    FROM quiz_attempts
+    JOIN users
+        ON users.id = quiz_attempts.user_id
+    WHERE users.telegram_id = ?
+      AND quiz_attempts.course_slug = ?
+"""
+
+
+class CourseQuizStats(TypedDict):
+    attempts_count: int
+    best_score_percent: Optional[float]
+    latest_score_percent: Optional[float]
+    latest_finished_at: Optional[str]
+    latest_passed: bool
+    ever_passed: bool
 
 
 def create_attempt(
@@ -176,13 +193,9 @@ def get_active_attempt(
 ) -> Optional[sqlite3.Row]:
     with get_connection(db_path) as connection:
         return connection.execute(
-            """
+            f"""
             SELECT quiz_attempts.*
-            FROM quiz_attempts
-            JOIN users
-                ON users.id = quiz_attempts.user_id
-            WHERE users.telegram_id = ?
-              AND quiz_attempts.course_slug = ?
+            {_USER_COURSE_ATTEMPTS_FROM}
               AND quiz_attempts.finished_at IS NULL
             ORDER BY quiz_attempts.started_at DESC
             LIMIT 1
@@ -192,3 +205,88 @@ def get_active_attempt(
                 course_slug,
             ),
         ).fetchone()
+
+
+def get_finished_attempts(
+    db_path: Path,
+    telegram_id: int,
+    course_slug: str,
+    limit: int = 10,
+) -> list[sqlite3.Row]:
+    if limit <= 0:
+        return []
+
+    with get_connection(db_path) as connection:
+        return connection.execute(
+            f"""
+            SELECT quiz_attempts.*
+            {_USER_COURSE_ATTEMPTS_FROM}
+              AND quiz_attempts.finished_at IS NOT NULL
+            ORDER BY quiz_attempts.finished_at DESC, quiz_attempts.id DESC
+            LIMIT ?
+            """,
+            (
+                telegram_id,
+                course_slug,
+                limit,
+            ),
+        ).fetchall()
+
+
+def get_course_quiz_stats(
+    db_path: Path,
+    telegram_id: int,
+    course_slug: str,
+) -> CourseQuizStats:
+    params = (
+        telegram_id,
+        course_slug,
+    )
+
+    with get_connection(db_path) as connection:
+        aggregate = connection.execute(
+            f"""
+            SELECT
+                COUNT(*) AS attempts_count,
+                MAX(quiz_attempts.score_percent) AS best_score_percent,
+                MAX(quiz_attempts.passed) AS ever_passed
+            {_USER_COURSE_ATTEMPTS_FROM}
+              AND quiz_attempts.finished_at IS NOT NULL
+            """,
+            params,
+        ).fetchone()
+
+        latest = connection.execute(
+            f"""
+            SELECT
+                quiz_attempts.score_percent,
+                quiz_attempts.finished_at,
+                quiz_attempts.passed
+            {_USER_COURSE_ATTEMPTS_FROM}
+              AND quiz_attempts.finished_at IS NOT NULL
+            ORDER BY quiz_attempts.finished_at DESC, quiz_attempts.id DESC
+            LIMIT 1
+            """,
+            params,
+        ).fetchone()
+
+    attempts_count = int(aggregate["attempts_count"])
+
+    if attempts_count == 0:
+        return CourseQuizStats(
+            attempts_count=0,
+            best_score_percent=None,
+            latest_score_percent=None,
+            latest_finished_at=None,
+            latest_passed=False,
+            ever_passed=False,
+        )
+
+    return CourseQuizStats(
+        attempts_count=attempts_count,
+        best_score_percent=float(aggregate["best_score_percent"]),
+        latest_score_percent=float(latest["score_percent"]),
+        latest_finished_at=str(latest["finished_at"]),
+        latest_passed=bool(latest["passed"]),
+        ever_passed=bool(aggregate["ever_passed"]),
+    )
