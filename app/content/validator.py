@@ -50,12 +50,78 @@ def _validate_course_manifest(
     # Optional fields (title, order) are tolerated by the runtime scanner.
 
 
+def _validate_lesson_manifest(
+    lesson_json_path: Path,
+    report: ValidationReport,
+    *,
+    location: str,
+) -> None:
+    """Validate ``lesson.json`` root type and optional manifest fields.
+
+    Adds errors to ``report`` only; does not mutate JSON data or return a
+    separate report.
+    """
+    errors_before = len(report.errors)
+
+    data = load_json_file(
+        lesson_json_path,
+        report,
+        location=location,
+    )
+
+    if data is None:
+        if len(report.errors) > errors_before:
+            return
+        report.add_error(
+            code="lesson_json_invalid_type",
+            message="Root of lesson.json must be a JSON object",
+            path=lesson_json_path,
+            location=location,
+        )
+        return
+
+    if not isinstance(data, dict):
+        report.add_error(
+            code="lesson_json_invalid_type",
+            message="Root of lesson.json must be a JSON object",
+            path=lesson_json_path,
+            location=location,
+        )
+        return
+
+    if "title" in data and not isinstance(data["title"], str):
+        report.add_error(
+            code="lesson_title_invalid_type",
+            message="Field title must be a string",
+            path=lesson_json_path,
+            location=f"{location}.title",
+        )
+
+    if "description" in data and not isinstance(data["description"], str):
+        report.add_error(
+            code="lesson_description_invalid_type",
+            message="Field description must be a string",
+            path=lesson_json_path,
+            location=f"{location}.description",
+        )
+
+    if "order" in data:
+        order_value = data["order"]
+        if isinstance(order_value, bool) or not isinstance(order_value, int):
+            report.add_error(
+                code="lesson_order_invalid_type",
+                message="Field order must be an integer",
+                path=lesson_json_path,
+                location=f"{location}.order",
+            )
+
+
 def validate_course(course_dir: Path) -> ValidationReport:
     """Validate the directory structure and manifest of a single course.
 
-    Performs structural checks (directory presence, lesson subfolders) and
-    validates ``course.json`` contents. ``lesson.json``, ``quiz.json``, and
-    media assets are not validated in this step.
+    Performs structural checks (directory presence, lesson subfolders),
+    validates ``course.json`` contents, and validates ``lesson.json`` when
+    present. ``quiz.json`` and media assets are not validated in this step.
 
     Args:
         course_dir: Path to the course directory (for example
@@ -102,6 +168,12 @@ def validate_course(course_dir: Path) -> ValidationReport:
                     f"{lesson_json_path.name}"
                 ),
                 path=entry,
+                location=entry.name,
+            )
+        else:
+            _validate_lesson_manifest(
+                lesson_json_path,
+                report,
                 location=entry.name,
             )
 
