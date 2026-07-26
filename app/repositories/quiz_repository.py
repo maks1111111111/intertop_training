@@ -18,6 +18,7 @@ _USER_COURSE_ATTEMPTS_FROM = """
 class CourseQuizStats(TypedDict):
     attempts_count: int
     best_score_percent: Optional[float]
+    average_score_percent: Optional[float]
     latest_score_percent: Optional[float]
     latest_finished_at: Optional[str]
     latest_passed: bool
@@ -249,6 +250,7 @@ def get_course_quiz_stats(
             SELECT
                 COUNT(*) AS attempts_count,
                 MAX(quiz_attempts.score_percent) AS best_score_percent,
+                AVG(quiz_attempts.score_percent) AS average_score_percent,
                 MAX(quiz_attempts.passed) AS ever_passed
             {_USER_COURSE_ATTEMPTS_FROM}
               AND quiz_attempts.finished_at IS NOT NULL
@@ -276,6 +278,7 @@ def get_course_quiz_stats(
         return CourseQuizStats(
             attempts_count=0,
             best_score_percent=None,
+            average_score_percent=None,
             latest_score_percent=None,
             latest_finished_at=None,
             latest_passed=False,
@@ -285,6 +288,7 @@ def get_course_quiz_stats(
     return CourseQuizStats(
         attempts_count=attempts_count,
         best_score_percent=float(aggregate["best_score_percent"]),
+        average_score_percent=float(aggregate["average_score_percent"]),
         latest_score_percent=float(latest["score_percent"]),
         latest_finished_at=str(latest["finished_at"]),
         latest_passed=bool(latest["passed"]),

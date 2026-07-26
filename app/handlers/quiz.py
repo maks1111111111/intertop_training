@@ -1,4 +1,6 @@
+import sqlite3
 from pathlib import Path
+from typing import Optional
 
 from aiogram import F, Router
 from aiogram.types import (
@@ -99,7 +101,33 @@ def _format_score_percent(score_percent: float) -> str:
     return f"{score_percent:.2f}".rstrip("0").rstrip(".")
 
 
-def _quiz_finish_result_text(attempt) -> str:
+def _format_course_quiz_stats(stats: quiz_repository.CourseQuizStats) -> str:
+    lines = [
+        "📚 Общая статистика",
+        "",
+        f"🔢 Попыток: {stats['attempts_count']}",
+    ]
+
+    if stats["attempts_count"] > 1:
+        best_score_percent = stats["best_score_percent"]
+        if best_score_percent is not None:
+            lines.append(
+                f"🏆 Лучший результат: {_format_score_percent(best_score_percent)}%"
+            )
+
+        average_score_percent = stats["average_score_percent"]
+        if average_score_percent is not None:
+            lines.append(
+                f"📈 Средний результат: {_format_score_percent(average_score_percent)}%"
+            )
+
+    return "\n".join(lines)
+
+
+def _quiz_finish_result_text(
+    attempt: sqlite3.Row,
+    stats: Optional[quiz_repository.CourseQuizStats] = None,
+) -> str:
     correct_answers = int(attempt["correct_answers"])
     questions_count = int(attempt["questions_count"])
     score_percent = float(attempt["score_percent"])
@@ -116,6 +144,9 @@ def _quiz_finish_result_text(attempt) -> str:
         text = f"{text}\n\n🎉 Статус: СДАН"
     else:
         text = f"{text}\n\n❌ Статус: НЕ СДАН"
+
+    if stats is not None and stats["attempts_count"] > 0:
+        text = f"{text}\n\n{_format_course_quiz_stats(stats)}"
 
     return text
 
@@ -384,8 +415,14 @@ async def finish_quiz(
         await callback.answer()
         return
 
+    stats = quiz_repository.get_course_quiz_stats(
+        db_path=db_path,
+        telegram_id=callback.from_user.id,
+        course_slug=course_slug,
+    )
+
     await callback.message.answer(
-        _quiz_finish_result_text(finished_attempt),
+        _quiz_finish_result_text(finished_attempt, stats),
         reply_markup=keyboard,
     )
 
