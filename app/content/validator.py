@@ -20,6 +20,7 @@ from app.content.contract import (
 )
 from app.content.json_loader import load_json_file
 from app.content.models import ValidationReport
+from app.content.quality import validate_quality
 
 
 def _validate_media_slot(
@@ -783,5 +784,7 @@ def validate_course(course_dir: Path) -> ValidationReport:
         location="quiz",
         lesson_slugs=lesson_slugs,
     )
+
+    validate_quality(course_dir, report)
 
     return report
