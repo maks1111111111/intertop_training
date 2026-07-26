@@ -5,10 +5,12 @@
 ## Возможности
 
 - Команда `/start` показывает список курсов
-- Курсы и уроки подхватываются автоматически из папки `courses/`
-- Новые файлы `.mp3` и `.mp4` появляются в боте без изменения кода
-- Уроки сортируются по числовому префиксу: `01_`, `02_`, `03_`
-- Обложка курса отправляется из папки `covers/`, если файл существует
+- Курсы, уроки и тесты подхватываются автоматически из папки `courses/`
+- Уроки описываются JSON-метаданными и медиафайлами в подпапках
+- После завершения курса доступен итоговый тест (если есть `quiz.json`)
+- Прогресс обучения и результаты тестов сохраняются в SQLite
+
+Подробный формат контента: **[docs/content-contract.md](docs/content-contract.md)**
 
 ## Структура проекта
 
@@ -19,18 +21,25 @@ intertop-training/
     handlers/
       start.py
       courses.py
+      quiz.py
     services/
       scanner.py
-  covers/
-    mission.jpg
-    service.jpg
-    brands.jpg
-    cashier.jpg
+      course_sync.py
+    repositories/
+    database/
   courses/
-    mission/
-    service/
-    brands/
-    cashier/
+    {course_slug}/
+      course.json
+      cover.jpg              # optional
+      quiz.json              # optional
+      {lesson_slug}/
+        lesson.json
+        image.jpg            # optional
+        narration.mp3        # optional
+  data/
+    training.db
+  docs/
+    content-contract.md
   requirements.txt
   .env.example
 ```
@@ -44,20 +53,24 @@ intertop-training/
 | brands    | История брендов и технологии          |
 | cashier   | Кассовая дисциплина                   |
 
-## Именование уроков
+## Структура урока
 
-Файлы уроков должны начинаться с номера:
+Каждый урок — отдельная подпапка с файлом `lesson.json`:
 
 ```
-01_введение.mp3
-02_основы.mp4
-03_практика.mp3
+courses/brands/
+  course.json
+  lesson_01/
+    lesson.json
+    image.jpg
+    narration.mp3
 ```
 
-Поддерживаются форматы:
+Поддерживаемые медиафайлы (фиксированные имена, см. [content-contract.md](docs/content-contract.md)):
 
-- `.mp3` — отправляется как аудио
-- `.mp4` — отправляется как видео
+- `cover.jpg` / `cover.png` / … — обложка курса
+- `image.jpg` / `image.png` / … — изображение урока
+- `narration.mp3` / `narration.m4a` / … — озвучка урока
 
 ## Установка
 
@@ -94,16 +107,28 @@ python -m app.main
 
 ## Добавление контента
 
-1. Положите обложку курса в `covers/`, например `covers/mission.jpg`
-2. Добавьте уроки в нужную папку курса, например `courses/mission/01_миссия.mp3`
-3. Перезапускать бота не нужно — при следующем выборе курса файлы будут прочитаны заново
+1. Создайте папку курса в `courses/`, например `courses/mission/`
+2. Добавьте `course.json` с названием и порядком сортировки
+3. Для каждого урока создайте подпапку с `lesson.json` и медиафайлами
+4. Опционально: положите `cover.jpg` в папку курса и `quiz.json` для итогового теста
+5. **Перезапустите бота** после добавления или переименования уроков (синхронизация с БД выполняется при старте)
+
+Формат всех JSON-файлов описан в [docs/content-contract.md](docs/content-contract.md).
 
 ## Пример наполнения
 
 ```
-courses/mission/01_миссия_компании.mp3
-courses/mission/02_ценности.mp3
-courses/service/01_стандарты.mp4
-covers/mission.jpg
-covers/service.jpg
+courses/mission/
+  course.json
+  cover.jpg
+  lesson_01/
+    lesson.json
+    narration.mp3
+courses/brands/
+  course.json
+  quiz.json
+  lesson_01/
+    lesson.json
+    image.jpg
+    narration.mp3
 ```
