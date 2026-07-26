@@ -7,12 +7,19 @@ against the Content Engine contract without invoking the runtime scanner.
 from pathlib import Path
 from typing import AbstractSet, Optional
 
+from app.content.contract import (
+    COURSE_COVER_EXTENSIONS,
+    COURSE_COVER_STEM,
+    COURSE_JSON_FILENAME,
+    LESSON_IMAGE_EXTENSIONS,
+    LESSON_IMAGE_STEM,
+    LESSON_JSON_FILENAME,
+    LESSON_NARRATION_EXTENSIONS,
+    LESSON_NARRATION_STEM,
+    QUIZ_JSON_FILENAME,
+)
 from app.content.json_loader import load_json_file
 from app.content.models import ValidationReport
-
-_COURSE_COVER_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
-_LESSON_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
-_NARRATION_EXTENSIONS = frozenset({".mp3", ".m4a", ".wav", ".ogg"})
 
 
 def _validate_media_slot(
@@ -70,8 +77,8 @@ def _validate_course_cover(
     """Validate optional course cover media files."""
     _validate_media_slot(
         course_dir,
-        "cover",
-        _COURSE_COVER_EXTENSIONS,
+        COURSE_COVER_STEM,
+        COURSE_COVER_EXTENSIONS,
         "course cover",
         report,
         path=course_dir,
@@ -89,8 +96,8 @@ def _validate_lesson_media(
     """Validate optional lesson image and narration media files."""
     _validate_media_slot(
         lesson_dir,
-        "image",
-        _LESSON_IMAGE_EXTENSIONS,
+        LESSON_IMAGE_STEM,
+        LESSON_IMAGE_EXTENSIONS,
         "lesson image",
         report,
         path=lesson_dir,
@@ -100,8 +107,8 @@ def _validate_lesson_media(
     )
     _validate_media_slot(
         lesson_dir,
-        "narration",
-        _NARRATION_EXTENSIONS,
+        LESSON_NARRATION_STEM,
+        LESSON_NARRATION_EXTENSIONS,
         "narration",
         report,
         path=lesson_dir,
@@ -730,7 +737,7 @@ def validate_course(course_dir: Path) -> ValidationReport:
         )
         return report
 
-    course_json_path = course_dir / "course.json"
+    course_json_path = course_dir / COURSE_JSON_FILENAME
     _validate_course_manifest(course_json_path, report)
     _validate_course_cover(course_dir, report)
 
@@ -741,7 +748,7 @@ def validate_course(course_dir: Path) -> ValidationReport:
             continue
 
         lesson_dir_count += 1
-        lesson_json_path = entry / "lesson.json"
+        lesson_json_path = entry / LESSON_JSON_FILENAME
         if not lesson_json_path.is_file():
             report.add_warning(
                 code="missing_lesson_json",
@@ -769,7 +776,7 @@ def validate_course(course_dir: Path) -> ValidationReport:
             path=course_dir,
         )
 
-    quiz_json_path = course_dir / "quiz.json"
+    quiz_json_path = course_dir / QUIZ_JSON_FILENAME
     _validate_quiz_manifest(
         quiz_json_path,
         report,

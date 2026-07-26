@@ -3,6 +3,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from app.content.contract import (
+    COURSE_COVER_FILENAMES,
+    COURSE_JSON_FILENAME,
+    LESSON_IMAGE_FILENAMES,
+    LESSON_JSON_FILENAME,
+    LESSON_NARRATION_FILENAMES,
+    QUIZ_JSON_FILENAME,
+)
+
 
 @dataclass(frozen=True)
 class Lesson:
@@ -75,7 +84,7 @@ def _find_file(directory: Path, filenames: tuple[str, ...]) -> Optional[Path]:
 
 
 def _scan_lesson(lesson_dir: Path) -> Optional[Lesson]:
-    metadata_path = lesson_dir / "lesson.json"
+    metadata_path = lesson_dir / LESSON_JSON_FILENAME
 
     if not metadata_path.is_file():
         return None
@@ -90,15 +99,9 @@ def _scan_lesson(lesson_dir: Path) -> Optional[Lesson]:
     except (TypeError, ValueError):
         number = 9999
 
-    image_path = _find_file(
-        lesson_dir,
-        ("image.jpg", "image.jpeg", "image.png", "image.webp"),
-    )
+    image_path = _find_file(lesson_dir, LESSON_IMAGE_FILENAMES)
 
-    narration_path = _find_file(
-        lesson_dir,
-        ("narration.mp3", "narration.m4a", "narration.wav", "narration.ogg"),
-    )
+    narration_path = _find_file(lesson_dir, LESSON_NARRATION_FILENAMES)
 
     return Lesson(
         path=lesson_dir,
@@ -111,7 +114,7 @@ def _scan_lesson(lesson_dir: Path) -> Optional[Lesson]:
 
 
 def _scan_quiz(course_dir: Path) -> Optional[Quiz]:
-    quiz_path = course_dir / "quiz.json"
+    quiz_path = course_dir / QUIZ_JSON_FILENAME
 
     if not quiz_path.is_file():
         return None
@@ -316,7 +319,7 @@ def _scan_quiz(course_dir: Path) -> Optional[Quiz]:
 
 
 def _scan_course(course_dir: Path) -> Optional[tuple[int, Course]]:
-    metadata_path = course_dir / "course.json"
+    metadata_path = course_dir / COURSE_JSON_FILENAME
 
     if not metadata_path.is_file():
         return None
@@ -343,10 +346,7 @@ def _scan_course(course_dir: Path) -> Optional[tuple[int, Course]]:
 
     lessons.sort(key=lambda lesson: (lesson.number, lesson.path.name))
 
-    cover_path = _find_file(
-        course_dir,
-        ("cover.jpg", "cover.jpeg", "cover.png", "cover.webp"),
-    )
+    cover_path = _find_file(course_dir, COURSE_COVER_FILENAMES)
 
     course = Course(
         slug=course_dir.name,
