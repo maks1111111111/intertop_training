@@ -122,6 +122,7 @@ def _validate_quiz_manifest(
     report: ValidationReport,
     *,
     location: str,
+    lesson_slugs: set[str],
 ) -> None:
     """Validate ``quiz.json`` root type and top-level manifest fields.
 
@@ -268,6 +269,7 @@ def _validate_quiz_manifest(
             quiz_json_path,
             report,
             location=location,
+            lesson_slugs=lesson_slugs,
         )
 
 
@@ -277,6 +279,7 @@ def _validate_quiz_questions(
     report: ValidationReport,
     *,
     location: str,
+    lesson_slugs: set[str],
 ) -> None:
     """Validate each question in the quiz ``questions`` array.
 
@@ -531,13 +534,25 @@ def _validate_quiz_questions(
                 location=f"{question_location}.explanation",
             )
 
-        if "lesson" in raw_question and not isinstance(raw_question["lesson"], str):
-            report.add_error(
-                code="quiz_question_lesson_invalid_type",
-                message="Field 'lesson' must be a string",
-                path=quiz_json_path,
-                location=f"{question_location}.lesson",
-            )
+        if "lesson" in raw_question:
+            if not isinstance(raw_question["lesson"], str):
+                report.add_error(
+                    code="quiz_question_lesson_invalid_type",
+                    message="Field 'lesson' must be a string",
+                    path=quiz_json_path,
+                    location=f"{question_location}.lesson",
+                )
+            else:
+                lesson_ref = raw_question["lesson"].strip()
+                if lesson_ref and lesson_ref not in lesson_slugs:
+                    report.add_error(
+                        code="quiz_question_lesson_unknown",
+                        message=(
+                            "Field 'lesson' must reference an existing lesson slug"
+                        ),
+                        path=quiz_json_path,
+                        location=f"{question_location}.lesson",
+                    )
 
         if "difficulty" in raw_question:
             difficulty = raw_question["difficulty"]
@@ -618,6 +633,7 @@ def validate_course(course_dir: Path) -> ValidationReport:
     _validate_course_manifest(course_json_path, report)
 
     lesson_dir_count = 0
+    lesson_slugs: set[str] = set()
     for entry in sorted(course_dir.iterdir(), key=lambda path: path.name):
         if not entry.is_dir():
             continue
@@ -635,6 +651,7 @@ def validate_course(course_dir: Path) -> ValidationReport:
                 location=entry.name,
             )
         else:
+            lesson_slugs.add(entry.name)
             _validate_lesson_manifest(
                 lesson_json_path,
                 report,
@@ -649,6 +666,11 @@ def validate_course(course_dir: Path) -> ValidationReport:
         )
 
     quiz_json_path = course_dir / "quiz.json"
-    _validate_quiz_manifest(quiz_json_path, report, location="quiz")
+    _validate_quiz_manifest(
+        quiz_json_path,
+        report,
+        location="quiz",
+        lesson_slugs=lesson_slugs,
+    )
 
     return report
