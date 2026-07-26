@@ -128,6 +128,7 @@ def _scan_quiz(course_dir: Path) -> Optional[Quiz]:
         quiz_id = quiz_id_raw.strip()
     else:
         quiz_id = ""
+
     if not quiz_id:
         quiz_id = f"{course_slug}_quiz"
 
@@ -136,6 +137,7 @@ def _scan_quiz(course_dir: Path) -> Optional[Quiz]:
         title = title_raw.strip()
     else:
         title = ""
+
     if not title:
         title = "Итоговый тест"
 
@@ -235,7 +237,10 @@ def _scan_quiz(course_dir: Path) -> Optional[Quiz]:
             continue
 
         raw_correct_option_ids = raw_question.get("correct_option_ids")
-        if not isinstance(raw_correct_option_ids, list) or len(raw_correct_option_ids) != 1:
+        if (
+            not isinstance(raw_correct_option_ids, list)
+            or len(raw_correct_option_ids) != 1
+        ):
             continue
 
         correct_option_id_raw = raw_correct_option_ids[0]
