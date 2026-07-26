@@ -67,6 +67,32 @@ def _check_text_quality(
             consecutive_blank_lines = 0
 
 
+def _check_min_text_length(
+    text: str,
+    minimum: int,
+    report: ValidationReport,
+    *,
+    path: Path,
+    location: str,
+    field_label: str,
+) -> None:
+    """Check that a text field meets a minimum length after stripping.
+
+    Adds an advisory warning when ``text.strip()`` is shorter than
+    ``minimum`` characters.
+    """
+    if len(text.strip()) < minimum:
+        report.add_warning(
+            code="text_too_short",
+            message=(
+                f"{field_label} is too short: expected at least "
+                f"{minimum} characters"
+            ),
+            path=path,
+            location=location,
+        )
+
+
 def _validate_course_quality(
     course_dir: Path,
     report: ValidationReport,
@@ -91,6 +117,14 @@ def _validate_course_quality(
             path=course_json_path,
             location="title",
         )
+        _check_min_text_length(
+            title,
+            5,
+            report,
+            path=course_json_path,
+            location="title",
+            field_label="Course title",
+        )
 
     description = data.get("description")
     if isinstance(description, str):
@@ -99,6 +133,14 @@ def _validate_course_quality(
             report,
             path=course_json_path,
             location="description",
+        )
+        _check_min_text_length(
+            description,
+            30,
+            report,
+            path=course_json_path,
+            location="description",
+            field_label="Course description",
         )
 
 
