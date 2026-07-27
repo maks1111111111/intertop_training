@@ -23,6 +23,88 @@ from app.content.models import ValidationReport
 from app.content.quality import validate_quality
 
 
+def _validate_required_string(
+    container: dict,
+    field: str,
+    report: ValidationReport,
+    *,
+    path: Path,
+    location: str,
+    missing_code: str,
+    invalid_type_code: str,
+    empty_code: str,
+    missing_message: Optional[str] = None,
+    invalid_type_message: Optional[str] = None,
+    empty_message: Optional[str] = None,
+) -> Optional[str]:
+    """Validate a required non-empty string field and return its stripped value."""
+    if field not in container:
+        report.add_error(
+            code=missing_code,
+            message=missing_message or f"Required field '{field}' is missing",
+            path=path,
+            location=location,
+        )
+        return None
+
+    value = container[field]
+    if not isinstance(value, str):
+        report.add_error(
+            code=invalid_type_code,
+            message=invalid_type_message or f"Field '{field}' must be a string",
+            path=path,
+            location=location,
+        )
+        return None
+
+    stripped = value.strip()
+    if not stripped:
+        report.add_error(
+            code=empty_code,
+            message=empty_message or f"Field '{field}' must not be empty",
+            path=path,
+            location=location,
+        )
+        return None
+
+    return stripped
+
+
+def _validate_optional_string(
+    container: dict,
+    field: str,
+    report: ValidationReport,
+    *,
+    path: Path,
+    location: str,
+    invalid_type_code: str,
+    empty_code: str,
+    invalid_type_message: Optional[str] = None,
+    empty_message: Optional[str] = None,
+) -> None:
+    """Validate an optional non-empty string field when present."""
+    if field not in container:
+        return
+
+    value = container[field]
+    if not isinstance(value, str):
+        report.add_error(
+            code=invalid_type_code,
+            message=invalid_type_message or f"Field '{field}' must be a string",
+            path=path,
+            location=location,
+        )
+        return
+
+    if not value.strip():
+        report.add_error(
+            code=empty_code,
+            message=empty_message or f"Field '{field}' must not be empty",
+            path=path,
+            location=location,
+        )
+
+
 def _validate_media_slot(
     directory: Path,
     stem: str,
@@ -292,36 +374,26 @@ def _validate_quiz_manifest(
         )
 
     if "id" in data:
-        if not isinstance(data["id"], str):
-            report.add_error(
-                code="quiz_id_invalid_type",
-                message="Field 'id' must be a string",
-                path=quiz_json_path,
-                location=f"{location}.id",
-            )
-        elif not data["id"].strip():
-            report.add_error(
-                code="quiz_id_empty",
-                message="Field 'id' must not be empty",
-                path=quiz_json_path,
-                location=f"{location}.id",
-            )
+        _validate_optional_string(
+            data,
+            "id",
+            report,
+            path=quiz_json_path,
+            location=f"{location}.id",
+            invalid_type_code="quiz_id_invalid_type",
+            empty_code="quiz_id_empty",
+        )
 
     if "title" in data:
-        if not isinstance(data["title"], str):
-            report.add_error(
-                code="quiz_title_invalid_type",
-                message="Field 'title' must be a string",
-                path=quiz_json_path,
-                location=f"{location}.title",
-            )
-        elif not data["title"].strip():
-            report.add_error(
-                code="quiz_title_empty",
-                message="Field 'title' must not be empty",
-                path=quiz_json_path,
-                location=f"{location}.title",
-            )
+        _validate_optional_string(
+            data,
+            "title",
+            report,
+            path=quiz_json_path,
+            location=f"{location}.title",
+            invalid_type_code="quiz_title_invalid_type",
+            empty_code="quiz_title_empty",
+        )
 
     if "passing_score" in data:
         passing_score = data["passing_score"]
@@ -346,6 +418,13 @@ def _validate_quiz_manifest(
             report.add_error(
                 code="quiz_version_invalid_type",
                 message="Field 'version' must be an integer",
+                path=quiz_json_path,
+                location=f"{location}.version",
+            )
+        elif version <= 0:
+            report.add_error(
+                code="quiz_version_out_of_range",
+                message="Field 'version' must be a positive integer",
                 path=quiz_json_path,
                 location=f"{location}.version",
             )
@@ -430,64 +509,41 @@ def _validate_quiz_questions(
                 location=f"{question_location}.type",
             )
 
-        if "id" not in raw_question:
-            report.add_error(
-                code="quiz_question_id_missing",
-                message="Required field 'id' is missing",
-                path=quiz_json_path,
-                location=f"{question_location}.id",
-            )
-        elif not isinstance(raw_question["id"], str):
-            report.add_error(
-                code="quiz_question_id_invalid_type",
-                message="Field 'id' must be a string",
-                path=quiz_json_path,
-                location=f"{question_location}.id",
-            )
-        elif not raw_question["id"].strip():
-            report.add_error(
-                code="quiz_question_id_empty",
-                message="Field 'id' must not be empty",
-                path=quiz_json_path,
-                location=f"{question_location}.id",
-            )
-        else:
-            question_id = raw_question["id"].strip()
+        question_id = _validate_required_string(
+            raw_question,
+            "id",
+            report,
+            path=quiz_json_path,
+            location=f"{question_location}.id",
+            missing_code="quiz_question_id_missing",
+            invalid_type_code="quiz_question_id_invalid_type",
+            empty_code="quiz_question_id_empty",
+        )
+        if question_id is not None:
             if question_id in seen_question_ids:
                 report.add_error(
                     code="quiz_question_duplicate_id",
-                    message="Question id must be unique within the quiz",
+                    message=f"Duplicate question id: {question_id!r}",
                     path=quiz_json_path,
                     location=f"{question_location}.id",
                 )
             else:
                 seen_question_ids.add(question_id)
 
-        if "text" not in raw_question:
-            report.add_error(
-                code="quiz_question_text_missing",
-                message="Required field 'text' is missing",
-                path=quiz_json_path,
-                location=f"{question_location}.text",
-            )
-        elif not isinstance(raw_question["text"], str):
-            report.add_error(
-                code="quiz_question_text_invalid_type",
-                message="Field 'text' must be a string",
-                path=quiz_json_path,
-                location=f"{question_location}.text",
-            )
-        elif not raw_question["text"].strip():
-            report.add_error(
-                code="quiz_question_text_empty",
-                message="Field 'text' must not be empty",
-                path=quiz_json_path,
-                location=f"{question_location}.text",
-            )
+        _validate_required_string(
+            raw_question,
+            "text",
+            report,
+            path=quiz_json_path,
+            location=f"{question_location}.text",
+            missing_code="quiz_question_text_missing",
+            invalid_type_code="quiz_question_text_invalid_type",
+            empty_code="quiz_question_text_empty",
+        )
 
-        valid_option_ids: set[str] = set()
-        duplicate_option_id = False
-        valid_options_count = 0
+        option_id_counts: dict[str, int] = {}
+        valid_id_text_option_ids: list[str] = []
+        fully_valid_option_ids: set[str] = set()
 
         if "options" not in raw_question:
             report.add_error(
@@ -516,66 +572,49 @@ def _validate_quiz_questions(
                     )
                     continue
 
-                option_id: Optional[str] = None
+                option_id = _validate_required_string(
+                    raw_option,
+                    "id",
+                    report,
+                    path=quiz_json_path,
+                    location=f"{option_location}.id",
+                    missing_code="quiz_option_id_missing",
+                    invalid_type_code="quiz_option_id_invalid_type",
+                    empty_code="quiz_option_id_empty",
+                )
+                option_text = _validate_required_string(
+                    raw_option,
+                    "text",
+                    report,
+                    path=quiz_json_path,
+                    location=f"{option_location}.text",
+                    missing_code="quiz_option_text_missing",
+                    invalid_type_code="quiz_option_text_invalid_type",
+                    empty_code="quiz_option_text_empty",
+                )
 
-                if "id" not in raw_option:
-                    report.add_error(
-                        code="quiz_option_id_missing",
-                        message="Required field 'id' is missing",
-                        path=quiz_json_path,
-                        location=f"{option_location}.id",
-                    )
-                elif not isinstance(raw_option["id"], str):
-                    report.add_error(
-                        code="quiz_option_id_invalid_type",
-                        message="Field 'id' must be a string",
-                        path=quiz_json_path,
-                        location=f"{option_location}.id",
-                    )
-                elif not raw_option["id"].strip():
-                    report.add_error(
-                        code="quiz_option_id_empty",
-                        message="Field 'id' must not be empty",
-                        path=quiz_json_path,
-                        location=f"{option_location}.id",
-                    )
-                else:
-                    option_id = raw_option["id"].strip()
-                    if option_id in valid_option_ids:
-                        duplicate_option_id = True
+                if option_id is not None:
+                    previous_count = option_id_counts.get(option_id, 0)
+                    option_id_counts[option_id] = previous_count + 1
+                    if previous_count > 0:
                         report.add_error(
                             code="quiz_option_duplicate_id",
-                            message="Option id must be unique within the question",
+                            message=f"Duplicate option id: {option_id!r}",
                             path=quiz_json_path,
                             location=f"{option_location}.id",
                         )
 
-                if "text" not in raw_option:
-                    report.add_error(
-                        code="quiz_option_text_missing",
-                        message="Required field 'text' is missing",
-                        path=quiz_json_path,
-                        location=f"{option_location}.text",
-                    )
-                elif not isinstance(raw_option["text"], str):
-                    report.add_error(
-                        code="quiz_option_text_invalid_type",
-                        message="Field 'text' must be a string",
-                        path=quiz_json_path,
-                        location=f"{option_location}.text",
-                    )
-                elif not raw_option["text"].strip():
-                    report.add_error(
-                        code="quiz_option_text_empty",
-                        message="Field 'text' must not be empty",
-                        path=quiz_json_path,
-                        location=f"{option_location}.text",
-                    )
-                elif option_id is not None and option_id not in valid_option_ids:
-                    valid_option_ids.add(option_id)
-                    valid_options_count += 1
+                    if option_text is not None:
+                        valid_id_text_option_ids.append(option_id)
 
-            if not duplicate_option_id and valid_options_count < 2:
+            fully_valid_option_ids = {
+                option_id
+                for option_id in valid_id_text_option_ids
+                if option_id_counts.get(option_id, 0) == 1
+            }
+            valid_options_count = len(fully_valid_option_ids)
+
+            if valid_options_count < 2:
                 report.add_error(
                     code="quiz_question_not_enough_options",
                     message="Question must have at least two valid options",
@@ -624,7 +663,7 @@ def _validate_quiz_questions(
                         path=quiz_json_path,
                         location=f"{question_location}.correct_option_ids[0]",
                     )
-                elif correct_option_id_raw.strip() not in valid_option_ids:
+                elif correct_option_id_raw.strip() not in fully_valid_option_ids:
                     report.add_error(
                         code="quiz_correct_option_id_unknown",
                         message="Correct option id must reference a valid option",
@@ -749,6 +788,7 @@ def validate_course(course_dir: Path) -> ValidationReport:
             continue
 
         lesson_dir_count += 1
+        lesson_slugs.add(entry.name)
         lesson_json_path = entry / LESSON_JSON_FILENAME
         if not lesson_json_path.is_file():
             report.add_warning(
@@ -761,7 +801,6 @@ def validate_course(course_dir: Path) -> ValidationReport:
                 location=entry.name,
             )
         else:
-            lesson_slugs.add(entry.name)
             _validate_lesson_manifest(
                 lesson_json_path,
                 report,
