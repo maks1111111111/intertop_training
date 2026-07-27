@@ -132,7 +132,7 @@ def _validate_media_slot(
         if not entry.is_file() or entry.stem != stem:
             continue
 
-        extension = entry.suffix.lower()
+        extension = entry.suffix
         if extension in allowed_extensions:
             supported_files.append(entry)
             continue
@@ -145,10 +145,43 @@ def _validate_media_slot(
         )
 
     if len(supported_files) > 1:
+        conflicting_names = ", ".join(
+            sorted(file_entry.name for file_entry in supported_files)
+        )
         report.add_error(
             code=multiple_files_code,
-            message=f"Multiple {slot_name} files found",
+            message=f"Multiple {slot_name} files found: {conflicting_names}",
             path=error_path,
+            location=location,
+        )
+
+
+def _validate_lesson_unknown_files(
+    lesson_dir: Path,
+    report: ValidationReport,
+    *,
+    location: str,
+) -> None:
+    """Warn about unexpected files in a lesson directory root."""
+    if not lesson_dir.is_dir():
+        return
+
+    known_stems = {LESSON_IMAGE_STEM, LESSON_NARRATION_STEM}
+
+    for entry in lesson_dir.iterdir():
+        if not entry.is_file():
+            continue
+
+        if entry.name == LESSON_JSON_FILENAME:
+            continue
+
+        if entry.stem in known_stems:
+            continue
+
+        report.add_warning(
+            code="lesson_unknown_file",
+            message=f"Unexpected file in lesson directory: {entry.name}",
+            path=entry,
             location=location,
         )
 
@@ -199,6 +232,7 @@ def _validate_lesson_media(
         multiple_files_code="lesson_narration_multiple_files",
         unsupported_format_code="lesson_narration_unsupported_format",
     )
+    _validate_lesson_unknown_files(lesson_dir, report, location=location)
 
 
 def _validate_course_manifest(
