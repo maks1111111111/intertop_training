@@ -275,16 +275,72 @@ def _validate_course_manifest(
     # Optional fields (title, order) are tolerated by the runtime scanner.
 
 
+def _validate_duplicate_lesson_order(
+    lesson_orders: list[tuple[str, int]],
+    course_dir: Path,
+    report: ValidationReport,
+) -> None:
+    """Report duplicate ``order`` values across lesson manifests."""
+    order_to_slugs: dict[int, list[str]] = {}
+    for slug, order in lesson_orders:
+        order_to_slugs.setdefault(order, []).append(slug)
+
+    for order in sorted(order_to_slugs):
+        slugs = sorted(order_to_slugs[order])
+        if len(slugs) > 1:
+            slug_list = ", ".join(slugs)
+            report.add_error(
+                code="duplicate_lesson_order",
+                message=f"Duplicate lesson order {order}: {slug_list}",
+                path=course_dir,
+            )
+
+
+def _validate_missing_lesson_order(
+    lesson_orders: list[tuple[str, int]],
+    course_dir: Path,
+    report: ValidationReport,
+) -> None:
+    """Report missing integer values between the min and max lesson order."""
+    if len(lesson_orders) < 2:
+        return
+
+    orders = sorted({order for _, order in lesson_orders})
+    if len(orders) < 2:
+        return
+
+    min_order = orders[0]
+    max_order = orders[-1]
+    order_set = set(orders)
+    missing = [
+        value
+        for value in range(min_order + 1, max_order)
+        if value not in order_set
+    ]
+    if not missing:
+        return
+
+    missing_values = ", ".join(str(value) for value in missing)
+    report.add_warning(
+        code="missing_lesson_order",
+        message=f"Missing lesson order values: {missing_values}",
+        path=course_dir,
+    )
+
+
 def _validate_lesson_manifest(
     lesson_json_path: Path,
     report: ValidationReport,
     *,
     location: str,
-) -> None:
+) -> Optional[int]:
     """Validate ``lesson.json`` root type and optional manifest fields.
 
-    Adds errors to ``report`` only; does not mutate JSON data or return a
-    separate report.
+    Adds errors to ``report`` only; does not mutate JSON data.
+
+    Returns:
+        The validated ``order`` integer when present and well-typed, else
+        ``None``.
     """
     errors_before = len(report.errors)
 
@@ -296,14 +352,14 @@ def _validate_lesson_manifest(
 
     if data is None:
         if len(report.errors) > errors_before:
-            return
+            return None
         report.add_error(
             code="lesson_json_invalid_type",
             message="Root of lesson.json must be a JSON object",
             path=lesson_json_path,
             location=location,
         )
-        return
+        return None
 
     if not isinstance(data, dict):
         report.add_error(
@@ -312,7 +368,7 @@ def _validate_lesson_manifest(
             path=lesson_json_path,
             location=location,
         )
-        return
+        return None
 
     if "title" in data and not isinstance(data["title"], str):
         report.add_error(
@@ -339,6 +395,10 @@ def _validate_lesson_manifest(
                 path=lesson_json_path,
                 location=f"{location}.order",
             )
+            return None
+        return order_value
+
+    return None
 
 
 def _validate_quiz_manifest(
@@ -728,9 +788,7 @@ def _validate_quiz_questions(
                 if lesson_ref and lesson_ref not in lesson_slugs:
                     report.add_error(
                         code="quiz_question_lesson_unknown",
-                        message=(
-                            "Field 'lesson' must reference an existing lesson slug"
-                        ),
+                        message="Field 'lesson' must reference an existing lesson slug",
                         path=quiz_json_path,
                         location=f"{question_location}.lesson",
                     )
@@ -817,6 +875,7 @@ def validate_course(course_dir: Path) -> ValidationReport:
 
     lesson_dir_count = 0
     lesson_slugs: set[str] = set()
+    lesson_orders: list[tuple[str, int]] = []
     for entry in sorted(course_dir.iterdir(), key=lambda path: path.name):
         if not entry.is_dir():
             continue
@@ -835,13 +894,18 @@ def validate_course(course_dir: Path) -> ValidationReport:
                 location=entry.name,
             )
         else:
-            _validate_lesson_manifest(
+            valid_order = _validate_lesson_manifest(
                 lesson_json_path,
                 report,
                 location=entry.name,
             )
+            if valid_order is not None:
+                lesson_orders.append((entry.name, valid_order))
 
         _validate_lesson_media(entry, report, location=entry.name)
+
+    _validate_duplicate_lesson_order(lesson_orders, course_dir, report)
+    _validate_missing_lesson_order(lesson_orders, course_dir, report)
 
     if lesson_dir_count == 0:
         report.add_warning(
