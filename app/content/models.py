@@ -151,6 +151,22 @@ class ValidationReport:
             "warnings": len(self.warnings),
         }
 
+    def release_gate(self) -> dict:
+        """Return a structured release gate decision.
+
+        Returns:
+            A dictionary with keys ``allowed``, ``ready``, ``errors``, and
+            ``warnings``. ``allowed`` and ``ready`` are ``True`` when there
+            are no blocking errors; warnings do not affect the gate.
+        """
+        summary = self.summary()
+        return {
+            "allowed": summary["ready"],
+            "ready": summary["ready"],
+            "errors": summary["errors"],
+            "warnings": summary["warnings"],
+        }
+
     def __bool__(self) -> bool:
         """Return ``False`` when errors are present, otherwise ``True``."""
         return not self.has_errors

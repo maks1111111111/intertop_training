@@ -416,6 +416,33 @@ class ValidationReportReleaseTests(unittest.TestCase):
             {"ready": False, "errors": 1, "warnings": 1},
         )
 
+    def test_release_gate_empty_report(self) -> None:
+        report = ValidationReport()
+
+        self.assertEqual(
+            report.release_gate(),
+            {"allowed": True, "ready": True, "errors": 0, "warnings": 0},
+        )
+
+    def test_release_gate_with_warnings_only(self) -> None:
+        report = ValidationReport()
+        report.add_warning("sample_warning", "Advisory issue")
+
+        self.assertEqual(
+            report.release_gate(),
+            {"allowed": True, "ready": True, "errors": 0, "warnings": 1},
+        )
+
+    def test_release_gate_with_errors(self) -> None:
+        report = ValidationReport()
+        report.add_error("sample_error", "Blocking issue")
+        report.add_warning("sample_warning", "Advisory issue")
+
+        self.assertEqual(
+            report.release_gate(),
+            {"allowed": False, "ready": False, "errors": 1, "warnings": 1},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
