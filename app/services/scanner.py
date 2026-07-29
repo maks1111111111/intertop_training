@@ -63,6 +63,7 @@ class Course:
     slug: str
     title: str
     status: str
+    version: int
     lessons: list[Lesson]
     cover_path: Optional[Path]
     quiz: Optional[Quiz]
@@ -77,6 +78,20 @@ def _parse_course_status(metadata: dict) -> str:
         return raw_status
 
     return ""
+
+
+def _parse_course_version(metadata: dict) -> int:
+    if "version" not in metadata:
+        return 1
+
+    raw_version = metadata["version"]
+    if isinstance(raw_version, bool) or not isinstance(raw_version, int):
+        return 1
+
+    if raw_version < 1:
+        return 1
+
+    return raw_version
 
 
 def _read_json(path: Path) -> dict:
@@ -368,6 +383,7 @@ def _scan_course(course_dir: Path) -> Optional[tuple[int, Course]]:
         slug=course_dir.name,
         title=title,
         status=_parse_course_status(metadata),
+        version=_parse_course_version(metadata),
         lessons=lessons,
         cover_path=cover_path,
         quiz=_scan_quiz(course_dir),

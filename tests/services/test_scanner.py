@@ -18,6 +18,7 @@ def _create_course(
     slug: str,
     *,
     status: Any = _SENTINEL,
+    version: Any = _SENTINEL,
 ) -> Path:
     """Create a minimal scannable course directory."""
     course_dir = courses_dir / slug
@@ -26,6 +27,8 @@ def _create_course(
     manifest: dict[str, object] = {"title": f"Course {slug}"}
     if status is not _SENTINEL:
         manifest["status"] = status
+    if version is not _SENTINEL:
+        manifest["version"] = version
 
     (course_dir / "course.json").write_text(
         json.dumps(manifest),
@@ -112,6 +115,79 @@ class ScannerCourseStatusTests(unittest.TestCase):
 
         self.assertEqual(courses, [])
         self.assertIsNone(course)
+
+
+class ScannerCourseVersionTests(unittest.TestCase):
+    """Public behavior of course ``version`` parsing in the runtime scanner."""
+
+    def test_course_without_version_defaults_to_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _create_course(courses_dir, "no_version")
+            courses = scan_courses(courses_dir)
+
+        self.assertEqual(len(courses), 1)
+        self.assertEqual(courses[0].version, 1)
+
+    def test_version_one_is_parsed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _create_course(courses_dir, "v1", version=1)
+            course = get_course(courses_dir, "v1")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(course.version, 1)
+
+    def test_version_two_is_parsed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _create_course(courses_dir, "v2", version=2)
+            course = get_course(courses_dir, "v2")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(course.version, 2)
+
+    def test_version_fifteen_is_parsed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _create_course(courses_dir, "v15", version=15)
+            course = get_course(courses_dir, "v15")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(course.version, 15)
+
+    def test_version_zero_defaults_to_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _create_course(courses_dir, "v0", version=0)
+            course = get_course(courses_dir, "v0")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(course.version, 1)
+
+    def test_negative_version_defaults_to_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _create_course(courses_dir, "vneg", version=-1)
+            course = get_course(courses_dir, "vneg")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(course.version, 1)
+
+    def test_string_version_defaults_to_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _create_course(courses_dir, "vstr", version="2")
+            course = get_course(courses_dir, "vstr")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(course.version, 1)
 
 
 if __name__ == "__main__":

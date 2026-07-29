@@ -43,6 +43,15 @@ def _status_errors(report):
     ]
 
 
+def _version_errors(report):
+    """Return version-related errors from a validation report."""
+    return [
+        issue
+        for issue in report.errors
+        if issue.code in {"course_version_invalid_type", "invalid_course_version"}
+    ]
+
+
 class CourseStatusValidationTests(unittest.TestCase):
     """Validation of optional ``status`` field in ``course.json``."""
 
@@ -116,6 +125,92 @@ class CourseStatusValidationTests(unittest.TestCase):
             "allowed values are archived, draft, published",
             issue.message,
         )
+
+
+class CourseVersionValidationTests(unittest.TestCase):
+    """Validation of optional ``version`` field in ``course.json``."""
+
+    def test_missing_version_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(Path(tmp))
+            report = validate_course(course_dir)
+
+        self.assertEqual(_version_errors(report), [])
+
+    def test_version_one_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                course_manifest={"version": 1},
+            )
+            report = validate_course(course_dir)
+
+        self.assertEqual(_version_errors(report), [])
+
+    def test_version_two_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                course_manifest={"version": 2},
+            )
+            report = validate_course(course_dir)
+
+        self.assertEqual(_version_errors(report), [])
+
+    def test_version_fifteen_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                course_manifest={"version": 15},
+            )
+            report = validate_course(course_dir)
+
+        self.assertEqual(_version_errors(report), [])
+
+    def test_version_zero_is_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                course_manifest={"version": 0},
+            )
+            report = validate_course(course_dir)
+
+        version_errors = _version_errors(report)
+        self.assertEqual(len(version_errors), 1)
+        issue = version_errors[0]
+        self.assertEqual(issue.code, "invalid_course_version")
+        self.assertEqual(issue.path, course_dir / "course.json")
+        self.assertEqual(issue.location, "version")
+
+    def test_version_negative_is_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                course_manifest={"version": -1},
+            )
+            report = validate_course(course_dir)
+
+        version_errors = _version_errors(report)
+        self.assertEqual(len(version_errors), 1)
+        issue = version_errors[0]
+        self.assertEqual(issue.code, "invalid_course_version")
+        self.assertEqual(issue.path, course_dir / "course.json")
+        self.assertEqual(issue.location, "version")
+
+    def test_non_integer_version_is_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                course_manifest={"version": "2"},
+            )
+            report = validate_course(course_dir)
+
+        version_errors = _version_errors(report)
+        self.assertEqual(len(version_errors), 1)
+        issue = version_errors[0]
+        self.assertEqual(issue.code, "course_version_invalid_type")
+        self.assertEqual(issue.path, course_dir / "course.json")
+        self.assertEqual(issue.location, "version")
 
 
 if __name__ == "__main__":

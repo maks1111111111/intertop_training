@@ -274,32 +274,45 @@ def _validate_course_manifest(
         return
 
     # Content Contract v1 defines no mandatory JSON fields in course.json.
-    # Optional fields include title, order, and status.
+    # Optional fields include title, order, status, and version.
 
-    if "status" not in data:
-        return
+    if "status" in data:
+        status_value = data["status"]
+        if not isinstance(status_value, str):
+            report.add_error(
+                code="course_status_invalid_type",
+                message="Field 'status' must be a string",
+                path=course_json_path,
+                location="status",
+            )
+        elif status_value not in _VALID_COURSE_STATUSES:
+            allowed = ", ".join(sorted(_VALID_COURSE_STATUSES))
+            report.add_error(
+                code="invalid_course_status",
+                message=(
+                    f"Invalid course status '{status_value}': "
+                    f"allowed values are {allowed}"
+                ),
+                path=course_json_path,
+                location="status",
+            )
 
-    status_value = data["status"]
-    if not isinstance(status_value, str):
-        report.add_error(
-            code="course_status_invalid_type",
-            message="Field 'status' must be a string",
-            path=course_json_path,
-            location="status",
-        )
-        return
-
-    if status_value not in _VALID_COURSE_STATUSES:
-        allowed = ", ".join(sorted(_VALID_COURSE_STATUSES))
-        report.add_error(
-            code="invalid_course_status",
-            message=(
-                f"Invalid course status '{status_value}': "
-                f"allowed values are {allowed}"
-            ),
-            path=course_json_path,
-            location="status",
-        )
+    if "version" in data:
+        version_value = data["version"]
+        if isinstance(version_value, bool) or not isinstance(version_value, int):
+            report.add_error(
+                code="course_version_invalid_type",
+                message="Field 'version' must be an integer",
+                path=course_json_path,
+                location="version",
+            )
+        elif version_value < 1:
+            report.add_error(
+                code="invalid_course_version",
+                message="Field 'version' must be at least 1",
+                path=course_json_path,
+                location="version",
+            )
 
 
 def _validate_duplicate_lesson_order(
