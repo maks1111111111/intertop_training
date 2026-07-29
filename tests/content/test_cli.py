@@ -86,7 +86,11 @@ class ContentCliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertIn("Course: valid", output)
-        self.assertIn("  OK", output)
+        self.assertIn("Status: READY", output)
+        self.assertRegex(
+            output,
+            r"Course: valid\nStatus: READY\nErrors: 0\nWarnings: 0",
+        )
         self.assertIn("Courses: 1", output)
         self.assertIn("Errors: 0", output)
         self.assertIn("Warnings: 0", output)
@@ -100,6 +104,11 @@ class ContentCliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("WARNING", output)
         self.assertIn("course_without_lessons", output)
+        self.assertIn("Status: READY", output)
+        course_section = output.split("Course: warning", 1)[1].split("\n\n", 1)[0]
+        self.assertIn("Status: READY", course_section)
+        self.assertIn("Errors: 0", course_section)
+        self.assertIn("Warnings: 1", course_section)
         self.assertIn("Courses: 1", output)
         self.assertIn("Errors: 0", output)
         self.assertRegex(output, r"Warnings: [1-9]\d*")
@@ -112,8 +121,45 @@ class ContentCliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
         self.assertIn("ERROR [duplicate_lesson_order]", output)
+        self.assertIn("Status: NOT READY", output)
+        course_section = output.split("Course: error", 1)[1].split("\n\n", 1)[0]
+        self.assertIn("Status: NOT READY", course_section)
+        self.assertIn("Errors: 1", course_section)
+        self.assertIn("Warnings: 0", course_section)
         self.assertIn("Courses: 1", output)
         self.assertRegex(output, r"Errors: [1-9]\d*")
+
+    def test_release_status_ready_without_issues(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _create_valid_course(courses_dir, slug="ready")
+            exit_code, output = _run_cli(courses_dir)
+
+        self.assertEqual(exit_code, 0)
+        self.assertRegex(
+            output,
+            r"Course: ready\nStatus: READY\nErrors: 0\nWarnings: 0\n",
+        )
+
+    def test_release_status_ready_with_warnings_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _create_course_with_warning(courses_dir, slug="warn_only")
+            exit_code, output = _run_cli(courses_dir)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Status: READY", output)
+        self.assertRegex(output, r"Errors: 0\nWarnings: 1")
+
+    def test_release_status_not_ready_with_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _create_course_with_duplicate_order(courses_dir, slug="not_ready")
+            exit_code, output = _run_cli(courses_dir)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("Status: NOT READY", output)
+        self.assertRegex(output, r"Errors: 1\nWarnings: 0")
 
     def test_deterministic_course_order(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

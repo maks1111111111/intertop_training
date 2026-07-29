@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 from typing import Optional
 
-from app.content.models import ContentIssue
+from app.content.models import ContentIssue, ValidationReport
 from app.content.validator import validate_course
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -38,6 +38,14 @@ def _print_issue(issue: ContentIssue) -> None:
         print(f"    path: {_format_path(issue.path)}")
     if issue.location:
         print(f"    location: {issue.location}")
+
+
+def _print_course_status(report: ValidationReport) -> None:
+    summary = report.summary()
+    status_label = "READY" if summary["ready"] else "NOT READY"
+    print(f"Status: {status_label}")
+    print(f"Errors: {summary['errors']}")
+    print(f"Warnings: {summary['warnings']}")
 
 
 def _find_course_dirs(courses_dir: Path) -> list[Path]:
@@ -79,17 +87,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         warnings = sorted(report.warnings, key=_issue_sort_key)
 
         print(f"Course: {course_dir.name}")
-        if not errors and not warnings:
-            print("  OK")
-        else:
-            for issue in errors:
-                _print_issue(issue)
-            for issue in warnings:
-                _print_issue(issue)
+        for issue in errors:
+            _print_issue(issue)
+        for issue in warnings:
+            _print_issue(issue)
+        _print_course_status(report)
         print()
 
-        total_errors += len(errors)
-        total_warnings += len(warnings)
+        course_summary = report.summary()
+        total_errors += course_summary["errors"]
+        total_warnings += course_summary["warnings"]
 
     print("Summary:")
     print(f"  Courses: {len(course_dirs)}")
