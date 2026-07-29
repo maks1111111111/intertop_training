@@ -7,11 +7,19 @@ that the course passes the release gate.
 import json
 import shutil
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from app.content.contract import COURSE_JSON_FILENAME
+from app.content.diff import SnapshotDiff, compare_snapshots
+from app.content.history import PUBLISH_HISTORY_FILENAME, record_publication
+from app.content.release_manifest import build_release_manifest
+from app.content.release_manifest_io import save_release_manifest
+from app.content.snapshots import SNAPSHOTS_DIR_NAME, create_snapshot
 from app.content.validator import validate_course
+
+RELEASE_MANIFEST_FILENAME = "release-manifest.json"
 
 
 def _resolve_next_version(manifest: dict) -> Optional[int]:
@@ -44,6 +52,100 @@ def _gate_blocked_for_publication(gate: dict) -> dict:
     }
 
 
+def _utc_timestamp() -> str:
+    """Return the current UTC time as an ISO 8601 string."""
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _snapshot_dir_path(course_dir: Path, version: int) -> Path:
+    """Return the snapshot directory path for a course version."""
+    return course_dir / SNAPSHOTS_DIR_NAME / f"v{version:04d}"
+
+
+def _previous_snapshot_path(course_dir: Path, version: int) -> Optional[Path]:
+    """Return the previous snapshot directory, if one exists."""
+    if version <= 1:
+        return None
+
+    previous_snapshot = _snapshot_dir_path(course_dir, version - 1)
+    if previous_snapshot.is_dir():
+        return previous_snapshot
+
+    return None
+
+
+def _prepare_snapshot_for_diff(snapshot: Path) -> Path:
+    """Return a temporary copy of ``snapshot`` without publication service files.
+
+    The original snapshot directory is never modified.
+    """
+    tmp = tempfile.mkdtemp()
+    cleaned_snapshot = Path(tmp) / "snapshot"
+    shutil.copytree(snapshot, cleaned_snapshot)
+    for filename in (RELEASE_MANIFEST_FILENAME, PUBLISH_HISTORY_FILENAME):
+        service_path = cleaned_snapshot / filename
+        if service_path.is_file():
+            service_path.unlink()
+    return cleaned_snapshot
+
+
+def _compare_with_previous_snapshot(
+    previous_snapshot: Optional[Path],
+    new_snapshot: Path,
+) -> SnapshotDiff:
+    """Compare a new snapshot with the previous one, or an empty baseline."""
+    if previous_snapshot is not None:
+        cleaned_previous = _prepare_snapshot_for_diff(previous_snapshot)
+        cleaned_new = _prepare_snapshot_for_diff(new_snapshot)
+        try:
+            return compare_snapshots(cleaned_previous, cleaned_new)
+        finally:
+            shutil.rmtree(cleaned_previous.parent)
+            shutil.rmtree(cleaned_new.parent)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        empty_snapshot = Path(tmp) / "empty"
+        empty_snapshot.mkdir()
+        return compare_snapshots(empty_snapshot, new_snapshot)
+
+
+def _complete_publication(
+    course_dir: Path,
+    *,
+    version: int,
+    gate: dict,
+) -> None:
+    """Create release artifacts and record publication history.
+
+    Coordinates snapshot creation, diffing, manifest persistence, and
+    publication history without duplicating module logic.
+    """
+    snapshot_dir = create_snapshot(course_dir, version)
+    previous_snapshot = _previous_snapshot_path(course_dir, version)
+    diff = _compare_with_previous_snapshot(previous_snapshot, snapshot_dir)
+
+    manifest = build_release_manifest(
+        version=version,
+        published=_utc_timestamp(),
+        snapshot=snapshot_dir,
+        diff=diff,
+    )
+    save_release_manifest(manifest, snapshot_dir / RELEASE_MANIFEST_FILENAME)
+    record_publication(course_dir, published=True, gate=gate)
+
+
+def _ignore_publication_artifacts(course_dir_resolved: Path):
+    """Return a copytree ignore callback that skips publication artifacts."""
+    ignored_names = {SNAPSHOTS_DIR_NAME, PUBLISH_HISTORY_FILENAME}
+
+    def _ignore(directory: str, names: list[str]) -> list[str]:
+        if Path(directory).resolve() == course_dir_resolved:
+            return [name for name in names if name in ignored_names]
+        return []
+
+    return _ignore
+
+
 def _validate_published_candidate(
     course_dir: Path,
     manifest: dict,
@@ -58,7 +160,11 @@ def _validate_published_candidate(
     try:
         with tempfile.TemporaryDirectory() as tmp:
             candidate_dir = Path(tmp) / course_dir.name
-            shutil.copytree(course_dir, candidate_dir)
+            shutil.copytree(
+                course_dir,
+                candidate_dir,
+                ignore=_ignore_publication_artifacts(course_dir.resolve()),
+            )
 
             candidate_manifest = dict(manifest)
             candidate_manifest["status"] = "published"
@@ -160,16 +266,31 @@ def publish_course(course_dir: Path) -> dict:
     manifest["status"] = "published"
     manifest["version"] = next_version
 
+    updated_text = json.dumps(manifest, ensure_ascii=False, indent=2)
+    snapshot_dir = _snapshot_dir_path(course_dir, next_version)
+    snapshot_existed_before = snapshot_dir.is_dir()
+
     try:
-        course_json_path.write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        original_text = course_json_path.read_text(encoding="utf-8")
     except OSError:
         return {
             "published": False,
             "gate": gate,
         }
+
+    try:
+        course_json_path.write_text(updated_text, encoding="utf-8")
+        _complete_publication(course_dir, version=next_version, gate=gate)
+    except (OSError, ValueError, FileExistsError):
+        try:
+            course_json_path.write_text(original_text, encoding="utf-8")
+        except OSError:
+            pass
+
+        if not snapshot_existed_before and snapshot_dir.exists():
+            shutil.rmtree(snapshot_dir)
+
+        raise
 
     return {
         "published": True,
