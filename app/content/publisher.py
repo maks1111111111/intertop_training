@@ -7,10 +7,12 @@ that the course passes the release gate.
 import json
 import shutil
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from app.content.content_pack import ContentPack, build_content_pack
 from app.content.contract import COURSE_JSON_FILENAME
 from app.content.diff import SnapshotDiff, compare_snapshots
 from app.content.history import PUBLISH_HISTORY_FILENAME, record_publication
@@ -20,6 +22,15 @@ from app.content.snapshots import SNAPSHOTS_DIR_NAME, create_snapshot
 from app.content.validator import validate_course
 
 RELEASE_MANIFEST_FILENAME = "release-manifest.json"
+
+
+@dataclass(frozen=True)
+class PublicationResult:
+    """Result of a :func:`publish_course` operation."""
+
+    published: bool
+    gate: dict
+    content_pack: Optional[ContentPack] = None
 
 
 def _resolve_next_version(manifest: dict) -> Optional[int]:
@@ -114,11 +125,11 @@ def _complete_publication(
     *,
     version: int,
     gate: dict,
-) -> None:
+) -> ContentPack:
     """Create release artifacts and record publication history.
 
-    Coordinates snapshot creation, diffing, manifest persistence, and
-    publication history without duplicating module logic.
+    Coordinates snapshot creation, diffing, manifest persistence, content
+    pack building, and publication history without duplicating module logic.
     """
     snapshot_dir = create_snapshot(course_dir, version)
     previous_snapshot = _previous_snapshot_path(course_dir, version)
@@ -131,7 +142,9 @@ def _complete_publication(
         diff=diff,
     )
     save_release_manifest(manifest, snapshot_dir / RELEASE_MANIFEST_FILENAME)
+    content_pack = build_content_pack(course_dir, snapshot_dir, version)
     record_publication(course_dir, published=True, gate=gate)
+    return content_pack
 
 
 def _ignore_publication_artifacts(course_dir_resolved: Path):
@@ -181,7 +194,7 @@ def _validate_published_candidate(
         return None
 
 
-def publish_course(course_dir: Path) -> dict:
+def publish_course(course_dir: Path) -> PublicationResult:
     """Publish a course by setting ``status`` to ``published`` in ``course.json``.
 
     The course directory is validated first. Publication proceeds only when
@@ -195,14 +208,9 @@ def publish_course(course_dir: Path) -> dict:
         course_dir: Path to the course directory (for example ``courses/brands``).
 
     Returns:
-        A dictionary with keys:
-
-        ``published``
-            ``True`` when ``course.json`` was updated or already published;
-            ``False`` when publication was blocked or could not be completed.
-        ``gate``
-            The release gate dictionary from validation
-            (:meth:`~app.content.models.ValidationReport.release_gate`).
+        A :class:`PublicationResult` with publication status, release gate,
+        and an optional :class:`~app.content.content_pack.ContentPack` when
+        a new snapshot was created.
     """
     course_json_path = course_dir / COURSE_JSON_FILENAME
 
@@ -211,38 +219,32 @@ def publish_course(course_dir: Path) -> dict:
         manifest = json.loads(raw_text)
     except (OSError, json.JSONDecodeError):
         report = validate_course(course_dir)
-        return {
-            "published": False,
-            "gate": report.release_gate(),
-        }
+        return PublicationResult(
+            published=False,
+            gate=report.release_gate(),
+        )
 
     if not isinstance(manifest, dict):
         report = validate_course(course_dir)
-        return {
-            "published": False,
-            "gate": report.release_gate(),
-        }
+        return PublicationResult(
+            published=False,
+            gate=report.release_gate(),
+        )
 
     if manifest.get("status") == "published":
         report = validate_course(course_dir)
         gate = report.release_gate()
         if gate["allowed"]:
-            return {
-                "published": True,
-                "gate": gate,
-            }
-        return {
-            "published": False,
-            "gate": gate,
-        }
+            return PublicationResult(published=True, gate=gate)
+        return PublicationResult(published=False, gate=gate)
 
     next_version = _resolve_next_version(manifest)
     if next_version is None:
         report = validate_course(course_dir)
-        return {
-            "published": False,
-            "gate": _gate_blocked_for_publication(report.release_gate()),
-        }
+        return PublicationResult(
+            published=False,
+            gate=_gate_blocked_for_publication(report.release_gate()),
+        )
 
     gate = _validate_published_candidate(
         course_dir,
@@ -252,16 +254,13 @@ def publish_course(course_dir: Path) -> dict:
 
     if gate is None:
         report = validate_course(course_dir)
-        return {
-            "published": False,
-            "gate": report.release_gate(),
-        }
+        return PublicationResult(
+            published=False,
+            gate=report.release_gate(),
+        )
 
     if not gate["allowed"]:
-        return {
-            "published": False,
-            "gate": gate,
-        }
+        return PublicationResult(published=False, gate=gate)
 
     manifest["status"] = "published"
     manifest["version"] = next_version
@@ -273,14 +272,15 @@ def publish_course(course_dir: Path) -> dict:
     try:
         original_text = course_json_path.read_text(encoding="utf-8")
     except OSError:
-        return {
-            "published": False,
-            "gate": gate,
-        }
+        return PublicationResult(published=False, gate=gate)
 
     try:
         course_json_path.write_text(updated_text, encoding="utf-8")
-        _complete_publication(course_dir, version=next_version, gate=gate)
+        content_pack = _complete_publication(
+            course_dir,
+            version=next_version,
+            gate=gate,
+        )
     except (OSError, ValueError, FileExistsError):
         try:
             course_json_path.write_text(original_text, encoding="utf-8")
@@ -292,7 +292,8 @@ def publish_course(course_dir: Path) -> dict:
 
         raise
 
-    return {
-        "published": True,
-        "gate": gate,
-    }
+    return PublicationResult(
+        published=True,
+        gate=gate,
+        content_pack=content_pack,
+    )

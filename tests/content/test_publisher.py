@@ -62,8 +62,8 @@ class PublishCourseTests(unittest.TestCase):
 
             manifest = json.loads((course_dir / "course.json").read_text(encoding="utf-8"))
 
-        self.assertTrue(result["published"])
-        self.assertTrue(result["gate"]["allowed"])
+        self.assertTrue(result.published)
+        self.assertTrue(result.gate["allowed"])
         self.assertEqual(manifest["status"], "published")
         self.assertEqual(manifest["title"], "Draft Course")
         self.assertEqual(manifest["version"], 1)
@@ -141,8 +141,8 @@ class PublishCourseTests(unittest.TestCase):
             original_text = (course_dir / "course.json").read_text(encoding="utf-8")
             result = publish_course(course_dir)
 
-            self.assertFalse(result["published"])
-            self.assertFalse(result["gate"]["allowed"])
+            self.assertFalse(result.published)
+            self.assertFalse(result.gate["allowed"])
             self.assertEqual(
                 (course_dir / "course.json").read_text(encoding="utf-8"),
                 original_text,
@@ -165,8 +165,8 @@ class PublishCourseTests(unittest.TestCase):
             final_text = (course_dir / "course.json").read_text(encoding="utf-8")
             manifest = json.loads(final_text)
 
-        self.assertTrue(result["published"])
-        self.assertTrue(result["gate"]["allowed"])
+        self.assertTrue(result.published)
+        self.assertTrue(result.gate["allowed"])
         self.assertEqual(manifest["status"], "published")
         self.assertEqual(manifest["title"], original_manifest["title"])
         self.assertEqual(manifest["version"], original_manifest["version"])
@@ -198,9 +198,9 @@ class PublishCourseTests(unittest.TestCase):
             result = publish_course(course_dir)
             final_text = (course_dir / "course.json").read_text(encoding="utf-8")
 
-        self.assertFalse(result["published"])
-        self.assertFalse(result["gate"]["allowed"])
-        self.assertGreater(result["gate"]["errors"], 0)
+        self.assertFalse(result.published)
+        self.assertFalse(result.gate["allowed"])
+        self.assertGreater(result.gate["errors"], 0)
         self.assertEqual(final_text, original_text)
 
     def test_negative_version_blocks_publication(self) -> None:
@@ -213,9 +213,9 @@ class PublishCourseTests(unittest.TestCase):
             result = publish_course(course_dir)
             final_text = (course_dir / "course.json").read_text(encoding="utf-8")
 
-        self.assertFalse(result["published"])
-        self.assertFalse(result["gate"]["allowed"])
-        self.assertGreater(result["gate"]["errors"], 0)
+        self.assertFalse(result.published)
+        self.assertFalse(result.gate["allowed"])
+        self.assertGreater(result.gate["errors"], 0)
         self.assertEqual(final_text, original_text)
 
     def test_bool_version_blocks_publication(self) -> None:
@@ -228,9 +228,9 @@ class PublishCourseTests(unittest.TestCase):
             result = publish_course(course_dir)
             final_text = (course_dir / "course.json").read_text(encoding="utf-8")
 
-        self.assertFalse(result["published"])
-        self.assertFalse(result["gate"]["allowed"])
-        self.assertGreater(result["gate"]["errors"], 0)
+        self.assertFalse(result.published)
+        self.assertFalse(result.gate["allowed"])
+        self.assertGreater(result.gate["errors"], 0)
         self.assertEqual(final_text, original_text)
 
     def test_failed_release_gate_does_not_change_version(self) -> None:
@@ -244,7 +244,7 @@ class PublishCourseTests(unittest.TestCase):
             result = publish_course(course_dir)
             final_text = (course_dir / "course.json").read_text(encoding="utf-8")
 
-        self.assertFalse(result["published"])
+        self.assertFalse(result.published)
         self.assertEqual(final_text, original_text)
 
     def test_warnings_do_not_block_publication(self) -> None:
@@ -261,10 +261,10 @@ class PublishCourseTests(unittest.TestCase):
 
             manifest = json.loads((course_dir / "course.json").read_text(encoding="utf-8"))
 
-        self.assertTrue(result["published"])
-        self.assertTrue(result["gate"]["allowed"])
-        self.assertGreater(result["gate"]["warnings"], 0)
-        self.assertEqual(result["gate"]["errors"], 0)
+        self.assertTrue(result.published)
+        self.assertTrue(result.gate["allowed"])
+        self.assertGreater(result.gate["warnings"], 0)
+        self.assertEqual(result.gate["errors"], 0)
         self.assertEqual(manifest["status"], "published")
 
     def test_empty_draft_is_not_published(self) -> None:
@@ -295,9 +295,9 @@ class PublishCourseTests(unittest.TestCase):
                     for issue in candidate_report.errors
                 }
 
-            self.assertFalse(result["published"])
-            self.assertFalse(result["gate"]["allowed"])
-            self.assertGreater(result["gate"]["errors"], 0)
+            self.assertFalse(result.published)
+            self.assertFalse(result.gate["allowed"])
+            self.assertGreater(result.gate["errors"], 0)
             self.assertIn("published_course_without_lessons", error_codes)
             self.assertEqual(final_text, original_text)
 
@@ -310,8 +310,8 @@ class PublishCourseTests(unittest.TestCase):
             )
             result = publish_course(course_dir)
 
-            self.assertFalse(result["published"])
-            self.assertFalse(result["gate"]["allowed"])
+            self.assertFalse(result.published)
+            self.assertFalse(result.gate["allowed"])
             self.assertFalse((course_dir / "course.json").exists())
 
     def test_invalid_course_json_is_not_modified(self) -> None:
@@ -324,8 +324,8 @@ class PublishCourseTests(unittest.TestCase):
             )
             result = publish_course(course_dir)
 
-            self.assertFalse(result["published"])
-            self.assertFalse(result["gate"]["allowed"])
+            self.assertFalse(result.published)
+            self.assertFalse(result.gate["allowed"])
             self.assertEqual(
                 (course_dir / "course.json").read_text(encoding="utf-8"),
                 invalid_json,
@@ -384,6 +384,31 @@ class PublishCourseIntegrationTests(unittest.TestCase):
         self.assertEqual(len(history), 1)
         self.assertTrue(history[0]["published"])
         self.assertEqual(history[0]["errors"], 0)
+
+    def test_successful_publication_creates_content_pack(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                slug="brands",
+                course_manifest={"status": "draft", "title": "Draft Course"},
+            )
+            result = publish_course(course_dir)
+
+            snapshot_dir = course_dir / SNAPSHOTS_DIR_NAME / "v0001"
+            content_pack = result.content_pack
+
+        self.assertIsNotNone(content_pack)
+        assert content_pack is not None
+        self.assertEqual(content_pack.course_slug, "brands")
+        self.assertEqual(content_pack.version, 1)
+        self.assertEqual(content_pack.snapshot, snapshot_dir.as_posix())
+        self.assertGreater(content_pack.files_count, 0)
+        self.assertTrue(content_pack.checksum_sha256)
+        self.assertRegex(
+            content_pack.checksum_sha256,
+            r"^[0-9a-f]{64}$",
+        )
+        self.assertNotIn(RELEASE_MANIFEST_FILENAME, content_pack.files)
 
     def test_second_publication_compares_with_previous_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -486,11 +511,13 @@ class PublishCourseIntegrationTests(unittest.TestCase):
                     "version": 1,
                 },
             )
-            publish_course(course_dir)
+            result = publish_course(course_dir)
 
             snapshots_root = course_dir / SNAPSHOTS_DIR_NAME
             history_path = course_dir / PUBLISH_HISTORY_FILENAME
 
+        self.assertTrue(result.published)
+        self.assertIsNone(result.content_pack)
         self.assertFalse(snapshots_root.exists())
         self.assertFalse(history_path.exists())
 
