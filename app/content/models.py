@@ -130,6 +130,27 @@ class ValidationReport:
             for issue in self.issues
         )
 
+    def is_release_ready(self) -> bool:
+        """Return ``True`` when the content has no blocking errors.
+
+        Warnings do not affect release readiness.
+        """
+        return not self.has_errors
+
+    def summary(self) -> dict:
+        """Return a structured release readiness summary.
+
+        Returns:
+            A dictionary with keys ``ready``, ``errors``, and ``warnings``.
+            ``ready`` is ``True`` when there are no errors; warnings are
+            counted but do not affect readiness.
+        """
+        return {
+            "ready": self.is_release_ready(),
+            "errors": len(self.errors),
+            "warnings": len(self.warnings),
+        }
+
     def __bool__(self) -> bool:
         """Return ``False`` when errors are present, otherwise ``True``."""
         return not self.has_errors

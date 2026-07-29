@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from typing import Optional
 
+from app.content.models import ValidationReport
 from app.content.validator import validate_course
 
 
@@ -363,6 +364,57 @@ class PublishedCourseValidationTests(unittest.TestCase):
             report = validate_course(course_dir)
 
         self.assertEqual(_publication_errors(report), [])
+
+
+class ValidationReportReleaseTests(unittest.TestCase):
+    """Release readiness helpers on :class:`ValidationReport`."""
+
+    def test_empty_report_is_release_ready(self) -> None:
+        report = ValidationReport()
+
+        self.assertTrue(report.is_release_ready())
+        self.assertTrue(bool(report))
+
+    def test_warnings_only_is_release_ready(self) -> None:
+        report = ValidationReport()
+        report.add_warning("sample_warning", "Advisory issue")
+
+        self.assertTrue(report.is_release_ready())
+        self.assertTrue(bool(report))
+
+    def test_error_is_not_release_ready(self) -> None:
+        report = ValidationReport()
+        report.add_error("sample_error", "Blocking issue")
+
+        self.assertFalse(report.is_release_ready())
+        self.assertFalse(bool(report))
+
+    def test_summary_empty_report(self) -> None:
+        report = ValidationReport()
+
+        self.assertEqual(
+            report.summary(),
+            {"ready": True, "errors": 0, "warnings": 0},
+        )
+
+    def test_summary_with_warnings_only(self) -> None:
+        report = ValidationReport()
+        report.add_warning("sample_warning", "Advisory issue")
+
+        self.assertEqual(
+            report.summary(),
+            {"ready": True, "errors": 0, "warnings": 1},
+        )
+
+    def test_summary_with_errors(self) -> None:
+        report = ValidationReport()
+        report.add_error("sample_error", "Blocking issue")
+        report.add_warning("sample_warning", "Advisory issue")
+
+        self.assertEqual(
+            report.summary(),
+            {"ready": False, "errors": 1, "warnings": 1},
+        )
 
 
 if __name__ == "__main__":
