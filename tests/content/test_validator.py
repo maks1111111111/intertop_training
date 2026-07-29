@@ -16,6 +16,8 @@ def _create_course_dir(
     slug: str = "test",
     *,
     course_manifest: Optional[dict] = None,
+    with_lesson: bool = True,
+    with_lesson_json: bool = True,
 ) -> Path:
     """Create a minimal course directory for validator tests."""
     course_dir = courses_dir / slug
@@ -27,9 +29,11 @@ def _create_course_dir(
         encoding="utf-8",
     )
 
-    lesson_dir = course_dir / "lesson_01"
-    lesson_dir.mkdir()
-    (lesson_dir / "lesson.json").write_text("{}", encoding="utf-8")
+    if with_lesson:
+        lesson_dir = course_dir / "lesson_01"
+        lesson_dir.mkdir()
+        if with_lesson_json:
+            (lesson_dir / "lesson.json").write_text("{}", encoding="utf-8")
 
     return course_dir
 
@@ -49,6 +53,18 @@ def _version_errors(report):
         issue
         for issue in report.errors
         if issue.code in {"course_version_invalid_type", "invalid_course_version"}
+    ]
+
+
+def _publication_errors(report):
+    """Return publication-specific errors from a validation report."""
+    return [
+        issue
+        for issue in report.errors
+        if issue.code in {
+            "published_course_without_lessons",
+            "published_lesson_manifest_missing",
+        }
     ]
 
 
@@ -211,6 +227,142 @@ class CourseVersionValidationTests(unittest.TestCase):
         self.assertEqual(issue.code, "course_version_invalid_type")
         self.assertEqual(issue.path, course_dir / "course.json")
         self.assertEqual(issue.location, "version")
+
+
+class PublishedCourseValidationTests(unittest.TestCase):
+    """Publication-specific validation for explicitly published courses."""
+
+    def test_published_course_without_lessons_is_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                course_manifest={"status": "published"},
+                with_lesson=False,
+            )
+            report = validate_course(course_dir)
+
+        errors = _publication_errors(report)
+        self.assertEqual(len(errors), 1)
+        issue = errors[0]
+        self.assertEqual(issue.code, "published_course_without_lessons")
+        self.assertEqual(issue.path, course_dir)
+        self.assertEqual(issue.location, "status")
+
+    def test_draft_course_without_lessons_has_no_publication_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                course_manifest={"status": "draft"},
+                with_lesson=False,
+            )
+            report = validate_course(course_dir)
+
+        self.assertEqual(_publication_errors(report), [])
+
+    def test_archived_course_without_lessons_has_no_publication_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                course_manifest={"status": "archived"},
+                with_lesson=False,
+            )
+            report = validate_course(course_dir)
+
+        self.assertEqual(_publication_errors(report), [])
+
+    def test_course_without_status_and_without_lessons_has_no_publication_error(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                with_lesson=False,
+            )
+            report = validate_course(course_dir)
+
+        self.assertEqual(_publication_errors(report), [])
+
+    def test_published_lesson_without_manifest_is_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                course_manifest={"status": "published"},
+                with_lesson_json=False,
+            )
+            report = validate_course(course_dir)
+
+        errors = _publication_errors(report)
+        self.assertEqual(len(errors), 1)
+        issue = errors[0]
+        self.assertEqual(issue.code, "published_lesson_manifest_missing")
+        self.assertEqual(issue.path, course_dir / "lesson_01")
+        self.assertEqual(issue.location, "lesson_01")
+
+    def test_draft_lesson_without_manifest_has_no_publication_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                course_manifest={"status": "draft"},
+                with_lesson_json=False,
+            )
+            report = validate_course(course_dir)
+
+        self.assertEqual(_publication_errors(report), [])
+
+    def test_archived_lesson_without_manifest_has_no_publication_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                course_manifest={"status": "archived"},
+                with_lesson_json=False,
+            )
+            report = validate_course(course_dir)
+
+        self.assertEqual(_publication_errors(report), [])
+
+    def test_course_without_status_and_lesson_without_manifest_has_no_publication_error(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                with_lesson_json=False,
+            )
+            report = validate_course(course_dir)
+
+        self.assertEqual(_publication_errors(report), [])
+
+    def test_valid_published_course_has_no_publication_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                course_manifest={"status": "published"},
+            )
+            report = validate_course(course_dir)
+
+        self.assertEqual(_publication_errors(report), [])
+
+    def test_invalid_status_does_not_trigger_publication_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                course_manifest={"status": "active"},
+                with_lesson=False,
+            )
+            report = validate_course(course_dir)
+
+        self.assertEqual(_publication_errors(report), [])
+
+    def test_invalid_status_type_does_not_trigger_publication_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(
+                Path(tmp),
+                course_manifest={"status": 123},
+                with_lesson=False,
+            )
+            report = validate_course(course_dir)
+
+        self.assertEqual(_publication_errors(report), [])
 
 
 if __name__ == "__main__":

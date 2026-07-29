@@ -237,14 +237,52 @@ def _validate_lesson_media(
     _validate_lesson_unknown_files(lesson_dir, report, location=location)
 
 
+def _validate_published_course(
+    course_data: Optional[dict],
+    course_dir: Path,
+    report: ValidationReport,
+    *,
+    lesson_dir_count: int,
+    lessons_missing_manifest: list[tuple[Path, str]],
+) -> None:
+    """Apply stricter validation rules for explicitly published courses.
+
+    Publication-specific checks run only when ``course.json`` contains an
+    explicit ``"status": "published"`` value. Draft, archived, and courses
+    without a status field are not subject to these rules.
+    """
+    if course_data is None or course_data.get("status") != "published":
+        return
+
+    if lesson_dir_count == 0:
+        report.add_error(
+            code="published_course_without_lessons",
+            message="Published course must contain at least one lesson",
+            path=course_dir,
+            location="status",
+        )
+
+    for lesson_dir, lesson_slug in lessons_missing_manifest:
+        report.add_error(
+            code="published_lesson_manifest_missing",
+            message=(
+                f"Published course lesson is missing {LESSON_JSON_FILENAME}"
+            ),
+            path=lesson_dir,
+            location=lesson_slug,
+        )
+
+
 def _validate_course_manifest(
     course_json_path: Path,
     report: ValidationReport,
-) -> None:
+) -> Optional[dict]:
     """Validate ``course.json`` root type and required manifest fields.
 
-    Adds errors to ``report`` only; does not mutate JSON data or return a
-    separate report.
+    Adds errors to ``report`` only; does not mutate JSON data.
+
+    Returns:
+        Parsed course manifest when the root is a JSON object, else ``None``.
     """
     errors_before = len(report.errors)
 
@@ -257,13 +295,13 @@ def _validate_course_manifest(
 
     if data is None:
         if len(report.errors) > errors_before:
-            return
+            return None
         report.add_error(
             code="course_json_invalid_type",
             message="Root of course.json must be a JSON object",
             path=course_json_path,
         )
-        return
+        return None
 
     if not isinstance(data, dict):
         report.add_error(
@@ -271,7 +309,7 @@ def _validate_course_manifest(
             message="Root of course.json must be a JSON object",
             path=course_json_path,
         )
-        return
+        return None
 
     # Content Contract v1 defines no mandatory JSON fields in course.json.
     # Optional fields include title, order, status, and version.
@@ -313,6 +351,8 @@ def _validate_course_manifest(
                 path=course_json_path,
                 location="version",
             )
+
+    return data
 
 
 def _validate_duplicate_lesson_order(
@@ -910,12 +950,13 @@ def validate_course(course_dir: Path) -> ValidationReport:
         return report
 
     course_json_path = course_dir / COURSE_JSON_FILENAME
-    _validate_course_manifest(course_json_path, report)
+    course_data = _validate_course_manifest(course_json_path, report)
     _validate_course_cover(course_dir, report)
 
     lesson_dir_count = 0
     lesson_slugs: set[str] = set()
     lesson_orders: list[tuple[str, int]] = []
+    lessons_missing_manifest: list[tuple[Path, str]] = []
     for entry in sorted(course_dir.iterdir(), key=lambda path: path.name):
         if not entry.is_dir():
             continue
@@ -924,6 +965,7 @@ def validate_course(course_dir: Path) -> ValidationReport:
         lesson_slugs.add(entry.name)
         lesson_json_path = entry / LESSON_JSON_FILENAME
         if not lesson_json_path.is_file():
+            lessons_missing_manifest.append((entry, entry.name))
             report.add_warning(
                 code="missing_lesson_json",
                 message=(
@@ -953,6 +995,14 @@ def validate_course(course_dir: Path) -> ValidationReport:
             message="Course has no lesson subdirectories",
             path=course_dir,
         )
+
+    _validate_published_course(
+        course_data,
+        course_dir,
+        report,
+        lesson_dir_count=lesson_dir_count,
+        lessons_missing_manifest=lessons_missing_manifest,
+    )
 
     quiz_json_path = course_dir / QUIZ_JSON_FILENAME
     _validate_quiz_manifest(
