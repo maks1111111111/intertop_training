@@ -14,7 +14,42 @@ from app.content.contract import COURSE_JSON_FILENAME
 from app.content.validator import validate_course
 
 
-def _validate_published_candidate(course_dir: Path, manifest: dict) -> Optional[dict]:
+def _resolve_next_version(manifest: dict) -> Optional[int]:
+    """Return the version a course should receive on publication.
+
+    Missing ``version`` is treated as ``0`` and becomes ``1``.
+    Integer values ``>= 0`` are incremented by one.
+    Invalid types and negative integers return ``None``.
+    """
+    if "version" not in manifest:
+        return 1
+
+    version_value = manifest["version"]
+    if isinstance(version_value, bool) or not isinstance(version_value, int):
+        return None
+
+    if version_value < 0:
+        return None
+
+    return version_value + 1
+
+
+def _gate_blocked_for_publication(gate: dict) -> dict:
+    """Return a release gate that blocks publication."""
+    return {
+        "allowed": False,
+        "ready": False,
+        "errors": max(gate["errors"], 1),
+        "warnings": gate["warnings"],
+    }
+
+
+def _validate_published_candidate(
+    course_dir: Path,
+    manifest: dict,
+    *,
+    next_version: int,
+) -> Optional[dict]:
     """Validate a temporary copy of the course with ``status`` set to ``published``.
 
     Returns the release gate for the candidate without modifying ``course_dir``,
@@ -27,6 +62,7 @@ def _validate_published_candidate(course_dir: Path, manifest: dict) -> Optional[
 
             candidate_manifest = dict(manifest)
             candidate_manifest["status"] = "published"
+            candidate_manifest["version"] = next_version
             candidate_json_path = candidate_dir / COURSE_JSON_FILENAME
             candidate_json_path.write_text(
                 json.dumps(candidate_manifest, ensure_ascii=False, indent=2),
@@ -94,7 +130,19 @@ def publish_course(course_dir: Path) -> dict:
             "gate": gate,
         }
 
-    gate = _validate_published_candidate(course_dir, manifest)
+    next_version = _resolve_next_version(manifest)
+    if next_version is None:
+        report = validate_course(course_dir)
+        return {
+            "published": False,
+            "gate": _gate_blocked_for_publication(report.release_gate()),
+        }
+
+    gate = _validate_published_candidate(
+        course_dir,
+        manifest,
+        next_version=next_version,
+    )
 
     if gate is None:
         report = validate_course(course_dir)
@@ -110,6 +158,7 @@ def publish_course(course_dir: Path) -> dict:
         }
 
     manifest["status"] = "published"
+    manifest["version"] = next_version
 
     try:
         course_json_path.write_text(
