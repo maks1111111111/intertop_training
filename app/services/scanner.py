@@ -54,13 +54,29 @@ class Quiz:
     randomize_options: bool
 
 
+_PUBLISHED_STATUS = "published"
+_COURSE_STATUSES = frozenset({"draft", "published", "archived"})
+
+
 @dataclass(frozen=True)
 class Course:
     slug: str
     title: str
+    status: str
     lessons: list[Lesson]
     cover_path: Optional[Path]
     quiz: Optional[Quiz]
+
+
+def _parse_course_status(metadata: dict) -> str:
+    if "status" not in metadata:
+        return _PUBLISHED_STATUS
+
+    raw_status = metadata["status"]
+    if isinstance(raw_status, str) and raw_status in _COURSE_STATUSES:
+        return raw_status
+
+    return ""
 
 
 def _read_json(path: Path) -> dict:
@@ -351,6 +367,7 @@ def _scan_course(course_dir: Path) -> Optional[tuple[int, Course]]:
     course = Course(
         slug=course_dir.name,
         title=title,
+        status=_parse_course_status(metadata),
         lessons=lessons,
         cover_path=cover_path,
         quiz=_scan_quiz(course_dir),
@@ -376,7 +393,11 @@ def scan_courses(base_dir: Path) -> list[Course]:
 
     scanned_courses.sort(key=lambda item: (item[0], item[1].slug))
 
-    return [course for _, course in scanned_courses]
+    return [
+        course
+        for _, course in scanned_courses
+        if course.status == _PUBLISHED_STATUS
+    ]
 
 
 def get_course(base_dir: Path, slug: str) -> Optional[Course]:
