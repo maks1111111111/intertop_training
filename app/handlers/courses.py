@@ -7,10 +7,11 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
+from app.content.runtime import ContentRuntime
 from app.keyboards.courses import back_to_courses_keyboard
 from app.ui.lesson import lesson_view_text
 from app.repositories.progress_repository import ProgressRepository
-from app.services.scanner import Course, Lesson, get_course
+from app.services.scanner import Course, Lesson
 
 
 router = Router()
@@ -109,11 +110,11 @@ async def _send_lesson(
 @router.callback_query(F.data.startswith("course_card:"))
 async def show_course_card(
     callback: CallbackQuery,
-    base_dir: Path,
+    content_runtime: ContentRuntime,
     db_path: Path,
 ) -> None:
     course_slug = callback.data.removeprefix("course_card:")
-    course = get_course(base_dir, course_slug)
+    course = content_runtime.get_course(course_slug)
 
     if course is None:
         await callback.answer("Курс не найден.", show_alert=True)
@@ -210,11 +211,11 @@ async def show_course_card(
 @router.callback_query(F.data.startswith("course_start:"))
 async def start_course(
     callback: CallbackQuery,
-    base_dir: Path,
+    content_runtime: ContentRuntime,
     db_path: Path,
 ) -> None:
     course_slug = callback.data.removeprefix("course_start:")
-    course = get_course(base_dir, course_slug)
+    course = content_runtime.get_course(course_slug)
 
     if course is None:
         await callback.answer("Курс не найден.", show_alert=True)
@@ -267,7 +268,7 @@ async def start_course(
 @router.callback_query(F.data.startswith("lesson:"))
 async def show_lesson(
     callback: CallbackQuery,
-    base_dir: Path,
+    content_runtime: ContentRuntime,
     db_path: Path,
 ) -> None:
     parts = callback.data.split(":")
@@ -290,7 +291,7 @@ async def show_lesson(
         )
         return
 
-    course = get_course(base_dir, course_slug)
+    course = content_runtime.get_course(course_slug)
 
     if course is None:
         await callback.answer(
@@ -331,11 +332,11 @@ async def show_lesson(
 @router.callback_query(F.data.startswith("course_complete:"))
 async def complete_course(
     callback: CallbackQuery,
-    base_dir: Path,
+    content_runtime: ContentRuntime,
     db_path: Path,
 ) -> None:
     course_slug = callback.data.removeprefix("course_complete:")
-    course = get_course(base_dir, course_slug)
+    course = content_runtime.get_course(course_slug)
 
     if course is None:
         await callback.answer(

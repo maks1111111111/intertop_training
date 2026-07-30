@@ -8,8 +8,9 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
+from app.content.runtime import ContentRuntime
 from app.repositories import quiz_repository
-from app.services.scanner import Quiz, QuizQuestion, get_course
+from app.services.scanner import Quiz, QuizQuestion
 
 
 router = Router()
@@ -173,11 +174,11 @@ def _quiz_finish_result_keyboard(course_slug: str) -> InlineKeyboardMarkup:
 @router.callback_query(F.data.startswith("quiz_start:"))
 async def start_quiz(
     callback: CallbackQuery,
-    base_dir: Path,
+    content_runtime: ContentRuntime,
     db_path: Path,
 ) -> None:
     course_slug = callback.data.removeprefix("quiz_start:")
-    course = get_course(base_dir, course_slug)
+    course = content_runtime.get_course(course_slug)
 
     if course is None:
         await callback.answer("Курс не найден.", show_alert=True)
@@ -224,7 +225,7 @@ async def start_quiz(
 @router.callback_query(F.data.startswith("quiz_answer:"))
 async def answer_quiz(
     callback: CallbackQuery,
-    base_dir: Path,
+    content_runtime: ContentRuntime,
     db_path: Path,
 ) -> None:
     parts = callback.data.split(":")
@@ -247,7 +248,7 @@ async def answer_quiz(
         )
         return
 
-    course = get_course(base_dir, course_slug)
+    course = content_runtime.get_course(course_slug)
 
     if course is None:
         await callback.answer("Курс не найден.", show_alert=True)
@@ -310,7 +311,7 @@ async def answer_quiz(
 @router.callback_query(F.data.startswith("quiz_next:"))
 async def next_quiz_question(
     callback: CallbackQuery,
-    base_dir: Path,
+    content_runtime: ContentRuntime,
 ) -> None:
     parts = callback.data.split(":")
 
@@ -332,7 +333,7 @@ async def next_quiz_question(
         )
         return
 
-    course = get_course(base_dir, course_slug)
+    course = content_runtime.get_course(course_slug)
 
     if course is None:
         await callback.answer("Курс не найден.", show_alert=True)

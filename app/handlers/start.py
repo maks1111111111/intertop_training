@@ -9,9 +9,9 @@ from aiogram.types import (
     Message,
 )
 
+from app.content.runtime import ContentRuntime
 from app.repositories.progress_repository import ProgressRepository
 from app.repositories.user_repository import UserRepository
-from app.services.scanner import scan_courses
 
 
 router = Router()
@@ -36,11 +36,11 @@ def _course_button_label(
 
 
 def _courses_keyboard(
-    base_dir: Path,
+    content_runtime: ContentRuntime,
     db_path: Path,
     telegram_id: int,
 ) -> InlineKeyboardMarkup:
-    courses = scan_courses(base_dir)
+    courses = content_runtime.get_courses()
     buttons: list[list[InlineKeyboardButton]] = []
 
     for course in courses:
@@ -78,12 +78,12 @@ def _courses_keyboard(
 
 
 def _build_home_screen(
-    base_dir: Path,
+    content_runtime: ContentRuntime,
     db_path: Path,
     telegram_id: int,
     name: str,
 ) -> tuple[str, InlineKeyboardMarkup]:
-    courses = scan_courses(base_dir)
+    courses = content_runtime.get_courses()
 
     active_course = progress_repository.get_latest_in_progress_course(
         db_path=db_path,
@@ -170,7 +170,7 @@ def _build_home_screen(
 @router.message(CommandStart())
 async def cmd_start(
     message: Message,
-    base_dir: Path,
+    content_runtime: ContentRuntime,
     db_path: Path,
 ) -> None:
     user = message.from_user
@@ -189,7 +189,7 @@ async def cmd_start(
         last_name=user.last_name,
     )
 
-    courses = scan_courses(base_dir)
+    courses = content_runtime.get_courses()
 
     if not courses:
         await message.answer(
@@ -202,7 +202,7 @@ async def cmd_start(
     name = user.first_name or "коллега"
 
     text, keyboard = _build_home_screen(
-        base_dir=base_dir,
+        content_runtime=content_runtime,
         db_path=db_path,
         telegram_id=user.id,
         name=name,
@@ -218,7 +218,7 @@ async def cmd_start(
 @router.callback_query(F.data == "courses:list")
 async def show_courses(
     callback: CallbackQuery,
-    base_dir: Path,
+    content_runtime: ContentRuntime,
     db_path: Path,
 ) -> None:
     user = callback.from_user
@@ -231,7 +231,7 @@ async def show_courses(
         text="<b>Все курсы</b>\n\nВыберите курс.",
         parse_mode="HTML",
         reply_markup=_courses_keyboard(
-            base_dir=base_dir,
+            content_runtime=content_runtime,
             db_path=db_path,
             telegram_id=user.id,
         ),
@@ -243,7 +243,7 @@ async def show_courses(
 @router.callback_query(F.data == "home:open")
 async def show_home(
     callback: CallbackQuery,
-    base_dir: Path,
+    content_runtime: ContentRuntime,
     db_path: Path,
 ) -> None:
     user = callback.from_user
@@ -255,7 +255,7 @@ async def show_home(
     name = user.first_name or "коллега"
 
     text, keyboard = _build_home_screen(
-        base_dir=base_dir,
+        content_runtime=content_runtime,
         db_path=db_path,
         telegram_id=user.id,
         name=name,

@@ -8,6 +8,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from dotenv import load_dotenv
 
+from app.content.runtime import ContentRuntime
 from app.database import initialize_database
 from app.handlers import courses, quiz, start
 from app.services.course_sync import sync_courses
@@ -37,9 +38,11 @@ async def main() -> None:
 
     initialize_database(db_path)
     sync_courses(
-    base_dir=base_dir,
-    db_path=db_path,
-)
+        base_dir=base_dir,
+        db_path=db_path,
+    )
+
+    content_runtime = ContentRuntime(base_dir)
 
     bot = Bot(
         token=token,
@@ -50,6 +53,7 @@ async def main() -> None:
 
     dp["base_dir"] = base_dir
     dp["db_path"] = db_path
+    dp["content_runtime"] = content_runtime
 
     dp.include_router(start.router)
     dp.include_router(courses.router)
