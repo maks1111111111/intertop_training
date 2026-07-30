@@ -8,8 +8,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Optional
 
 from app.content.runtime import ContentRuntime
+
+
+@dataclass(frozen=True)
+class RuntimeState:
+    """Current snapshot of the managed runtime state."""
+
+    courses_count: int
+    last_refreshed_at: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -32,20 +41,31 @@ class ContentRuntimeManager:
 
     def __init__(self, runtime: ContentRuntime) -> None:
         self._runtime = runtime
+        self._last_refreshed_at: Optional[str] = None
 
     @property
     def runtime(self) -> ContentRuntime:
         """The managed content runtime instance."""
         return self._runtime
 
+    def get_state(self) -> RuntimeState:
+        """Return the current runtime state without triggering a refresh."""
+        courses = self._runtime.get_courses()
+        return RuntimeState(
+            courses_count=len(courses),
+            last_refreshed_at=self._last_refreshed_at,
+        )
+
     def refresh(self) -> RuntimeRefreshStats:
         """Reload published courses and return refresh statistics."""
         courses_before = len(self._runtime.get_courses())
         self._runtime.refresh()
         courses_after = len(self._runtime.get_courses())
+        refreshed_at = _utc_timestamp()
+        self._last_refreshed_at = refreshed_at
         return RuntimeRefreshStats(
             courses_before=courses_before,
             courses_after=courses_after,
-            refreshed_at=_utc_timestamp(),
+            refreshed_at=refreshed_at,
             changed=courses_before != courses_after,
         )

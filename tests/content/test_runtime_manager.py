@@ -9,7 +9,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from app.content.runtime import ContentRuntime
-from app.content.runtime_manager import ContentRuntimeManager, RuntimeRefreshStats
+from app.content.runtime_manager import (
+    ContentRuntimeManager,
+    RuntimeRefreshStats,
+    RuntimeState,
+)
 
 
 def _write_minimal_course(courses_dir: Path, slug: str) -> None:
@@ -109,6 +113,91 @@ class ContentRuntimeManagerTests(unittest.TestCase):
         self.assertIs(manager.runtime, runtime)
         runtime.refresh.assert_not_called()
         runtime.get_courses.assert_not_called()
+
+    def test_get_state_returns_runtime_state(self) -> None:
+        runtime = MagicMock(spec=ContentRuntime)
+        runtime.get_courses.return_value = [MagicMock(), MagicMock()]
+        manager = ContentRuntimeManager(runtime)
+
+        state = manager.get_state()
+
+        self.assertIsInstance(state, RuntimeState)
+        self.assertEqual(state.courses_count, 2)
+
+    def test_get_state_last_refreshed_at_none_before_first_refresh(self) -> None:
+        runtime = MagicMock(spec=ContentRuntime)
+        runtime.get_courses.return_value = []
+        manager = ContentRuntimeManager(runtime)
+
+        state = manager.get_state()
+
+        self.assertIsNone(state.last_refreshed_at)
+
+    def test_get_state_courses_count_matches_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _write_minimal_course(courses_dir, "alpha")
+            _write_minimal_course(courses_dir, "beta")
+            runtime = ContentRuntime(courses_dir)
+            manager = ContentRuntimeManager(runtime)
+
+            state = manager.get_state()
+
+        self.assertEqual(state.courses_count, 2)
+
+    def test_get_state_after_refresh_shares_timestamp_with_stats(self) -> None:
+        runtime = MagicMock(spec=ContentRuntime)
+        runtime.get_courses.return_value = []
+        manager = ContentRuntimeManager(runtime)
+
+        with patch(
+            "app.content.runtime_manager._utc_timestamp",
+            return_value="2026-07-30T18:00:00Z",
+        ):
+            stats = manager.refresh()
+            state = manager.get_state()
+
+        self.assertEqual(state.last_refreshed_at, stats.refreshed_at)
+        self.assertEqual(state.last_refreshed_at, "2026-07-30T18:00:00Z")
+
+    def test_utc_timestamp_called_once_per_refresh(self) -> None:
+        runtime = MagicMock(spec=ContentRuntime)
+        runtime.get_courses.return_value = []
+        manager = ContentRuntimeManager(runtime)
+
+        with patch(
+            "app.content.runtime_manager._utc_timestamp",
+            return_value="2026-07-30T18:00:00Z",
+        ) as timestamp_mock:
+            manager.refresh()
+
+        timestamp_mock.assert_called_once_with()
+
+    def test_get_state_does_not_call_runtime_refresh(self) -> None:
+        runtime = MagicMock(spec=ContentRuntime)
+        runtime.get_courses.return_value = []
+        manager = ContentRuntimeManager(runtime)
+
+        manager.get_state()
+
+        runtime.refresh.assert_not_called()
+
+    def test_multiple_get_state_calls_do_not_change_last_refreshed_at(self) -> None:
+        runtime = MagicMock(spec=ContentRuntime)
+        runtime.get_courses.return_value = []
+        manager = ContentRuntimeManager(runtime)
+
+        with patch(
+            "app.content.runtime_manager._utc_timestamp",
+            return_value="2026-07-30T18:00:00Z",
+        ):
+            manager.refresh()
+            first_state = manager.get_state()
+            second_state = manager.get_state()
+
+        self.assertEqual(first_state.last_refreshed_at, "2026-07-30T18:00:00Z")
+        self.assertEqual(second_state.last_refreshed_at, "2026-07-30T18:00:00Z")
+        runtime.refresh.assert_called_once_with()
 
 
 if __name__ == "__main__":
