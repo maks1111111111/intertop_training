@@ -7,16 +7,56 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from app.content import runtime_loader
 from app.content.runtime_loader import (
     Course,
     Lesson,
     Quiz,
     QuizOption,
     QuizQuestion,
+    load_published_courses,
 )
 from app.services import scanner
 from app.services.scanner import get_course, scan_courses
+
+
+def _write_quiz(course_dir: Path, quiz_data: object) -> None:
+    """Write quiz.json with the given data."""
+    (course_dir / "quiz.json").write_text(
+        json.dumps(quiz_data),
+        encoding="utf-8",
+    )
+
+
+def _valid_quiz_payload(*, slug: str = "course") -> dict:
+    """Return a minimal valid quiz payload."""
+    return {
+        "id": f"{slug}_quiz",
+        "title": "Test quiz",
+        "passing_score": 80,
+        "version": 1,
+        "randomize_questions": False,
+        "randomize_options": False,
+        "questions": [
+            {
+                "id": "q1",
+                "type": "single_choice",
+                "text": "Question one?",
+                "options": [
+                    {"id": "a", "text": "Answer A"},
+                    {"id": "b", "text": "Answer B"},
+                ],
+                "correct_option_ids": ["a"],
+                "explanation": "Because A.",
+                "lesson": "lesson_01",
+                "difficulty": 1,
+                "tags": ["tag1"],
+                "ai_context": "context",
+            }
+        ],
+    }
 
 
 def _write_minimal_course(
@@ -52,36 +92,7 @@ def _write_minimal_course(
     )
 
     if with_quiz:
-        (course_dir / "quiz.json").write_text(
-            json.dumps(
-                {
-                    "id": f"{slug}_quiz",
-                    "title": "Test quiz",
-                    "passing_score": 80,
-                    "version": 1,
-                    "randomize_questions": False,
-                    "randomize_options": False,
-                    "questions": [
-                        {
-                            "id": "q1",
-                            "type": "single_choice",
-                            "text": "Question one?",
-                            "options": [
-                                {"id": "a", "text": "Answer A"},
-                                {"id": "b", "text": "Answer B"},
-                            ],
-                            "correct_option_ids": ["a"],
-                            "explanation": "Because A.",
-                            "lesson": "lesson_01",
-                            "difficulty": 1,
-                            "tags": ["tag1"],
-                            "ai_context": "context",
-                        }
-                    ],
-                }
-            ),
-            encoding="utf-8",
-        )
+        _write_quiz(course_dir, _valid_quiz_payload(slug=slug))
 
     return course_dir
 
@@ -259,6 +270,228 @@ class ScannerRuntimeIntegrationTests(unittest.TestCase):
         self.assertIsNotNone(course)
         assert course is not None
         self.assertEqual(course.slug, "absolute")
+
+
+class RuntimeLoaderFailClosedTests(unittest.TestCase):
+    """Fail-closed handling for damaged runtime content."""
+
+    def test_damaged_course_json_is_skipped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            broken_dir = courses_dir / "broken"
+            broken_dir.mkdir()
+            (broken_dir / "course.json").write_text("{ invalid json", encoding="utf-8")
+
+            courses = scan_courses(courses_dir)
+            course = get_course(courses_dir, "broken")
+
+        self.assertEqual(courses, [])
+        self.assertIsNone(course)
+
+    def test_course_json_array_root_is_skipped(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            broken_dir = courses_dir / "broken"
+            broken_dir.mkdir()
+            (broken_dir / "course.json").write_text("[1, 2, 3]", encoding="utf-8")
+
+            courses = scan_courses(courses_dir)
+            course = get_course(courses_dir, "broken")
+
+        self.assertEqual(courses, [])
+        self.assertIsNone(course)
+
+    def test_damaged_course_does_not_block_valid_course(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _write_minimal_course(courses_dir, "good")
+
+            broken_dir = courses_dir / "broken"
+            broken_dir.mkdir()
+            (broken_dir / "course.json").write_text("{ broken", encoding="utf-8")
+
+            courses = scan_courses(courses_dir)
+
+        self.assertEqual(len(courses), 1)
+        self.assertEqual(courses[0].slug, "good")
+
+    def test_damaged_lesson_json_does_not_create_fake_lesson(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = _write_minimal_course(courses_dir, "course")
+
+            (course_dir / "lesson_01" / "lesson.json").write_text(
+                "{ broken",
+                encoding="utf-8",
+            )
+
+            course = get_course(courses_dir, "course")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(course.lessons, [])
+
+    def test_valid_lessons_load_alongside_damaged_lesson(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = _write_minimal_course(courses_dir, "course")
+
+            broken_lesson = course_dir / "lesson_broken"
+            broken_lesson.mkdir()
+            (broken_lesson / "lesson.json").write_text("{ broken", encoding="utf-8")
+
+            valid_lesson = course_dir / "lesson_02"
+            valid_lesson.mkdir()
+            (valid_lesson / "lesson.json").write_text(
+                json.dumps({"title": "Valid lesson", "order": 2}),
+                encoding="utf-8",
+            )
+
+            course = get_course(courses_dir, "course")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(len(course.lessons), 2)
+        self.assertEqual(
+            [lesson.path.name for lesson in course.lessons],
+            ["lesson_01", "lesson_02"],
+        )
+
+    def test_damaged_quiz_json_yields_none_quiz(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = _write_minimal_course(courses_dir, "course")
+            (course_dir / "quiz.json").write_text("{ broken", encoding="utf-8")
+
+            course = get_course(courses_dir, "course")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertIsNone(course.quiz)
+
+    def test_quiz_with_damaged_question_is_rejected_entirely(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = _write_minimal_course(courses_dir, "course")
+
+            quiz = _valid_quiz_payload(slug="course")
+            quiz["questions"].append(
+                {
+                    "id": "q2",
+                    "type": "single_choice",
+                    "text": "",
+                    "options": [
+                        {"id": "a", "text": "Answer A"},
+                        {"id": "b", "text": "Answer B"},
+                    ],
+                    "correct_option_ids": ["a"],
+                }
+            )
+            _write_quiz(course_dir, quiz)
+
+            course = get_course(courses_dir, "course")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertIsNone(course.quiz)
+
+    def test_quiz_with_duplicate_option_id_is_rejected_entirely(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = _write_minimal_course(courses_dir, "course")
+
+            quiz = _valid_quiz_payload(slug="course")
+            quiz["questions"][0]["options"] = [
+                {"id": "a", "text": "Answer A"},
+                {"id": "a", "text": "Answer B"},
+            ]
+            _write_quiz(course_dir, quiz)
+
+            course = get_course(courses_dir, "course")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertIsNone(course.quiz)
+
+    def test_quiz_with_unknown_correct_option_is_rejected_entirely(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = _write_minimal_course(courses_dir, "course")
+
+            quiz = _valid_quiz_payload(slug="course")
+            quiz["questions"][0]["correct_option_ids"] = ["missing"]
+            _write_quiz(course_dir, quiz)
+
+            course = get_course(courses_dir, "course")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertIsNone(course.quiz)
+
+    def test_valid_quiz_still_loads_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _write_minimal_course(courses_dir, "with_quiz", with_quiz=True)
+
+            course = get_course(courses_dir, "with_quiz")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertIsNotNone(course.quiz)
+        quiz = course.quiz
+        assert quiz is not None
+        self.assertEqual(quiz.id, "with_quiz_quiz")
+        self.assertEqual(len(quiz.questions), 1)
+        self.assertEqual(quiz.questions[0].id, "q1")
+        self.assertEqual(len(quiz.questions[0].options), 2)
+
+    def test_archived_course_is_not_returned(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _write_minimal_course(courses_dir, "archived_course", status="archived")
+
+            courses = scan_courses(courses_dir)
+            course = get_course(courses_dir, "archived_course")
+
+        self.assertEqual(courses, [])
+        self.assertIsNone(course)
+
+    def test_oserror_on_base_dir_iterdir_returns_empty_list(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _write_minimal_course(courses_dir, "good")
+
+            with patch.object(
+                Path,
+                "iterdir",
+                side_effect=OSError("permission denied"),
+            ):
+                courses = load_published_courses(courses_dir)
+
+        self.assertEqual(courses, [])
+
+    def test_oserror_on_single_course_does_not_block_other(self) -> None:
+        original_load = runtime_loader._load_course_from_directory
+
+        def load_with_oserror(course_dir: Path):
+            if course_dir.name == "broken":
+                raise OSError("read error")
+            return original_load(course_dir)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _write_minimal_course(courses_dir, "good")
+            _write_minimal_course(courses_dir, "broken")
+
+            with patch.object(
+                runtime_loader,
+                "_load_course_from_directory",
+                side_effect=load_with_oserror,
+            ):
+                courses = scan_courses(courses_dir)
+
+        self.assertEqual(len(courses), 1)
+        self.assertEqual(courses[0].slug, "good")
 
 
 if __name__ == "__main__":

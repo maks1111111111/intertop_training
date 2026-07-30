@@ -118,14 +118,18 @@ def _parse_course_version(metadata: dict) -> int:
     return raw_version
 
 
-def _read_json(path: Path) -> dict:
+def _read_json_object(path: Path) -> Optional[dict]:
+    """Read a JSON file and return its root object, or ``None`` on failure."""
     try:
         with path.open("r", encoding="utf-8") as file:
             data = json.load(file)
     except (OSError, json.JSONDecodeError):
-        return {}
+        return None
 
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return None
+
+    return data
 
 
 def _find_file(directory: Path, filenames: tuple[str, ...]) -> Optional[Path]:
@@ -144,7 +148,9 @@ def _load_lesson(lesson_dir: Path) -> Optional[Lesson]:
     if not metadata_path.is_file():
         return None
 
-    metadata = _read_json(metadata_path)
+    metadata = _read_json_object(metadata_path)
+    if metadata is None:
+        return None
 
     title = str(metadata.get("title") or lesson_dir.name)
     description = str(metadata.get("description") or "")
@@ -168,15 +174,140 @@ def _load_lesson(lesson_dir: Path) -> Optional[Lesson]:
     )
 
 
+def _parse_quiz_option(raw_option: object) -> Optional[QuizOption]:
+    if not isinstance(raw_option, dict):
+        return None
+
+    option_id_raw = raw_option.get("id")
+    if not isinstance(option_id_raw, str):
+        return None
+    option_id = option_id_raw.strip()
+    if not option_id:
+        return None
+
+    option_text_raw = raw_option.get("text")
+    if not isinstance(option_text_raw, str):
+        return None
+    option_text = option_text_raw.strip()
+    if not option_text:
+        return None
+
+    return QuizOption(id=option_id, text=option_text)
+
+
+def _parse_quiz_question(raw_question: object) -> Optional[QuizQuestion]:
+    if not isinstance(raw_question, dict):
+        return None
+
+    if raw_question.get("type") != "single_choice":
+        return None
+
+    question_id_raw = raw_question.get("id")
+    if not isinstance(question_id_raw, str):
+        return None
+    question_id = question_id_raw.strip()
+    if not question_id:
+        return None
+
+    question_text_raw = raw_question.get("text")
+    if not isinstance(question_text_raw, str):
+        return None
+    question_text = question_text_raw.strip()
+    if not question_text:
+        return None
+
+    raw_options = raw_question.get("options")
+    if not isinstance(raw_options, list):
+        return None
+
+    options: list[QuizOption] = []
+    option_ids: set[str] = set()
+
+    for raw_option in raw_options:
+        option = _parse_quiz_option(raw_option)
+        if option is None:
+            return None
+
+        if option.id in option_ids:
+            return None
+
+        option_ids.add(option.id)
+        options.append(option)
+
+    if len(options) < 2:
+        return None
+
+    raw_correct_option_ids = raw_question.get("correct_option_ids")
+    if (
+        not isinstance(raw_correct_option_ids, list)
+        or len(raw_correct_option_ids) != 1
+    ):
+        return None
+
+    correct_option_id_raw = raw_correct_option_ids[0]
+    if not isinstance(correct_option_id_raw, str):
+        return None
+    correct_option_id = correct_option_id_raw.strip()
+    if not correct_option_id:
+        return None
+
+    if correct_option_id not in option_ids:
+        return None
+
+    explanation = raw_question.get("explanation")
+    if not isinstance(explanation, str):
+        explanation = ""
+    else:
+        explanation = explanation.strip()
+
+    lesson_raw = raw_question.get("lesson", "")
+    if isinstance(lesson_raw, str):
+        lesson = lesson_raw.strip()
+    else:
+        lesson = ""
+
+    try:
+        difficulty = int(raw_question.get("difficulty", 1))
+    except (TypeError, ValueError):
+        difficulty = 1
+
+    raw_tags = raw_question.get("tags", [])
+    tags: list[str] = []
+    if isinstance(raw_tags, list):
+        for tag in raw_tags:
+            if isinstance(tag, str):
+                tag_text = tag.strip()
+                if tag_text:
+                    tags.append(tag_text)
+
+    ai_context_raw = raw_question.get("ai_context", "")
+    if isinstance(ai_context_raw, str):
+        ai_context = ai_context_raw.strip()
+    else:
+        ai_context = ""
+
+    return QuizQuestion(
+        id=question_id,
+        question_type="single_choice",
+        text=question_text,
+        options=options,
+        correct_option_ids=[correct_option_id],
+        explanation=explanation,
+        lesson=lesson,
+        difficulty=difficulty,
+        tags=tags,
+        ai_context=ai_context,
+    )
+
+
 def _load_quiz(course_dir: Path) -> Optional[Quiz]:
     quiz_path = course_dir / QUIZ_JSON_FILENAME
 
     if not quiz_path.is_file():
         return None
 
-    data = _read_json(quiz_path)
-
-    if not data:
+    data = _read_json_object(quiz_path)
+    if data is None:
         return None
 
     course_slug = course_dir.name
@@ -225,142 +356,22 @@ def _load_quiz(course_dir: Path) -> Optional[Quiz]:
         randomize_options = True
 
     raw_questions = data.get("questions")
-    if not isinstance(raw_questions, list):
+    if not isinstance(raw_questions, list) or not raw_questions:
         return None
 
     questions: list[QuizQuestion] = []
     seen_question_ids: set[str] = set()
 
     for raw_question in raw_questions:
-        if not isinstance(raw_question, dict):
-            continue
+        question = _parse_quiz_question(raw_question)
+        if question is None:
+            return None
 
-        if raw_question.get("type") != "single_choice":
-            continue
+        if question.id in seen_question_ids:
+            return None
 
-        question_id_raw = raw_question.get("id")
-        if not isinstance(question_id_raw, str):
-            continue
-        question_id = question_id_raw.strip()
-        if not question_id:
-            continue
-
-        if question_id in seen_question_ids:
-            continue
-
-        question_text_raw = raw_question.get("text")
-        if not isinstance(question_text_raw, str):
-            continue
-        question_text = question_text_raw.strip()
-        if not question_text:
-            continue
-
-        raw_options = raw_question.get("options")
-        if not isinstance(raw_options, list):
-            continue
-
-        options: list[QuizOption] = []
-        option_ids: set[str] = set()
-        duplicate_option_id = False
-
-        for raw_option in raw_options:
-            if not isinstance(raw_option, dict):
-                continue
-
-            option_id_raw = raw_option.get("id")
-            if not isinstance(option_id_raw, str):
-                continue
-            option_id = option_id_raw.strip()
-            if not option_id:
-                continue
-
-            if option_id in option_ids:
-                duplicate_option_id = True
-                break
-
-            option_text_raw = raw_option.get("text")
-            if not isinstance(option_text_raw, str):
-                continue
-            option_text = option_text_raw.strip()
-            if not option_text:
-                continue
-
-            option_ids.add(option_id)
-            options.append(QuizOption(id=option_id, text=option_text))
-
-        if duplicate_option_id:
-            continue
-
-        if len(options) < 2:
-            continue
-
-        raw_correct_option_ids = raw_question.get("correct_option_ids")
-        if (
-            not isinstance(raw_correct_option_ids, list)
-            or len(raw_correct_option_ids) != 1
-        ):
-            continue
-
-        correct_option_id_raw = raw_correct_option_ids[0]
-        if not isinstance(correct_option_id_raw, str):
-            continue
-        correct_option_id = correct_option_id_raw.strip()
-        if not correct_option_id:
-            continue
-
-        if correct_option_id not in option_ids:
-            continue
-
-        explanation = raw_question.get("explanation")
-        if not isinstance(explanation, str):
-            explanation = ""
-        else:
-            explanation = explanation.strip()
-
-        lesson_raw = raw_question.get("lesson", "")
-        if isinstance(lesson_raw, str):
-            lesson = lesson_raw.strip()
-        else:
-            lesson = ""
-
-        try:
-            difficulty = int(raw_question.get("difficulty", 1))
-        except (TypeError, ValueError):
-            difficulty = 1
-
-        raw_tags = raw_question.get("tags", [])
-        tags: list[str] = []
-        if isinstance(raw_tags, list):
-            for tag in raw_tags:
-                if isinstance(tag, str):
-                    tag_text = tag.strip()
-                    if tag_text:
-                        tags.append(tag_text)
-
-        ai_context_raw = raw_question.get("ai_context", "")
-        if isinstance(ai_context_raw, str):
-            ai_context = ai_context_raw.strip()
-        else:
-            ai_context = ""
-
-        seen_question_ids.add(question_id)
-        questions.append(
-            QuizQuestion(
-                id=question_id,
-                question_type="single_choice",
-                text=question_text,
-                options=options,
-                correct_option_ids=[correct_option_id],
-                explanation=explanation,
-                lesson=lesson,
-                difficulty=difficulty,
-                tags=tags,
-                ai_context=ai_context,
-            )
-        )
-
-    if not questions:
-        return None
+        seen_question_ids.add(question.id)
+        questions.append(question)
 
     return Quiz(
         id=quiz_id,
@@ -373,13 +384,23 @@ def _load_quiz(course_dir: Path) -> Optional[Quiz]:
     )
 
 
+def _list_course_directories(base_dir: Path) -> list[Path]:
+    """Return immediate child directories of ``base_dir``, or ``[]`` on failure."""
+    try:
+        return [entry for entry in base_dir.iterdir() if entry.is_dir()]
+    except OSError:
+        return []
+
+
 def _load_course_from_directory(course_dir: Path) -> Optional[tuple[int, Course]]:
     metadata_path = course_dir / COURSE_JSON_FILENAME
 
     if not metadata_path.is_file():
         return None
 
-    metadata = _read_json(metadata_path)
+    metadata = _read_json_object(metadata_path)
+    if metadata is None:
+        return None
 
     title = str(metadata.get("title") or course_dir.name)
 
@@ -427,11 +448,11 @@ def load_published_courses(base_dir: Path) -> list[Course]:
 
     loaded_courses: list[tuple[int, Course]] = []
 
-    for course_dir in base_dir.iterdir():
-        if not course_dir.is_dir():
+    for course_dir in _list_course_directories(base_dir):
+        try:
+            loaded_course = _load_course_from_directory(course_dir)
+        except OSError:
             continue
-
-        loaded_course = _load_course_from_directory(course_dir)
 
         if loaded_course is not None:
             loaded_courses.append(loaded_course)
