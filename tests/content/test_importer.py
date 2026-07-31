@@ -90,14 +90,25 @@ class ReadSourceTests(unittest.TestCase):
         self.assertEqual(result, "extracted pdf text")
         mock_read.assert_called_once_with(path)
 
-    def test_missing_reader_raises_value_error(self) -> None:
+    @patch("app.content.docx_reader.DocxReader.read")
+    def test_read_source_docx_uses_docx_reader(self, mock_read: MagicMock) -> None:
+        mock_read.return_value = "extracted docx text"
         importer = CourseImporter()
         path = Path("/tmp/course.docx")
+
+        result = importer.read_source(path)
+
+        self.assertEqual(result, "extracted docx text")
+        mock_read.assert_called_once_with(path)
+
+    def test_missing_reader_raises_value_error(self) -> None:
+        importer = CourseImporter()
+        path = Path("/tmp/course.pptx")
 
         with self.assertRaises(ValueError) as context:
             importer.read_source(path)
 
-        self.assertIn("No reader registered for source type: docx", str(context.exception))
+        self.assertIn("No reader registered for source type: pptx", str(context.exception))
 
     def test_injected_mock_reader_via_constructor(self) -> None:
         mock_reader = MagicMock()
