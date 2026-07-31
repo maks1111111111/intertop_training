@@ -14,6 +14,7 @@ from typing import Optional
 from app.content.docx_reader import DocxReader
 from app.content.import_readers import ImportReader
 from app.content.pdf_reader import PdfReader
+from app.content.pptx_reader import PptxReader
 
 _SUPPORTED_EXTENSIONS = {
     ".pdf": "pdf",
@@ -43,6 +44,7 @@ def _default_readers() -> dict[str, ImportReader]:
     return {
         "pdf": PdfReader(),
         "docx": DocxReader(),
+        "pptx": PptxReader(),
     }
 
 
