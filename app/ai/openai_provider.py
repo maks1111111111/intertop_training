@@ -14,6 +14,7 @@ from app.ai.interfaces import (
     LessonGenerationRequest,
     LessonGenerationResult,
 )
+from app.ai.prompt_builder import PromptBuilder
 
 
 class OpenAICourseGenerationAI:
@@ -23,15 +24,21 @@ class OpenAICourseGenerationAI:
         self,
         model: str,
         client: Optional[AIClient] = None,
+        prompt_builder: Optional[PromptBuilder] = None,
     ) -> None:
         self._model = model
         self._client = client if client is not None else DummyAIClient()
+        self._prompt_builder = (
+            prompt_builder if prompt_builder is not None else PromptBuilder()
+        )
 
     def generate_lessons(
         self,
         request: LessonGenerationRequest,
     ) -> LessonGenerationResult:
         """Generate or refine lessons via OpenAI."""
+        prompt = self._prompt_builder.build_lesson_generation_prompt(request)
+        response = self._client.generate(prompt)
         raise NotImplementedError(
-            "OpenAI integration is not implemented yet."
+            "Lesson parsing is not implemented yet."
         )
