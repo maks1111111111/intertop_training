@@ -7,11 +7,9 @@ in a later PR.
 
 from __future__ import annotations
 
-try:
-    from openai import OpenAI
-except ImportError:
-    OpenAI = None  # type: ignore[misc, assignment]
+from typing import Optional
 
+from app.ai.client import AIClient, DummyAIClient
 from app.ai.interfaces import (
     LessonGenerationRequest,
     LessonGenerationResult,
@@ -21,13 +19,13 @@ from app.ai.interfaces import (
 class OpenAICourseGenerationAI:
     """OpenAI-backed implementation of :class:`CourseGenerationAI`."""
 
-    def __init__(self, model: str) -> None:
-        if OpenAI is None:
-            raise RuntimeError(
-                "OpenAI SDK is not installed."
-            )
-        self._client = OpenAI()
+    def __init__(
+        self,
+        model: str,
+        client: Optional[AIClient] = None,
+    ) -> None:
         self._model = model
+        self._client = client if client is not None else DummyAIClient()
 
     def generate_lessons(
         self,
