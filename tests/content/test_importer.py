@@ -5,7 +5,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from app.content.importer import CourseImporter, ImportResult, ImportSource
 
@@ -74,6 +74,41 @@ class PrepareImportTests(unittest.TestCase):
         self.assertEqual(result.source.path, path)
         self.assertEqual(result.source.source_type, "pdf")
         self.assertIsNotNone(result.imported_at)
+
+
+class ReadSourceTests(unittest.TestCase):
+    """Tests for :meth:`CourseImporter.read_source`."""
+
+    @patch("app.content.pdf_reader.PdfReader.read")
+    def test_read_source_pdf_uses_pdf_reader(self, mock_read: MagicMock) -> None:
+        mock_read.return_value = "extracted pdf text"
+        importer = CourseImporter()
+        path = Path("/tmp/course.pdf")
+
+        result = importer.read_source(path)
+
+        self.assertEqual(result, "extracted pdf text")
+        mock_read.assert_called_once_with(path)
+
+    def test_missing_reader_raises_value_error(self) -> None:
+        importer = CourseImporter()
+        path = Path("/tmp/course.docx")
+
+        with self.assertRaises(ValueError) as context:
+            importer.read_source(path)
+
+        self.assertIn("No reader registered for source type: docx", str(context.exception))
+
+    def test_injected_mock_reader_via_constructor(self) -> None:
+        mock_reader = MagicMock()
+        mock_reader.read.return_value = "custom extracted text"
+        importer = CourseImporter(readers={"pdf": mock_reader})
+        path = Path("/tmp/course.pdf")
+
+        result = importer.read_source(path)
+
+        self.assertEqual(result, "custom extracted text")
+        mock_reader.read.assert_called_once_with(path)
 
 
 if __name__ == "__main__":
