@@ -7,8 +7,11 @@ import io
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
+from app.ai.interfaces import LessonGenerationResult
 from app.content.cli import main
+from app.content.lesson_builder import LessonCandidate
 
 
 def _create_valid_course(courses_dir: Path, slug: str = "valid") -> Path:
@@ -53,6 +56,14 @@ def _run_cli(courses_dir: Path) -> tuple[int, str]:
     stdout = io.StringIO()
     with contextlib.redirect_stdout(stdout):
         exit_code = main([str(courses_dir)])
+    return exit_code, stdout.getvalue()
+
+
+def _run_generate_cli(document_path: Path) -> tuple[int, str]:
+    """Run the generate subcommand and capture stdout."""
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        exit_code = main(["generate", str(document_path)])
     return exit_code, stdout.getvalue()
 
 
@@ -172,6 +183,68 @@ class ContentCliTests(unittest.TestCase):
         a_index = output.index("Course: a_course")
         z_index = output.index("Course: z_course")
         self.assertLess(a_index, z_index)
+
+
+class GenerateCliTests(unittest.TestCase):
+    """Tests for the ``generate`` CLI subcommand."""
+
+    @patch("app.content.cli.create_imported_text_generation_service")
+    @patch("app.content.cli.CourseImporter")
+    def test_generate_calls_importer_and_bootstrap(
+        self,
+        mock_importer_class: MagicMock,
+        mock_create_service: MagicMock,
+    ) -> None:
+        mock_importer = MagicMock()
+        mock_importer_class.return_value = mock_importer
+        mock_importer.read_source.return_value = "imported text"
+
+        mock_service = MagicMock()
+        mock_create_service.return_value = mock_service
+        mock_service.generate_from_text.return_value = LessonGenerationResult(
+            lessons=[
+                LessonCandidate(
+                    title="First lesson",
+                    content="Content one.",
+                ),
+                LessonCandidate(
+                    title="Second lesson",
+                    content="Content two.",
+                ),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            document_path = Path(tmp) / "course.pdf"
+            document_path.write_text("dummy", encoding="utf-8")
+            exit_code, output = _run_generate_cli(document_path)
+
+        self.assertEqual(exit_code, 0)
+        mock_importer_class.assert_called_once_with()
+        mock_importer.read_source.assert_called_once_with(document_path)
+        mock_create_service.assert_called_once_with()
+        mock_service.generate_from_text.assert_called_once_with(
+            "imported text",
+        )
+        self.assertIn("Generated lessons:", output)
+        self.assertIn("1. First lesson", output)
+        self.assertIn("2. Second lesson", output)
+
+    @patch("app.content.cli.create_imported_text_generation_service")
+    @patch("app.content.cli.CourseImporter")
+    def test_generate_missing_document(
+        self,
+        mock_importer_class: MagicMock,
+        mock_create_service: MagicMock,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            missing_path = Path(tmp) / "missing.pdf"
+            exit_code, output = _run_generate_cli(missing_path)
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("does not exist or is not a file", output)
+        mock_importer_class.assert_not_called()
+        mock_create_service.assert_not_called()
 
 
 if __name__ == "__main__":
