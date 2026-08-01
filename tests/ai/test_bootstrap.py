@@ -5,9 +5,15 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from app.ai.bootstrap import create_course_generation_service
+from app.ai.bootstrap import (
+    create_course_generation_service,
+    create_imported_text_generation_service,
+)
 from app.ai.config import OpenAIConfig
 from app.ai.service import CourseGenerationService
+from app.services.imported_text_generation_service import (
+    ImportedTextGenerationService,
+)
 
 
 class CreateCourseGenerationServiceTests(unittest.TestCase):
@@ -74,6 +80,46 @@ class CreateCourseGenerationServiceTests(unittest.TestCase):
         service = create_course_generation_service()
 
         self.assertIs(service._provider, mock_provider)
+
+
+class CreateImportedTextGenerationServiceTests(unittest.TestCase):
+    """Tests for :func:`create_imported_text_generation_service`."""
+
+    @patch("app.ai.bootstrap.ImportedTextGenerationService")
+    @patch("app.ai.bootstrap.CourseGenerationFlowService")
+    @patch("app.ai.bootstrap.CourseGenerationPipelineService")
+    @patch("app.ai.bootstrap.create_course_generation_service")
+    def test_wires_imported_text_generation_service(
+        self,
+        mock_create_course_generation_service: MagicMock,
+        mock_pipeline_service_class: MagicMock,
+        mock_flow_service_class: MagicMock,
+        mock_imported_text_service_class: MagicMock,
+    ) -> None:
+        mock_course_generation_service = MagicMock(spec=CourseGenerationService)
+        mock_create_course_generation_service.return_value = (
+            mock_course_generation_service
+        )
+        mock_pipeline_service = MagicMock()
+        mock_pipeline_service_class.return_value = mock_pipeline_service
+        mock_flow_service = MagicMock()
+        mock_flow_service_class.return_value = mock_flow_service
+        mock_imported_text_service = MagicMock(spec=ImportedTextGenerationService)
+        mock_imported_text_service_class.return_value = mock_imported_text_service
+
+        result = create_imported_text_generation_service()
+
+        mock_create_course_generation_service.assert_called_once_with()
+        mock_pipeline_service_class.assert_called_once_with(
+            mock_course_generation_service,
+        )
+        mock_flow_service_class.assert_called_once_with(
+            mock_pipeline_service,
+        )
+        mock_imported_text_service_class.assert_called_once_with(
+            flow_service=mock_flow_service,
+        )
+        self.assertIs(result, mock_imported_text_service)
 
 
 if __name__ == "__main__":
