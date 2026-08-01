@@ -9,6 +9,24 @@ from app.ai.prompt_builder import PromptBuilder
 from app.content.lesson_builder import LessonCandidate
 
 
+def _json_instruction_lines() -> list[str]:
+    return [
+        "Return ONLY valid JSON.",
+        "Do not use Markdown.",
+        "Do not wrap JSON in code fences.",
+        "Use this schema:",
+        "",
+        "{",
+        '  "lessons": [',
+        "    {",
+        '      "title": "...",',
+        '      "content": "..."',
+        "    }",
+        "  ]",
+        "}",
+    ]
+
+
 class PromptBuilderTests(unittest.TestCase):
     """Tests for :class:`PromptBuilder`."""
 
@@ -37,6 +55,8 @@ class PromptBuilderTests(unittest.TestCase):
                 [
                     "Generate training lessons.",
                     "",
+                    *_json_instruction_lines(),
+                    "",
                     "Lesson 1:",
                     "Title: Section 1",
                     "",
@@ -61,6 +81,8 @@ class PromptBuilderTests(unittest.TestCase):
             "\n".join(
                 [
                     "Generate training lessons.",
+                    "",
+                    *_json_instruction_lines(),
                     "",
                     "Lesson 1:",
                     "Title: Section 1",
@@ -111,6 +133,20 @@ class PromptBuilderTests(unittest.TestCase):
 
         self.assertIn(f"Title: {title}", prompt)
         self.assertIn(content, prompt)
+
+    def test_prompt_requires_structured_json_response(self) -> None:
+        request = LessonGenerationRequest(
+            lessons=[
+                LessonCandidate(title="Section 1", content="First content."),
+            ]
+        )
+
+        prompt = self.builder.build_lesson_generation_prompt(request)
+
+        self.assertIn("Return ONLY valid JSON", prompt)
+        self.assertIn('"lessons"', prompt)
+        self.assertIn('"title"', prompt)
+        self.assertIn('"content"', prompt)
 
 
 if __name__ == "__main__":

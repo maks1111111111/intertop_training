@@ -28,7 +28,24 @@ class PromptBuilder:
         if not request.lessons:
             return ""
 
-        lines = ["Generate training lessons.", ""]
+        lines = [
+            "Generate training lessons.",
+            "",
+            "Return ONLY valid JSON.",
+            "Do not use Markdown.",
+            "Do not wrap JSON in code fences.",
+            "Use this schema:",
+            "",
+            "{",
+            '  "lessons": [',
+            "    {",
+            '      "title": "...",',
+            '      "content": "..."',
+            "    }",
+            "  ]",
+            "}",
+            "",
+        ]
 
         for index, lesson in enumerate(request.lessons, start=1):
             lines.extend(
