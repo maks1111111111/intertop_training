@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from app.ai.client import DummyAIClient
+from app.ai.config import OpenAIConfig
 from app.ai.interfaces import (
     LessonGenerationRequest,
     LessonGenerationResult,
@@ -209,6 +210,65 @@ class OpenAICourseGenerationAITests(unittest.TestCase):
         result = provider.generate_lessons(request)
 
         self.assertIs(result, expected_result)
+
+
+class OpenAICourseGenerationAIFromConfigTests(unittest.TestCase):
+    """Tests for :meth:`OpenAICourseGenerationAI.from_config`."""
+
+    @patch("app.ai.openai_provider.OpenAIClient")
+    def test_from_config_creates_provider_with_openai_client(
+        self,
+        mock_openai_client_class: MagicMock,
+    ) -> None:
+        config = OpenAIConfig(api_key="test-key", model="gpt-4o")
+        mock_client_instance = MagicMock()
+        mock_openai_client_class.return_value = mock_client_instance
+
+        provider = OpenAICourseGenerationAI.from_config(config)
+
+        mock_openai_client_class.assert_called_once_with(config)
+        self.assertIs(provider._client, mock_client_instance)
+        self.assertEqual(provider._model, "gpt-4o")
+
+    @patch("app.ai.openai_provider.OpenAIClient")
+    def test_from_config_uses_default_prompt_builder(
+        self,
+        mock_openai_client_class: MagicMock,
+    ) -> None:
+        config = OpenAIConfig(api_key="test-key", model="gpt-4o")
+        mock_openai_client_class.return_value = MagicMock()
+
+        provider = OpenAICourseGenerationAI.from_config(config)
+
+        self.assertIsInstance(provider._prompt_builder, PromptBuilder)
+
+    @patch("app.ai.openai_provider.OpenAIClient")
+    def test_from_config_uses_default_response_parser(
+        self,
+        mock_openai_client_class: MagicMock,
+    ) -> None:
+        config = OpenAIConfig(api_key="test-key", model="gpt-4o")
+        mock_openai_client_class.return_value = MagicMock()
+
+        provider = OpenAICourseGenerationAI.from_config(config)
+
+        self.assertIsInstance(provider._response_parser, AIResponseParser)
+
+    @patch("app.ai.openai_provider.OpenAIClient")
+    def test_from_config_uses_injected_client_instead_of_openai_client(
+        self,
+        mock_openai_client_class: MagicMock,
+    ) -> None:
+        config = OpenAIConfig(api_key="test-key", model="gpt-4o")
+        injected_client = MagicMock()
+
+        provider = OpenAICourseGenerationAI.from_config(
+            config,
+            client=injected_client,
+        )
+
+        mock_openai_client_class.assert_not_called()
+        self.assertIs(provider._client, injected_client)
 
 
 if __name__ == "__main__":

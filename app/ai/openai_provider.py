@@ -10,10 +10,12 @@ from __future__ import annotations
 from typing import Optional
 
 from app.ai.client import AIClient, DummyAIClient
+from app.ai.config import OpenAIConfig
 from app.ai.interfaces import (
     LessonGenerationRequest,
     LessonGenerationResult,
 )
+from app.ai.openai_client import OpenAIClient
 from app.ai.prompt_builder import PromptBuilder
 from app.ai.response_parser import AIResponseParser
 
@@ -37,6 +39,25 @@ class OpenAICourseGenerationAI:
             response_parser
             if response_parser is not None
             else AIResponseParser()
+        )
+
+    @classmethod
+    def from_config(
+        cls,
+        config: OpenAIConfig,
+        client: Optional[AIClient] = None,
+        prompt_builder: Optional[PromptBuilder] = None,
+        response_parser: Optional[AIResponseParser] = None,
+    ) -> OpenAICourseGenerationAI:
+        """Create a provider wired with :class:`OpenAIClient` from *config*."""
+        resolved_client = (
+            client if client is not None else OpenAIClient(config)
+        )
+        return cls(
+            model=config.model,
+            client=resolved_client,
+            prompt_builder=prompt_builder,
+            response_parser=response_parser,
         )
 
     def generate_lessons(
