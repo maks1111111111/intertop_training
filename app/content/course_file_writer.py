@@ -1,7 +1,7 @@
 """Write course drafts to the filesystem as Content Engine layout.
 
 Persists :class:`CourseDraft` metadata as ``course.json`` and per-lesson
-``lesson.json`` files without writing full lesson body content.
+``lesson.json`` files compatible with the runtime Content Engine contract.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ class CourseFileWriter:
     def write(self, draft: CourseDraft, destination: Path) -> Path:
         """Write course metadata and lesson manifests under ``destination``.
 
-        Creates ``course.json`` and ``lesson_XX/lesson.json`` files without
-        writing full lesson body content.
+        Creates ``course.json`` and ``lesson_XX/lesson.json`` files using
+        runtime-compatible field names (``order``, ``title``, ``description``).
 
         Args:
             draft: In-memory course draft from :class:`CourseWriter`.
@@ -53,10 +53,9 @@ class CourseFileWriter:
             lesson_dir.mkdir(parents=True, exist_ok=True)
 
             lesson_manifest = {
-                "number": index,
+                "order": index,
                 "title": lesson.title,
-                "summary": lesson.summary or "",
-                "learning_objectives": list(lesson.learning_objectives),
+                "description": lesson.content,
             }
             _write_json(lesson_dir / LESSON_JSON_FILENAME, lesson_manifest)
 

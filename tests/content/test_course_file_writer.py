@@ -21,7 +21,7 @@ def _sample_draft() -> CourseDraft:
         lessons=(
             LessonCandidate(
                 title="Lesson One",
-                content="Full lesson body that must not be written.",
+                content="Full lesson body for lesson one.",
                 summary="First summary.",
                 learning_objectives=("Objective A", "Objective B"),
             ),
@@ -70,7 +70,7 @@ class CourseFileWriterTests(unittest.TestCase):
                 },
             )
 
-    def test_writes_lesson_json_metadata_without_content(self) -> None:
+    def test_writes_lesson_json_with_runtime_contract_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             course_dir = Path(tmp) / "safety-training"
             self.writer.write(_sample_draft(), course_dir)
@@ -85,23 +85,23 @@ class CourseFileWriterTests(unittest.TestCase):
             self.assertEqual(
                 first_lesson,
                 {
-                    "number": 1,
+                    "order": 1,
                     "title": "Lesson One",
-                    "summary": "First summary.",
-                    "learning_objectives": ["Objective A", "Objective B"],
+                    "description": "Full lesson body for lesson one.",
                 },
             )
             self.assertEqual(
                 second_lesson,
                 {
-                    "number": 2,
+                    "order": 2,
                     "title": "Lesson Two",
-                    "summary": "Second summary.",
-                    "learning_objectives": ["Objective C"],
+                    "description": "Second lesson body.",
                 },
             )
+            self.assertNotIn("number", first_lesson)
+            self.assertNotIn("summary", first_lesson)
+            self.assertNotIn("learning_objectives", first_lesson)
             self.assertNotIn("content", first_lesson)
-            self.assertNotIn("content", second_lesson)
 
     def test_lesson_order_is_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -127,10 +127,11 @@ class CourseFileWriterTests(unittest.TestCase):
             third_lesson = json.loads(
                 (course_dir / "lesson_03" / "lesson.json").read_text(encoding="utf-8")
             )
-            self.assertEqual(third_lesson["number"], 3)
+            self.assertEqual(third_lesson["order"], 3)
             self.assertEqual(third_lesson["title"], "Gamma")
+            self.assertEqual(third_lesson["description"], "gamma body")
 
-    def test_legacy_lesson_uses_empty_summary_and_objectives(self) -> None:
+    def test_legacy_lesson_writes_content_as_description(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             course_dir = Path(tmp) / "legacy-course"
             draft = CourseDraft(
@@ -152,8 +153,12 @@ class CourseFileWriterTests(unittest.TestCase):
                 (course_dir / "lesson_01" / "lesson.json").read_text(encoding="utf-8")
             )
 
-            self.assertEqual(lesson_manifest["summary"], "")
-            self.assertEqual(lesson_manifest["learning_objectives"], [])
+            self.assertEqual(lesson_manifest["order"], 1)
+            self.assertEqual(lesson_manifest["title"], "Legacy Lesson")
+            self.assertEqual(lesson_manifest["description"], "Legacy content only.")
+            self.assertNotIn("number", lesson_manifest)
+            self.assertNotIn("summary", lesson_manifest)
+            self.assertNotIn("learning_objectives", lesson_manifest)
             self.assertNotIn("content", lesson_manifest)
 
     def test_empty_lessons_writes_only_course_json(self) -> None:
