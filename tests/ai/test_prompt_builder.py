@@ -26,6 +26,7 @@ def _json_instruction_lines() -> list[str]:
         "    {",
         '      "title": "...",',
         '      "summary": "...",',
+        '      "content": "...",',
         '      "learning_objectives": [',
         '        "...",',
         '        "..."',
@@ -42,6 +43,10 @@ def _json_instruction_lines() -> list[str]:
         '- "lessons": one entry per source section, in the same order.',
         '- "title": lesson title.',
         '- "summary": brief description of the lesson (2-4 sentences).',
+        '- "content": main educational material for the lesson;',
+        "  write 5-15 paragraphs using information from the source",
+        "  material; do not use generic filler; do not reduce the",
+        "  lesson to a summary; write a complete training lesson.",
         '- "learning_objectives": list of short, measurable outcomes.',
     ]
 
@@ -54,8 +59,8 @@ def _task_instruction_lines() -> list[str]:
         "1. Infer a concise course title and description from the material.",
         "2. Detect the primary language of the material.",
         "3. Transform each source section into a training lesson.",
-        "4. For every lesson provide a title, a brief summary, and",
-        "   learning objectives.",
+        "4. For every lesson provide a title, a brief summary, full",
+        "   lesson content, and learning objectives.",
         "",
     ]
 
@@ -184,7 +189,9 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn('"lessons"', prompt)
         self.assertIn('"title"', prompt)
         self.assertIn('"summary"', prompt)
+        self.assertIn('"content"', prompt)
         self.assertIn('"learning_objectives"', prompt)
+        self.assertIn("5-15 paragraphs", prompt)
         self.assertIn("This field is required.", prompt)
 
     def test_prompt_describes_course_and_lesson_fields(self) -> None:

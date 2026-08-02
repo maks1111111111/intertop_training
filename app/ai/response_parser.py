@@ -128,14 +128,16 @@ def _parse_lesson_fields(
                 f"Lesson at index {index} field 'summary' must be a string."
             )
         summary = raw_summary
-    elif content_present:
+
+    if content_present:
         raw_content = item["content"]
         if not isinstance(raw_content, str):
             raise ValueError(
                 f"Lesson at index {index} field 'content' must be a string."
             )
         content = raw_content
-    else:
+
+    if not summary_present and not content_present:
         raise ValueError(
             f"Lesson at index {index} is missing 'summary' or 'content'."
         )

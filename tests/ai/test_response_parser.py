@@ -99,6 +99,48 @@ class AIResponseParserTests(unittest.TestCase):
         self.assertEqual(result.lessons[1].title, "Lesson Two")
         self.assertEqual(result.lessons[1].content, "Second lesson content.")
 
+    def test_extended_json_with_course_summary_and_content(self) -> None:
+        response = json.dumps(
+            {
+                "course": {
+                    "title": "Safety Training",
+                    "description": "Introductory safety course.",
+                    "language": "en",
+                },
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "summary": "First lesson summary.",
+                        "content": "First lesson full content.",
+                        "learning_objectives": [
+                            "Objective A",
+                            "Objective B",
+                        ],
+                    }
+                ],
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        self.assertEqual(len(result.lessons), 1)
+        self.assertEqual(
+            result.course,
+            GeneratedCourseMetadata(
+                title="Safety Training",
+                description="Introductory safety course.",
+                language="en",
+            ),
+        )
+        self.assertEqual(result.lessons[0].title, "Lesson One")
+        self.assertEqual(result.lessons[0].summary, "First lesson summary.")
+        self.assertEqual(result.lessons[0].content, "First lesson full content.")
+        self.assertNotEqual(result.lessons[0].content, "")
+        self.assertEqual(
+            result.lessons[0].learning_objectives,
+            ("Objective A", "Objective B"),
+        )
+
     def test_extended_json_with_course_and_summary(self) -> None:
         response = json.dumps(
             {
