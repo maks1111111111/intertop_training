@@ -14,16 +14,49 @@ def _json_instruction_lines() -> list[str]:
         "Return ONLY valid JSON.",
         "Do not use Markdown.",
         "Do not wrap JSON in code fences.",
-        "Use this schema:",
+        "Use exactly this schema:",
         "",
         "{",
+        '  "course": {',
+        '    "title": "...",',
+        '    "description": "...",',
+        '    "language": "..."',
+        "  },",
         '  "lessons": [',
         "    {",
         '      "title": "...",',
-        '      "content": "..."',
+        '      "summary": "...",',
+        '      "learning_objectives": [',
+        '        "...",',
+        '        "..."',
+        "      ]",
         "    }",
         "  ]",
         "}",
+        "",
+        "Field rules:",
+        '- "course.title": short name for the entire course.',
+        '- "course.description": brief overview of the course (2-4 sentences).',
+        '- "course.language": ISO 639-1 language code (e.g. "ru", "en").',
+        "  This field is required.",
+        '- "lessons": one entry per source section, in the same order.',
+        '- "title": lesson title.',
+        '- "summary": brief description of the lesson (2-4 sentences).',
+        '- "learning_objectives": list of short, measurable outcomes.',
+    ]
+
+
+def _task_instruction_lines() -> list[str]:
+    return [
+        "Create a structured training course from the source material below.",
+        "",
+        "Your task:",
+        "1. Infer a concise course title and description from the material.",
+        "2. Detect the primary language of the material.",
+        "3. Transform each source section into a training lesson.",
+        "4. For every lesson provide a title, a brief summary, and",
+        "   learning objectives.",
+        "",
     ]
 
 
@@ -53,11 +86,12 @@ class PromptBuilderTests(unittest.TestCase):
             prompt,
             "\n".join(
                 [
-                    "Generate training lessons.",
-                    "",
+                    *_task_instruction_lines(),
                     *_json_instruction_lines(),
                     "",
-                    "Lesson 1:",
+                    "Source material:",
+                    "",
+                    "Section 1:",
                     "Title: Section 1",
                     "",
                     "Content:",
@@ -80,17 +114,18 @@ class PromptBuilderTests(unittest.TestCase):
             prompt,
             "\n".join(
                 [
-                    "Generate training lessons.",
-                    "",
+                    *_task_instruction_lines(),
                     *_json_instruction_lines(),
                     "",
-                    "Lesson 1:",
+                    "Source material:",
+                    "",
+                    "Section 1:",
                     "Title: Section 1",
                     "",
                     "Content:",
                     "First.",
                     "",
-                    "Lesson 2:",
+                    "Section 2:",
                     "Title: Section 2",
                     "",
                     "Content:",
@@ -116,9 +151,9 @@ class PromptBuilderTests(unittest.TestCase):
 
         self.assertLess(alpha_index, beta_index)
         self.assertLess(beta_index, gamma_index)
-        self.assertIn("Lesson 1:", prompt)
-        self.assertIn("Lesson 2:", prompt)
-        self.assertIn("Lesson 3:", prompt)
+        self.assertIn("Section 1:", prompt)
+        self.assertIn("Section 2:", prompt)
+        self.assertIn("Section 3:", prompt)
 
     def test_title_and_content_are_included_unchanged(self) -> None:
         title = "  Custom Title  "
@@ -144,9 +179,29 @@ class PromptBuilderTests(unittest.TestCase):
         prompt = self.builder.build_lesson_generation_prompt(request)
 
         self.assertIn("Return ONLY valid JSON", prompt)
+        self.assertIn('"course"', prompt)
+        self.assertIn('"language"', prompt)
         self.assertIn('"lessons"', prompt)
         self.assertIn('"title"', prompt)
-        self.assertIn('"content"', prompt)
+        self.assertIn('"summary"', prompt)
+        self.assertIn('"learning_objectives"', prompt)
+        self.assertIn("This field is required.", prompt)
+
+    def test_prompt_describes_course_and_lesson_fields(self) -> None:
+        request = LessonGenerationRequest(
+            lessons=[
+                LessonCandidate(title="Section 1", content="First content."),
+            ]
+        )
+
+        prompt = self.builder.build_lesson_generation_prompt(request)
+
+        self.assertIn("Detect the primary language", prompt)
+        self.assertIn("Source material:", prompt)
+        self.assertIn(
+            '"course.language": ISO 639-1 language code (e.g. "ru", "en").',
+            prompt,
+        )
 
 
 if __name__ == "__main__":

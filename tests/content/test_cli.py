@@ -70,6 +70,14 @@ def _run_generate_cli(document_path: Path) -> tuple[int, str]:
 class ContentCliTests(unittest.TestCase):
     """Integration tests for ``app.content.cli.main``."""
 
+    @patch("app.content.cli.load_project_env")
+    def test_main_loads_project_env(self, mock_load_project_env: MagicMock) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _run_cli(courses_dir)
+
+        mock_load_project_env.assert_called_once_with()
+
     def test_empty_courses_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             courses_dir = Path(tmp)

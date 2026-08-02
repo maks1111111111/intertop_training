@@ -7,6 +7,7 @@ objects ready for downstream course generation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 from app.content.structure_analyzer import CourseStructure
 
@@ -17,6 +18,8 @@ class LessonCandidate:
 
     title: str
     content: str
+    summary: Optional[str] = None
+    learning_objectives: tuple[str, ...] = ()
 
 
 class LessonBuilder:

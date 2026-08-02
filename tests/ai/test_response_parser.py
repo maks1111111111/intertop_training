@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from app.ai.interfaces import LessonGenerationResult
+from app.ai.interfaces import GeneratedCourseMetadata, LessonGenerationResult
 from app.ai.response_parser import AIResponseParser
 from app.content.lesson_builder import LessonCandidate
 
@@ -21,6 +21,33 @@ class AIResponseParserTests(unittest.TestCase):
 
         self.assertIsInstance(result, LessonGenerationResult)
         self.assertEqual(result.lessons, [])
+
+    def test_legacy_json_with_course_title(self) -> None:
+        response = json.dumps(
+            {
+                "course_title": "Legacy Course",
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "content": "First lesson content.",
+                    }
+                ],
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        self.assertEqual(
+            result,
+            LessonGenerationResult(
+                lessons=[
+                    LessonCandidate(
+                        title="Lesson One",
+                        content="First lesson content.",
+                    )
+                ]
+            ),
+        )
 
     def test_valid_json_with_one_lesson(self) -> None:
         response = json.dumps(
@@ -71,6 +98,210 @@ class AIResponseParserTests(unittest.TestCase):
         self.assertEqual(result.lessons[0].content, "First lesson content.")
         self.assertEqual(result.lessons[1].title, "Lesson Two")
         self.assertEqual(result.lessons[1].content, "Second lesson content.")
+
+    def test_extended_json_with_course_and_summary(self) -> None:
+        response = json.dumps(
+            {
+                "course": {
+                    "title": "Safety Training",
+                    "description": "Introductory safety course.",
+                    "language": "en",
+                },
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "summary": "First lesson summary.",
+                        "learning_objectives": [
+                            "Objective A",
+                            "Objective B",
+                        ],
+                    }
+                ],
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        self.assertEqual(len(result.lessons), 1)
+        self.assertEqual(
+            result.course,
+            GeneratedCourseMetadata(
+                title="Safety Training",
+                description="Introductory safety course.",
+                language="en",
+            ),
+        )
+        self.assertEqual(result.lessons[0].title, "Lesson One")
+        self.assertEqual(result.lessons[0].summary, "First lesson summary.")
+        self.assertEqual(result.lessons[0].content, "")
+        self.assertEqual(
+            result.lessons[0].learning_objectives,
+            ("Objective A", "Objective B"),
+        )
+
+    def test_summary_without_learning_objectives(self) -> None:
+        response = json.dumps(
+            {
+                "course": {
+                    "title": "Course",
+                    "description": "Description.",
+                    "language": "ru",
+                },
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "summary": "Summary only.",
+                    }
+                ],
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        self.assertEqual(
+            result.course,
+            GeneratedCourseMetadata(
+                title="Course",
+                description="Description.",
+                language="ru",
+            ),
+        )
+        self.assertEqual(result.lessons[0].summary, "Summary only.")
+        self.assertEqual(result.lessons[0].content, "")
+        self.assertEqual(result.lessons[0].learning_objectives, ())
+
+    def test_invalid_course_title_type_raises_value_error(self) -> None:
+        response = json.dumps(
+            {
+                "course_title": 123,
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "content": "Content.",
+                    }
+                ],
+            }
+        )
+
+        with self.assertRaises(ValueError) as context:
+            self.parser.parse_lessons(response)
+
+        self.assertEqual(
+            str(context.exception),
+            "Field 'course_title' must be a string.",
+        )
+
+    def test_course_language_ru_is_accepted(self) -> None:
+        response = json.dumps(
+            {
+                "course": {
+                    "title": "Course",
+                    "description": "Description.",
+                    "language": "ru",
+                },
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "summary": "Summary.",
+                    }
+                ],
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        self.assertEqual(result.course.language, "ru")
+
+    def test_course_language_kk_is_accepted(self) -> None:
+        response = json.dumps(
+            {
+                "course": {
+                    "title": "Course",
+                    "description": "Description.",
+                    "language": "kk",
+                },
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "summary": "Summary.",
+                    }
+                ],
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        self.assertEqual(result.course.language, "kk")
+
+    def test_course_language_en_is_accepted(self) -> None:
+        response = json.dumps(
+            {
+                "course": {
+                    "title": "Course",
+                    "description": "Description.",
+                    "language": "en",
+                },
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "summary": "Summary.",
+                    }
+                ],
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        self.assertEqual(result.course.language, "en")
+
+    def test_unknown_course_language_raises_value_error(self) -> None:
+        response = json.dumps(
+            {
+                "course": {
+                    "title": "Course",
+                    "description": "Description.",
+                    "language": "de",
+                },
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "summary": "Summary.",
+                    }
+                ],
+            }
+        )
+
+        with self.assertRaises(ValueError) as context:
+            self.parser.parse_lessons(response)
+
+        self.assertEqual(
+            str(context.exception),
+            "Field 'course.language' must be one of: en, kk, ru.",
+        )
+
+    def test_missing_course_language_raises_value_error(self) -> None:
+        response = json.dumps(
+            {
+                "course": {
+                    "title": "Course",
+                    "description": "Description.",
+                },
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "summary": "Summary.",
+                    }
+                ],
+            }
+        )
+
+        with self.assertRaises(ValueError) as context:
+            self.parser.parse_lessons(response)
+
+        self.assertEqual(
+            str(context.exception),
+            "Field 'course.language' is required.",
+        )
 
     def test_missing_lessons_key_raises_value_error(self) -> None:
         response = json.dumps({"items": []})
@@ -129,9 +360,13 @@ class AIResponseParserTests(unittest.TestCase):
 
         self.assertEqual(
             str(context.exception),
-            "Lesson at index 0 is missing 'content'.",
+            "Lesson at index 0 is missing 'summary' or 'content'.",
         )
 
     def test_invalid_json_raises_json_decode_error(self) -> None:
         with self.assertRaises(json.JSONDecodeError):
             self.parser.parse_lessons("{not valid json")
+
+
+if __name__ == "__main__":
+    unittest.main()
