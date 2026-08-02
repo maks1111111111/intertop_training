@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch
 
 from app.ai.interfaces import GeneratedCourseMetadata, LessonGenerationResult
 from app.content.cli import _DEFAULT_COURSES_DIR, main
-from app.content.course_writer import CourseDraft
 from app.content.lesson_builder import LessonCandidate
 
 
@@ -197,16 +196,14 @@ class ContentCliTests(unittest.TestCase):
 class GenerateCliTests(unittest.TestCase):
     """Tests for the ``generate`` CLI subcommand."""
 
-    @patch("app.content.cli.CourseFileWriter")
-    @patch("app.content.cli.CourseWriter")
+    @patch("app.content.cli.CourseGenerationPersistenceService")
     @patch("app.content.cli.create_imported_text_generation_service")
     @patch("app.content.cli.CourseImporter")
     def test_generate_calls_importer_and_bootstrap(
         self,
         mock_importer_class: MagicMock,
         mock_create_service: MagicMock,
-        mock_writer_class: MagicMock,
-        mock_file_writer_class: MagicMock,
+        mock_persistence_class: MagicMock,
     ) -> None:
         mock_importer = MagicMock()
         mock_importer_class.return_value = mock_importer
@@ -233,21 +230,10 @@ class GenerateCliTests(unittest.TestCase):
         )
         mock_service.generate_from_text.return_value = generation_result
 
-        draft = CourseDraft(
-            slug="safety-training",
-            title="Safety Training",
-            description="Introductory safety course.",
-            language="ru",
-            lessons=tuple(generation_result.lessons),
-        )
-        mock_writer = MagicMock()
-        mock_writer_class.return_value = mock_writer
-        mock_writer.write.return_value = draft
-
         course_dir = _DEFAULT_COURSES_DIR / "safety-training"
-        mock_file_writer = MagicMock()
-        mock_file_writer_class.return_value = mock_file_writer
-        mock_file_writer.write.return_value = course_dir
+        mock_persistence = MagicMock()
+        mock_persistence_class.return_value = mock_persistence
+        mock_persistence.persist.return_value = course_dir
 
         with tempfile.TemporaryDirectory() as tmp:
             document_path = Path(tmp) / "course.pdf"
@@ -261,12 +247,10 @@ class GenerateCliTests(unittest.TestCase):
         mock_service.generate_from_text.assert_called_once_with(
             "imported text",
         )
-        mock_writer_class.assert_called_once_with()
-        mock_writer.write.assert_called_once_with(generation_result)
-        mock_file_writer_class.assert_called_once_with()
-        mock_file_writer.write.assert_called_once_with(
-            draft,
-            _DEFAULT_COURSES_DIR / "safety-training",
+        mock_persistence_class.assert_called_once_with()
+        mock_persistence.persist.assert_called_once_with(
+            generation_result,
+            _DEFAULT_COURSES_DIR,
         )
         self.assertIn("Generated course:", output)
         self.assertIn(str(course_dir.resolve()), output)
