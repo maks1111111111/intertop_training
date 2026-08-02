@@ -11,6 +11,7 @@ from app.ai.bootstrap import create_imported_text_generation_service
 from app.content.importer import CourseImporter
 from app.content.models import ContentIssue, ValidationReport
 from app.content.validator import validate_course
+from app.env import load_project_env
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _DEFAULT_COURSES_DIR = _PROJECT_ROOT / "courses"
@@ -144,6 +145,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     Validate courses or generate lessons from a document.
     """
+    load_project_env()
     args = argv if argv is not None else sys.argv[1:]
     if args and args[0] == "generate":
         return _cmd_generate(args[1:])

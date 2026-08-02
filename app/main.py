@@ -6,9 +6,9 @@ from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from dotenv import load_dotenv
 
 from app.content.runtime import ContentRuntime
+from app.env import load_project_env
 from app.database import initialize_database
 from app.handlers import courses, quiz, start
 from app.services.course_sync import sync_courses
@@ -18,7 +18,7 @@ def _get_base_dir() -> Path:
 
 
 async def main() -> None:
-    load_dotenv()
+    load_project_env()
 
     token = os.getenv("BOT_TOKEN")
     if not token:
