@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Optional
 
 from app.ai.bootstrap import create_imported_text_generation_service
+from app.content.course_file_writer import CourseFileWriter
+from app.content.course_writer import CourseWriter
 from app.content.importer import CourseImporter
 from app.content.models import ContentIssue, ValidationReport
 from app.content.validator import validate_course
@@ -132,7 +134,17 @@ def _cmd_generate(argv: Optional[list[str]]) -> int:
     generation_service = create_imported_text_generation_service()
     result = generation_service.generate_from_text(text)
 
-    print("Generated lessons:")
+    draft = CourseWriter().write(result)
+    course_dir = CourseFileWriter().write(
+        draft,
+        _DEFAULT_COURSES_DIR / draft.slug,
+    )
+
+    print("Generated course:")
+    print()
+    print(course_dir.resolve())
+    print()
+    print("Lessons:")
     print()
     for index, lesson in enumerate(result.lessons, start=1):
         print(f"{index}. {lesson.title}")

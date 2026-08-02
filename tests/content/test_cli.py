@@ -9,8 +9,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from app.ai.interfaces import LessonGenerationResult
-from app.content.cli import main
+from app.ai.interfaces import GeneratedCourseMetadata, LessonGenerationResult
+from app.content.cli import _DEFAULT_COURSES_DIR, main
+from app.content.course_writer import CourseDraft
 from app.content.lesson_builder import LessonCandidate
 
 
@@ -196,12 +197,16 @@ class ContentCliTests(unittest.TestCase):
 class GenerateCliTests(unittest.TestCase):
     """Tests for the ``generate`` CLI subcommand."""
 
+    @patch("app.content.cli.CourseFileWriter")
+    @patch("app.content.cli.CourseWriter")
     @patch("app.content.cli.create_imported_text_generation_service")
     @patch("app.content.cli.CourseImporter")
     def test_generate_calls_importer_and_bootstrap(
         self,
         mock_importer_class: MagicMock,
         mock_create_service: MagicMock,
+        mock_writer_class: MagicMock,
+        mock_file_writer_class: MagicMock,
     ) -> None:
         mock_importer = MagicMock()
         mock_importer_class.return_value = mock_importer
@@ -209,7 +214,7 @@ class GenerateCliTests(unittest.TestCase):
 
         mock_service = MagicMock()
         mock_create_service.return_value = mock_service
-        mock_service.generate_from_text.return_value = LessonGenerationResult(
+        generation_result = LessonGenerationResult(
             lessons=[
                 LessonCandidate(
                     title="First lesson",
@@ -219,8 +224,30 @@ class GenerateCliTests(unittest.TestCase):
                     title="Second lesson",
                     content="Content two.",
                 ),
-            ]
+            ],
+            course=GeneratedCourseMetadata(
+                language="ru",
+                title="Safety Training",
+                description="Introductory safety course.",
+            ),
         )
+        mock_service.generate_from_text.return_value = generation_result
+
+        draft = CourseDraft(
+            slug="safety-training",
+            title="Safety Training",
+            description="Introductory safety course.",
+            language="ru",
+            lessons=tuple(generation_result.lessons),
+        )
+        mock_writer = MagicMock()
+        mock_writer_class.return_value = mock_writer
+        mock_writer.write.return_value = draft
+
+        course_dir = _DEFAULT_COURSES_DIR / "safety-training"
+        mock_file_writer = MagicMock()
+        mock_file_writer_class.return_value = mock_file_writer
+        mock_file_writer.write.return_value = course_dir
 
         with tempfile.TemporaryDirectory() as tmp:
             document_path = Path(tmp) / "course.pdf"
@@ -234,9 +261,70 @@ class GenerateCliTests(unittest.TestCase):
         mock_service.generate_from_text.assert_called_once_with(
             "imported text",
         )
-        self.assertIn("Generated lessons:", output)
+        mock_writer_class.assert_called_once_with()
+        mock_writer.write.assert_called_once_with(generation_result)
+        mock_file_writer_class.assert_called_once_with()
+        mock_file_writer.write.assert_called_once_with(
+            draft,
+            _DEFAULT_COURSES_DIR / "safety-training",
+        )
+        self.assertIn("Generated course:", output)
+        self.assertIn(str(course_dir.resolve()), output)
+        self.assertIn("Lessons:", output)
         self.assertIn("1. First lesson", output)
         self.assertIn("2. Second lesson", output)
+
+    @patch("app.content.cli.create_imported_text_generation_service")
+    @patch("app.content.cli.CourseImporter")
+    def test_generate_persists_course_to_disk(
+        self,
+        mock_importer_class: MagicMock,
+        mock_create_service: MagicMock,
+    ) -> None:
+        mock_importer = MagicMock()
+        mock_importer_class.return_value = mock_importer
+        mock_importer.read_source.return_value = "Section one\n\nSection two"
+
+        mock_service = MagicMock()
+        mock_create_service.return_value = mock_service
+        mock_service.generate_from_text.return_value = LessonGenerationResult(
+            lessons=[
+                LessonCandidate(
+                    title="Section 1",
+                    content="Section one body.",
+                ),
+                LessonCandidate(
+                    title="Section 2",
+                    content="Section two body.",
+                ),
+            ],
+            course=GeneratedCourseMetadata(
+                language="en",
+                title="Imported Course",
+                description="Generated from document.",
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp) / "courses"
+            courses_dir.mkdir()
+
+            document_path = Path(tmp) / "course.pdf"
+            document_path.write_text("dummy", encoding="utf-8")
+
+            with patch("app.content.cli._DEFAULT_COURSES_DIR", courses_dir):
+                exit_code, output = _run_generate_cli(document_path)
+
+            course_dir = courses_dir / "imported-course"
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(course_dir.is_dir())
+            self.assertTrue((course_dir / "course.json").is_file())
+            self.assertTrue((course_dir / "lesson_01" / "lesson.json").is_file())
+            self.assertTrue((course_dir / "lesson_02" / "lesson.json").is_file())
+            self.assertIn("Generated course:", output)
+            self.assertIn(str(course_dir.resolve()), output)
+            self.assertIn("1. Section 1", output)
+            self.assertIn("2. Section 2", output)
 
     @patch("app.content.cli.create_imported_text_generation_service")
     @patch("app.content.cli.CourseImporter")
