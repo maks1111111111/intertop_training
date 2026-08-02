@@ -29,14 +29,20 @@ class PromptBuilder:
             return ""
 
         lines = [
-            "Generate training lessons.",
+            "Create a structured training course from the source material below.",
+            "",
+            "Your task:",
+            "1. Infer a concise course title from the material.",
+            "2. Transform each source section into a training lesson.",
+            "3. For every lesson provide a clear title and a brief description.",
             "",
             "Return ONLY valid JSON.",
             "Do not use Markdown.",
             "Do not wrap JSON in code fences.",
-            "Use this schema:",
+            "Use exactly this schema:",
             "",
             "{",
+            '  "course_title": "...",',
             '  "lessons": [',
             "    {",
             '      "title": "...",',
@@ -45,12 +51,20 @@ class PromptBuilder:
             "  ]",
             "}",
             "",
+            "Field rules:",
+            '- "course_title": short name for the entire course.',
+            '- "lessons": one entry per source section, in the same order.',
+            '- "title": lesson title.',
+            '- "content": brief description of the lesson (2-4 sentences).',
+            "",
+            "Source material:",
+            "",
         ]
 
         for index, lesson in enumerate(request.lessons, start=1):
             lines.extend(
                 [
-                    f"Lesson {index}:",
+                    f"Section {index}:",
                     f"Title: {lesson.title}",
                     "",
                     "Content:",
