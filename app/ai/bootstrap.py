@@ -7,7 +7,9 @@ dependencies from environment configuration.
 from __future__ import annotations
 
 from app.ai.config import OpenAIConfig
+from app.ai.openai_client import OpenAIClient
 from app.ai.openai_provider import OpenAICourseGenerationAI
+from app.ai.quiz_service import QuizGenerationService
 from app.ai.service import CourseGenerationService
 from app.services.course_generation_flow_service import (
     CourseGenerationFlowService,
@@ -15,8 +17,17 @@ from app.services.course_generation_flow_service import (
 from app.services.course_generation_pipeline_service import (
     CourseGenerationPipelineService,
 )
+from app.services.course_with_quiz_generation_service import (
+    CourseWithQuizGenerationService,
+)
+from app.services.course_generation_persistence_service import (
+    CourseGenerationPersistenceService,
+)
 from app.services.imported_text_generation_service import (
     ImportedTextGenerationService,
+)
+from app.services.quiz_generation_persistence_service import (
+    QuizGenerationPersistenceService,
 )
 
 
@@ -38,4 +49,23 @@ def create_imported_text_generation_service() -> ImportedTextGenerationService:
     )
     return ImportedTextGenerationService(
         flow_service=flow_service,
+    )
+
+
+def create_quiz_generation_service() -> QuizGenerationService:
+    """Build a :class:`QuizGenerationService` from environment config."""
+    config = OpenAIConfig.from_environment()
+    client = OpenAIClient(config)
+    return QuizGenerationService(client)
+
+
+def create_course_with_quiz_generation_service() -> CourseWithQuizGenerationService:
+    """Build a :class:`CourseWithQuizGenerationService` from environment config."""
+    course_persistence_service = CourseGenerationPersistenceService()
+    quiz_generation_service = create_quiz_generation_service()
+    quiz_persistence_service = QuizGenerationPersistenceService()
+    return CourseWithQuizGenerationService(
+        course_persistence_service=course_persistence_service,
+        quiz_generation_service=quiz_generation_service,
+        quiz_persistence_service=quiz_persistence_service,
     )
