@@ -7,11 +7,11 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from app.ai.bootstrap import create_imported_text_generation_service
-from app.content.importer import CourseImporter
-from app.services.course_generation_persistence_service import (
-    CourseGenerationPersistenceService,
+from app.ai.bootstrap import (
+    create_course_with_quiz_generation_service,
+    create_imported_text_generation_service,
 )
+from app.content.importer import CourseImporter
 from app.content.models import ContentIssue, ValidationReport
 from app.content.validator import validate_course
 from app.env import load_project_env
@@ -135,14 +135,22 @@ def _cmd_generate(argv: Optional[list[str]]) -> int:
     generation_service = create_imported_text_generation_service()
     result = generation_service.generate_from_text(text)
 
-    course_dir = CourseGenerationPersistenceService().persist(
+    course_with_quiz_service = create_course_with_quiz_generation_service()
+    workflow_result = course_with_quiz_service.generate_and_persist(
         result,
         _DEFAULT_COURSES_DIR,
     )
 
+    course_dir = workflow_result.course_directory
+    quiz_path = workflow_result.quiz_path
+
     print("Generated course:")
     print()
     print(course_dir.resolve())
+    print()
+    print("Generated quiz:")
+    print()
+    print(quiz_path.resolve())
     print()
     print("Lessons:")
     print()

@@ -196,14 +196,14 @@ class ContentCliTests(unittest.TestCase):
 class GenerateCliTests(unittest.TestCase):
     """Tests for the ``generate`` CLI subcommand."""
 
-    @patch("app.content.cli.CourseGenerationPersistenceService")
+    @patch("app.content.cli.create_course_with_quiz_generation_service")
     @patch("app.content.cli.create_imported_text_generation_service")
     @patch("app.content.cli.CourseImporter")
     def test_generate_calls_importer_and_bootstrap(
         self,
         mock_importer_class: MagicMock,
         mock_create_service: MagicMock,
-        mock_persistence_class: MagicMock,
+        mock_create_workflow: MagicMock,
     ) -> None:
         mock_importer = MagicMock()
         mock_importer_class.return_value = mock_importer
@@ -231,9 +231,14 @@ class GenerateCliTests(unittest.TestCase):
         mock_service.generate_from_text.return_value = generation_result
 
         course_dir = _DEFAULT_COURSES_DIR / "safety-training"
-        mock_persistence = MagicMock()
-        mock_persistence_class.return_value = mock_persistence
-        mock_persistence.persist.return_value = course_dir
+        quiz_path = course_dir / "quiz.json"
+        mock_workflow_service = MagicMock()
+        mock_create_workflow.return_value = mock_workflow_service
+        mock_workflow_result = MagicMock()
+        mock_workflow_result.course_directory = course_dir
+        mock_workflow_result.quiz_path = quiz_path
+        mock_workflow_result.lesson_result = generation_result
+        mock_workflow_service.generate_and_persist.return_value = mock_workflow_result
 
         with tempfile.TemporaryDirectory() as tmp:
             document_path = Path(tmp) / "course.pdf"
@@ -247,23 +252,27 @@ class GenerateCliTests(unittest.TestCase):
         mock_service.generate_from_text.assert_called_once_with(
             "imported text",
         )
-        mock_persistence_class.assert_called_once_with()
-        mock_persistence.persist.assert_called_once_with(
+        mock_create_workflow.assert_called_once_with()
+        mock_workflow_service.generate_and_persist.assert_called_once_with(
             generation_result,
             _DEFAULT_COURSES_DIR,
         )
         self.assertIn("Generated course:", output)
         self.assertIn(str(course_dir.resolve()), output)
+        self.assertIn("Generated quiz:", output)
+        self.assertIn(str(quiz_path.resolve()), output)
         self.assertIn("Lessons:", output)
         self.assertIn("1. First lesson", output)
         self.assertIn("2. Second lesson", output)
 
+    @patch("app.content.cli.create_course_with_quiz_generation_service")
     @patch("app.content.cli.create_imported_text_generation_service")
     @patch("app.content.cli.CourseImporter")
     def test_generate_persists_course_to_disk(
         self,
         mock_importer_class: MagicMock,
         mock_create_service: MagicMock,
+        mock_create_workflow: MagicMock,
     ) -> None:
         mock_importer = MagicMock()
         mock_importer_class.return_value = mock_importer
@@ -271,7 +280,7 @@ class GenerateCliTests(unittest.TestCase):
 
         mock_service = MagicMock()
         mock_create_service.return_value = mock_service
-        mock_service.generate_from_text.return_value = LessonGenerationResult(
+        generation_result = LessonGenerationResult(
             lessons=[
                 LessonCandidate(
                     title="Section 1",
@@ -288,10 +297,31 @@ class GenerateCliTests(unittest.TestCase):
                 description="Generated from document.",
             ),
         )
+        mock_service.generate_from_text.return_value = generation_result
 
         with tempfile.TemporaryDirectory() as tmp:
             courses_dir = Path(tmp) / "courses"
             courses_dir.mkdir()
+            course_dir = courses_dir / "imported-course"
+            course_dir.mkdir()
+            (course_dir / "course.json").write_text("{}", encoding="utf-8")
+            lesson_01 = course_dir / "lesson_01"
+            lesson_01.mkdir()
+            (lesson_01 / "lesson.json").write_text("{}", encoding="utf-8")
+            lesson_02 = course_dir / "lesson_02"
+            lesson_02.mkdir()
+            (lesson_02 / "lesson.json").write_text("{}", encoding="utf-8")
+            (course_dir / "quiz.json").write_text("{}", encoding="utf-8")
+
+            mock_workflow_service = MagicMock()
+            mock_create_workflow.return_value = mock_workflow_service
+            mock_workflow_result = MagicMock()
+            mock_workflow_result.course_directory = course_dir
+            mock_workflow_result.quiz_path = course_dir / "quiz.json"
+            mock_workflow_result.lesson_result = generation_result
+            mock_workflow_service.generate_and_persist.return_value = (
+                mock_workflow_result
+            )
 
             document_path = Path(tmp) / "course.pdf"
             document_path.write_text("dummy", encoding="utf-8")
@@ -299,23 +329,27 @@ class GenerateCliTests(unittest.TestCase):
             with patch("app.content.cli._DEFAULT_COURSES_DIR", courses_dir):
                 exit_code, output = _run_generate_cli(document_path)
 
-            course_dir = courses_dir / "imported-course"
             self.assertEqual(exit_code, 0)
             self.assertTrue(course_dir.is_dir())
             self.assertTrue((course_dir / "course.json").is_file())
             self.assertTrue((course_dir / "lesson_01" / "lesson.json").is_file())
             self.assertTrue((course_dir / "lesson_02" / "lesson.json").is_file())
+            self.assertTrue((course_dir / "quiz.json").is_file())
             self.assertIn("Generated course:", output)
             self.assertIn(str(course_dir.resolve()), output)
+            self.assertIn("Generated quiz:", output)
+            self.assertIn(str((course_dir / "quiz.json").resolve()), output)
             self.assertIn("1. Section 1", output)
             self.assertIn("2. Section 2", output)
 
+    @patch("app.content.cli.create_course_with_quiz_generation_service")
     @patch("app.content.cli.create_imported_text_generation_service")
     @patch("app.content.cli.CourseImporter")
     def test_generate_missing_document(
         self,
         mock_importer_class: MagicMock,
         mock_create_service: MagicMock,
+        mock_create_workflow: MagicMock,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             missing_path = Path(tmp) / "missing.pdf"
@@ -325,6 +359,7 @@ class GenerateCliTests(unittest.TestCase):
         self.assertIn("does not exist or is not a file", output)
         mock_importer_class.assert_not_called()
         mock_create_service.assert_not_called()
+        mock_create_workflow.assert_not_called()
 
 
 if __name__ == "__main__":
