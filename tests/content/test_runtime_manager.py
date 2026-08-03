@@ -46,12 +46,13 @@ class ContentRuntimeManagerTests(unittest.TestCase):
 
     def test_refresh_calls_runtime_refresh(self) -> None:
         runtime = MagicMock(spec=ContentRuntime)
-        runtime.get_courses.side_effect = [[], []]
+        runtime.cached_courses_count.side_effect = [0, 0]
         manager = ContentRuntimeManager(runtime)
 
         manager.refresh()
 
         runtime.refresh.assert_called_once_with()
+        self.assertEqual(runtime.cached_courses_count.call_count, 2)
 
     def test_refresh_returns_stats_with_correct_counts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -95,7 +96,7 @@ class ContentRuntimeManagerTests(unittest.TestCase):
 
     def test_refreshed_at_is_set(self) -> None:
         runtime = MagicMock(spec=ContentRuntime)
-        runtime.get_courses.return_value = []
+        runtime.cached_courses_count.return_value = 0
         manager = ContentRuntimeManager(runtime)
 
         with patch(
@@ -147,6 +148,7 @@ class ContentRuntimeManagerTests(unittest.TestCase):
 
     def test_get_state_after_refresh_shares_timestamp_with_stats(self) -> None:
         runtime = MagicMock(spec=ContentRuntime)
+        runtime.cached_courses_count.return_value = 0
         runtime.get_courses.return_value = []
         manager = ContentRuntimeManager(runtime)
 
@@ -162,7 +164,7 @@ class ContentRuntimeManagerTests(unittest.TestCase):
 
     def test_utc_timestamp_called_once_per_refresh(self) -> None:
         runtime = MagicMock(spec=ContentRuntime)
-        runtime.get_courses.return_value = []
+        runtime.cached_courses_count.return_value = 0
         manager = ContentRuntimeManager(runtime)
 
         with patch(
@@ -182,8 +184,22 @@ class ContentRuntimeManagerTests(unittest.TestCase):
 
         runtime.refresh.assert_not_called()
 
+    def test_refresh_uses_cached_courses_count_in_order(self) -> None:
+        runtime = MagicMock(spec=ContentRuntime)
+        runtime.cached_courses_count.side_effect = [1, 2]
+        manager = ContentRuntimeManager(runtime)
+
+        stats = manager.refresh()
+
+        self.assertEqual(runtime.cached_courses_count.call_count, 2)
+        runtime.refresh.assert_called_once_with()
+        self.assertEqual(stats.courses_before, 1)
+        self.assertEqual(stats.courses_after, 2)
+        self.assertTrue(stats.changed)
+
     def test_multiple_get_state_calls_do_not_change_last_refreshed_at(self) -> None:
         runtime = MagicMock(spec=ContentRuntime)
+        runtime.cached_courses_count.return_value = 0
         runtime.get_courses.return_value = []
         manager = ContentRuntimeManager(runtime)
 

@@ -58,9 +58,9 @@ class ContentRuntimeManager:
 
     def refresh(self) -> RuntimeRefreshStats:
         """Reload published courses and return refresh statistics."""
-        courses_before = len(self._runtime.get_courses())
+        courses_before = self._runtime.cached_courses_count()
         self._runtime.refresh()
-        courses_after = len(self._runtime.get_courses())
+        courses_after = self._runtime.cached_courses_count()
         refreshed_at = _utc_timestamp()
         self._last_refreshed_at = refreshed_at
         return RuntimeRefreshStats(
