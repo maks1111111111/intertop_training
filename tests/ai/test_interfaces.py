@@ -10,6 +10,7 @@ from app.ai.interfaces import (
     LessonGenerationResult,
 )
 from app.content.lesson_builder import LessonCandidate
+from app.content.practical_task import PracticalTask
 
 
 class LessonGenerationRequestTests(unittest.TestCase):
@@ -41,6 +42,64 @@ class LessonGenerationResultTests(unittest.TestCase):
         self.assertEqual(result.lessons, lessons)
         self.assertIsInstance(result.lessons, list)
         self.assertTrue(all(isinstance(lesson, LessonCandidate) for lesson in result.lessons))
+
+
+class StructuredPracticalTaskContractTests(unittest.TestCase):
+    """Tests for optional structured practical tasks in the AI contract."""
+
+    def test_request_accepts_lesson_with_structured_practical_task(self) -> None:
+        task = PracticalTask(
+            title="Inspect the area",
+            description="Walk through the work zone.",
+            expected_result="Hazards are documented.",
+            estimated_minutes=15,
+        )
+        lesson = LessonCandidate(
+            title="Safety basics",
+            content="Lesson body.",
+            structured_practical_task=task,
+        )
+
+        request = LessonGenerationRequest(lessons=[lesson])
+
+        self.assertIs(request.lessons[0].structured_practical_task, task)
+        self.assertEqual(request.lessons[0].practical_task, "")
+
+    def test_result_accepts_lesson_with_structured_practical_task(self) -> None:
+        task = PracticalTask(
+            title="Apply the checklist",
+            description="Complete every item before starting work.",
+            expected_result="All checklist items are checked.",
+        )
+        lesson = LessonCandidate(
+            title="Safety basics",
+            content="Lesson body.",
+            structured_practical_task=task,
+        )
+
+        result = LessonGenerationResult(lessons=[lesson])
+
+        self.assertIs(result.lessons[0].structured_practical_task, task)
+
+    def test_legacy_practical_task_string_remains_compatible(self) -> None:
+        lesson = LessonCandidate(
+            title="Safety basics",
+            content="Lesson body.",
+            practical_task="Complete the safety checklist.",
+        )
+
+        result = LessonGenerationResult(lessons=[lesson])
+
+        self.assertEqual(result.lessons[0].practical_task, "Complete the safety checklist.")
+        self.assertIsNone(result.lessons[0].structured_practical_task)
+
+    def test_lesson_without_practical_fields_uses_defaults(self) -> None:
+        lesson = LessonCandidate(title="Safety basics", content="Lesson body.")
+
+        request = LessonGenerationRequest(lessons=[lesson])
+
+        self.assertEqual(request.lessons[0].practical_task, "")
+        self.assertIsNone(request.lessons[0].structured_practical_task)
 
 
 class CourseGenerationAIProtocolTests(unittest.TestCase):
