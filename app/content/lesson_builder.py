@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+from app.content.practical_task import PracticalTask
 from app.content.structure_analyzer import CourseStructure
 
 
@@ -21,6 +22,7 @@ class LessonCandidate:
     summary: Optional[str] = None
     learning_objectives: tuple[str, ...] = ()
     practical_task: str = ""
+    structured_practical_task: Optional[PracticalTask] = None
     checklist: tuple[str, ...] = ()
     common_mistakes: tuple[str, ...] = ()
     key_takeaways: tuple[str, ...] = ()

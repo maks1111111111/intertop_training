@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 
 from app.content.lesson_builder import LessonBuilder, LessonCandidate
+from app.content.practical_task import PracticalTask
 from app.content.structure_analyzer import CourseSection, CourseStructure
 
 
@@ -90,3 +91,57 @@ class LessonBuilderTests(unittest.TestCase):
 
         self.assertEqual(candidate.title, title)
         self.assertEqual(candidate.content, content)
+
+
+class LessonCandidateTests(unittest.TestCase):
+    """Tests for :class:`LessonCandidate` structured practical task field."""
+
+    def test_created_without_structured_practical_task(self) -> None:
+        candidate = LessonCandidate(title="Lesson", content="Body.")
+
+        self.assertIsNone(candidate.structured_practical_task)
+        self.assertEqual(candidate.practical_task, "")
+
+    def test_created_with_structured_practical_task(self) -> None:
+        task = PracticalTask(
+            title="Inspect the area",
+            description="Walk through the work zone.",
+            expected_result="Hazards are documented.",
+            estimated_minutes=15,
+        )
+        candidate = LessonCandidate(
+            title="Lesson",
+            content="Body.",
+            structured_practical_task=task,
+        )
+
+        self.assertIs(candidate.structured_practical_task, task)
+
+    def test_legacy_practical_task_still_works(self) -> None:
+        candidate = LessonCandidate(
+            title="Lesson",
+            content="Body.",
+            practical_task="Complete the safety checklist.",
+        )
+
+        self.assertEqual(candidate.practical_task, "Complete the safety checklist.")
+        self.assertIsNone(candidate.structured_practical_task)
+
+    def test_backward_compatible_defaults(self) -> None:
+        candidate = LessonCandidate(title="Lesson", content="Body.")
+
+        self.assertEqual(
+            candidate,
+            LessonCandidate(
+                title="Lesson",
+                content="Body.",
+                summary=None,
+                learning_objectives=(),
+                practical_task="",
+                structured_practical_task=None,
+                checklist=(),
+                common_mistakes=(),
+                key_takeaways=(),
+                application_tips=(),
+            ),
+        )
