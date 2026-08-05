@@ -9,7 +9,7 @@ from aiogram.types import (
 )
 from app.content.runtime import ContentRuntime
 from app.keyboards.courses import back_to_courses_keyboard
-from app.ui.lesson import lesson_view_text
+from app.ui.lesson import lesson_body_text, lesson_view_text
 from app.repositories.progress_repository import ProgressRepository
 from app.services.scanner import Course, Lesson
 
@@ -84,13 +84,16 @@ async def _send_lesson(
         parse_mode="HTML",
     )
 
+    body_text = lesson_body_text(lesson)
+
     if lesson.image_path and lesson.image_path.is_file():
         await callback.message.answer_photo(
             photo=FSInputFile(lesson.image_path),
-            caption=lesson.description or None,
         )
-    elif lesson.description:
-        await callback.message.answer(lesson.description)
+        if body_text:
+            await callback.message.answer(body_text)
+    elif body_text:
+        await callback.message.answer(body_text)
 
     if lesson.narration_path and lesson.narration_path.is_file():
         await callback.message.answer_audio(

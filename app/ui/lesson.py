@@ -4,6 +4,7 @@ from app.services.scanner import Course, Lesson
 from app.ui.theme import DIVIDER
 from app.ui.widgets import progress_bar
 
+
 def lesson_header(
     course: Course,
     lesson: Lesson,
@@ -24,6 +25,60 @@ def lesson_header(
         f"{progress_bar(lesson_number, lessons_count)}  {progress_percent}%"
     )
 
+
+def _format_bullet_section(title: str, items: tuple[str, ...]) -> str:
+    lines = [title]
+    lines.extend(f"• {item}" for item in items)
+    return "\n".join(lines)
+
+
+def lesson_quality_sections_text(lesson: Lesson) -> str:
+    """Return optional lesson quality blocks for Telegram plain-text messages."""
+    sections: list[str] = []
+
+    practical_task = lesson.practical_task.strip()
+    if practical_task:
+        sections.append(
+            f"🛠 Практическое задание\n{practical_task}",
+        )
+
+    if lesson.checklist:
+        sections.append(
+            _format_bullet_section("✅ Чек-лист", lesson.checklist),
+        )
+
+    if lesson.common_mistakes:
+        sections.append(
+            _format_bullet_section("⚠ Типичные ошибки", lesson.common_mistakes),
+        )
+
+    if lesson.key_takeaways:
+        sections.append(
+            _format_bullet_section("💡 Главное запомнить", lesson.key_takeaways),
+        )
+
+    if lesson.application_tips:
+        sections.append(
+            _format_bullet_section("🚀 Советы по применению", lesson.application_tips),
+        )
+
+    return "\n\n".join(sections)
+
+
+def lesson_body_text(lesson: Lesson) -> str:
+    """Return lesson description followed by optional quality sections."""
+    parts: list[str] = []
+
+    if lesson.description:
+        parts.append(lesson.description)
+
+    quality_sections = lesson_quality_sections_text(lesson)
+    if quality_sections:
+        parts.append(quality_sections)
+
+    return "\n\n".join(parts)
+
+
 def lesson_view_text(
     course: Course,
     lesson: Lesson,
@@ -38,5 +93,3 @@ def lesson_view_text(
         lesson_number=lesson_number,
         lessons_count=lessons_count,
     )
-
-    
