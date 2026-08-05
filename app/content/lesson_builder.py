@@ -20,6 +20,11 @@ class LessonCandidate:
     content: str
     summary: Optional[str] = None
     learning_objectives: tuple[str, ...] = ()
+    practical_task: str = ""
+    checklist: tuple[str, ...] = ()
+    common_mistakes: tuple[str, ...] = ()
+    key_takeaways: tuple[str, ...] = ()
+    application_tips: tuple[str, ...] = ()
 
 
 class LessonBuilder:

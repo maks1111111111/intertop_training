@@ -30,6 +30,23 @@ def _json_instruction_lines() -> list[str]:
         '      "learning_objectives": [',
         '        "...",',
         '        "..."',
+        "      ],",
+        '      "practical_task": "...",',
+        '      "checklist": [',
+        '        "...",',
+        '        "..."',
+        "      ],",
+        '      "common_mistakes": [',
+        '        "...",',
+        '        "..."',
+        "      ],",
+        '      "key_takeaways": [',
+        '        "...",',
+        '        "..."',
+        "      ],",
+        '      "application_tips": [',
+        '        "...",',
+        '        "..."',
         "      ]",
         "    }",
         "  ]",
@@ -48,6 +65,20 @@ def _json_instruction_lines() -> list[str]:
         "  material; do not use generic filler; do not reduce the",
         "  lesson to a summary; write a complete training lesson.",
         '- "learning_objectives": list of short, measurable outcomes.',
+        '- "practical_task": one concrete practical task or work',
+        "  scenario based on the source material; string.",
+        '- "checklist": list of short, actionable verification steps.',
+        '- "common_mistakes": list of typical mistakes relevant to the',
+        "  source material.",
+        '- "key_takeaways": list of main points the learner should',
+        "  remember.",
+        '- "application_tips": list of concrete tips for applying the',
+        "  knowledge at work.",
+        "- Do not invent policies, rules, facts, or procedures that are",
+        "  not supported by the source material.",
+        "- If the source material is insufficient for a specific item,",
+        "  create a cautious item based only on available information",
+        "  without invented requirements.",
     ]
 
 
@@ -60,7 +91,9 @@ def _task_instruction_lines() -> list[str]:
         "2. Detect the primary language of the material.",
         "3. Transform each source section into a training lesson.",
         "4. For every lesson provide a title, a brief summary, full",
-        "   lesson content, and learning objectives.",
+        "   lesson content, learning objectives, a practical task, a",
+        "   checklist, common mistakes, key takeaways, and application",
+        "   tips.",
         "",
     ]
 
@@ -207,6 +240,30 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("Source material:", prompt)
         self.assertIn(
             '"course.language": ISO 639-1 language code (e.g. "ru", "en").',
+            prompt,
+        )
+
+    def test_prompt_requires_extended_lesson_fields(self) -> None:
+        request = LessonGenerationRequest(
+            lessons=[
+                LessonCandidate(title="Section 1", content="First content."),
+            ]
+        )
+
+        prompt = self.builder.build_lesson_generation_prompt(request)
+
+        self.assertIn('"practical_task"', prompt)
+        self.assertIn('"checklist"', prompt)
+        self.assertIn('"common_mistakes"', prompt)
+        self.assertIn('"key_takeaways"', prompt)
+        self.assertIn('"application_tips"', prompt)
+        self.assertIn("practical task", prompt)
+        self.assertIn("checklist", prompt)
+        self.assertIn("common mistakes", prompt)
+        self.assertIn("key takeaways", prompt)
+        self.assertIn("tips for applying", prompt)
+        self.assertIn(
+            "Do not invent policies, rules, facts, or procedures",
             prompt,
         )
 

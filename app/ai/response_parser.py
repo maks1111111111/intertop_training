@@ -103,11 +103,46 @@ def _parse_lesson_item(item: Any, index: int) -> LessonCandidate:
         raise ValueError(f"Lesson at index {index} field 'title' must be a string.")
 
     summary, content, learning_objectives = _parse_lesson_fields(item, index)
+    practical_task = _parse_optional_string_field(
+        item,
+        index,
+        "practical_task",
+        default="",
+    )
+    checklist = _parse_string_list_field(
+        item,
+        index,
+        "checklist",
+        default=(),
+    )
+    common_mistakes = _parse_string_list_field(
+        item,
+        index,
+        "common_mistakes",
+        default=(),
+    )
+    key_takeaways = _parse_string_list_field(
+        item,
+        index,
+        "key_takeaways",
+        default=(),
+    )
+    application_tips = _parse_string_list_field(
+        item,
+        index,
+        "application_tips",
+        default=(),
+    )
     return LessonCandidate(
         title=title,
         content=content,
         summary=summary,
         learning_objectives=learning_objectives,
+        practical_task=practical_task,
+        checklist=checklist,
+        common_mistakes=common_mistakes,
+        key_takeaways=key_takeaways,
+        application_tips=application_tips,
     )
 
 
@@ -161,3 +196,49 @@ def _parse_lesson_fields(
         learning_objectives = tuple(validated_objectives)
 
     return summary, content, learning_objectives
+
+
+def _parse_optional_string_field(
+    item: dict[str, Any],
+    index: int,
+    field_name: str,
+    *,
+    default: str,
+) -> str:
+    if field_name not in item:
+        return default
+
+    value = item[field_name]
+    if not isinstance(value, str):
+        raise ValueError(
+            f"Lesson at index {index} field '{field_name}' must be a string."
+        )
+    return value
+
+
+def _parse_string_list_field(
+    item: dict[str, Any],
+    index: int,
+    field_name: str,
+    *,
+    default: Tuple[str, ...],
+) -> Tuple[str, ...]:
+    if field_name not in item:
+        return default
+
+    values = item[field_name]
+    if not isinstance(values, list):
+        raise ValueError(
+            f"Lesson at index {index} field '{field_name}' must be a list."
+        )
+
+    validated_values: list[str] = []
+    for value_index, value in enumerate(values):
+        if not isinstance(value, str):
+            raise ValueError(
+                f"Lesson at index {index} field '{field_name}' item at index "
+                f"{value_index} must be a string."
+            )
+        validated_values.append(value)
+
+    return tuple(validated_values)

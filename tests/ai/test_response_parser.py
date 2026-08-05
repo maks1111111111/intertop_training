@@ -409,6 +409,174 @@ class AIResponseParserTests(unittest.TestCase):
         with self.assertRaises(json.JSONDecodeError):
             self.parser.parse_lessons("{not valid json")
 
+    def test_full_extended_json_with_quality_fields(self) -> None:
+        response = json.dumps(
+            {
+                "course": {
+                    "title": "Safety Training",
+                    "description": "Introductory safety course.",
+                    "language": "en",
+                },
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "summary": "First lesson summary.",
+                        "content": "First lesson full content.",
+                        "learning_objectives": ["Objective A"],
+                        "practical_task": "Inspect the work area.",
+                        "checklist": ["Check exits", "Verify equipment"],
+                        "common_mistakes": ["Skipping inspection"],
+                        "key_takeaways": ["Safety first"],
+                        "application_tips": ["Review checklist daily"],
+                    }
+                ],
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        lesson = result.lessons[0]
+        self.assertEqual(lesson.practical_task, "Inspect the work area.")
+        self.assertEqual(lesson.checklist, ("Check exits", "Verify equipment"))
+        self.assertEqual(lesson.common_mistakes, ("Skipping inspection",))
+        self.assertEqual(lesson.key_takeaways, ("Safety first",))
+        self.assertEqual(lesson.application_tips, ("Review checklist daily",))
+
+    def test_extended_json_without_quality_fields_uses_defaults(self) -> None:
+        response = json.dumps(
+            {
+                "course": {
+                    "title": "Safety Training",
+                    "description": "Introductory safety course.",
+                    "language": "en",
+                },
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "summary": "First lesson summary.",
+                        "content": "First lesson full content.",
+                        "learning_objectives": ["Objective A"],
+                    }
+                ],
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        lesson = result.lessons[0]
+        self.assertEqual(lesson.practical_task, "")
+        self.assertEqual(lesson.checklist, ())
+        self.assertEqual(lesson.common_mistakes, ())
+        self.assertEqual(lesson.key_takeaways, ())
+        self.assertEqual(lesson.application_tips, ())
+
+    def test_practical_task_not_string_raises_value_error(self) -> None:
+        response = json.dumps(
+            {
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "content": "Content.",
+                        "practical_task": 123,
+                    }
+                ]
+            }
+        )
+
+        with self.assertRaises(ValueError) as context:
+            self.parser.parse_lessons(response)
+
+        self.assertEqual(
+            str(context.exception),
+            "Lesson at index 0 field 'practical_task' must be a string.",
+        )
+
+    def test_checklist_not_list_raises_value_error(self) -> None:
+        response = json.dumps(
+            {
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "content": "Content.",
+                        "checklist": "not-a-list",
+                    }
+                ]
+            }
+        )
+
+        with self.assertRaises(ValueError) as context:
+            self.parser.parse_lessons(response)
+
+        self.assertEqual(
+            str(context.exception),
+            "Lesson at index 0 field 'checklist' must be a list.",
+        )
+
+    def test_common_mistakes_item_not_string_raises_value_error(self) -> None:
+        response = json.dumps(
+            {
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "content": "Content.",
+                        "common_mistakes": [123],
+                    }
+                ]
+            }
+        )
+
+        with self.assertRaises(ValueError) as context:
+            self.parser.parse_lessons(response)
+
+        self.assertEqual(
+            str(context.exception),
+            "Lesson at index 0 field 'common_mistakes' item at index 0 "
+            "must be a string.",
+        )
+
+    def test_key_takeaways_not_list_raises_value_error(self) -> None:
+        response = json.dumps(
+            {
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "content": "Content.",
+                        "key_takeaways": {"takeaway": "one"},
+                    }
+                ]
+            }
+        )
+
+        with self.assertRaises(ValueError) as context:
+            self.parser.parse_lessons(response)
+
+        self.assertEqual(
+            str(context.exception),
+            "Lesson at index 0 field 'key_takeaways' must be a list.",
+        )
+
+    def test_application_tips_item_not_string_raises_value_error(self) -> None:
+        response = json.dumps(
+            {
+                "lessons": [
+                    {
+                        "title": "Lesson One",
+                        "content": "Content.",
+                        "application_tips": [True],
+                    }
+                ]
+            }
+        )
+
+        with self.assertRaises(ValueError) as context:
+            self.parser.parse_lessons(response)
+
+        self.assertEqual(
+            str(context.exception),
+            "Lesson at index 0 field 'application_tips' item at index 0 "
+            "must be a string.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
