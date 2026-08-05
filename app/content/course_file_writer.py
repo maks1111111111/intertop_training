@@ -56,6 +56,11 @@ class CourseFileWriter:
                 "order": index,
                 "title": lesson.title,
                 "description": lesson.content,
+                "practical_task": lesson.practical_task,
+                "checklist": list(lesson.checklist),
+                "common_mistakes": list(lesson.common_mistakes),
+                "key_takeaways": list(lesson.key_takeaways),
+                "application_tips": list(lesson.application_tips),
             }
             _write_json(lesson_dir / LESSON_JSON_FILENAME, lesson_manifest)
 

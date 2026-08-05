@@ -24,6 +24,11 @@ def _sample_draft() -> CourseDraft:
                 content="Full lesson body for lesson one.",
                 summary="First summary.",
                 learning_objectives=("Objective A", "Objective B"),
+                practical_task="Inspect the work area before starting.",
+                checklist=("Wear PPE", "Check equipment"),
+                common_mistakes=("Skipping inspection",),
+                key_takeaways=("Safety first",),
+                application_tips=("Apply the checklist daily",),
             ),
             LessonCandidate(
                 title="Lesson Two",
@@ -88,6 +93,11 @@ class CourseFileWriterTests(unittest.TestCase):
                     "order": 1,
                     "title": "Lesson One",
                     "description": "Full lesson body for lesson one.",
+                    "practical_task": "Inspect the work area before starting.",
+                    "checklist": ["Wear PPE", "Check equipment"],
+                    "common_mistakes": ["Skipping inspection"],
+                    "key_takeaways": ["Safety first"],
+                    "application_tips": ["Apply the checklist daily"],
                 },
             )
             self.assertEqual(
@@ -96,6 +106,11 @@ class CourseFileWriterTests(unittest.TestCase):
                     "order": 2,
                     "title": "Lesson Two",
                     "description": "Second lesson body.",
+                    "practical_task": "",
+                    "checklist": [],
+                    "common_mistakes": [],
+                    "key_takeaways": [],
+                    "application_tips": [],
                 },
             )
             self.assertNotIn("number", first_lesson)
@@ -155,11 +170,47 @@ class CourseFileWriterTests(unittest.TestCase):
 
             self.assertEqual(lesson_manifest["order"], 1)
             self.assertEqual(lesson_manifest["title"], "Legacy Lesson")
-            self.assertEqual(lesson_manifest["description"], "Legacy content only.")
+            self.assertEqual(
+                lesson_manifest["description"],
+                "Legacy content only.",
+            )
+            self.assertEqual(lesson_manifest["practical_task"], "")
+            self.assertEqual(lesson_manifest["checklist"], [])
+            self.assertEqual(lesson_manifest["common_mistakes"], [])
+            self.assertEqual(lesson_manifest["key_takeaways"], [])
+            self.assertEqual(lesson_manifest["application_tips"], [])
             self.assertNotIn("number", lesson_manifest)
             self.assertNotIn("summary", lesson_manifest)
             self.assertNotIn("learning_objectives", lesson_manifest)
             self.assertNotIn("content", lesson_manifest)
+
+    def test_writes_empty_ai_fields_as_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = Path(tmp) / "defaults-course"
+            draft = CourseDraft(
+                slug="defaults-course",
+                title="Defaults Course",
+                description="",
+                language="en",
+                lessons=(
+                    LessonCandidate(
+                        title="Minimal Lesson",
+                        content="Minimal body.",
+                    ),
+                ),
+            )
+
+            self.writer.write(draft, course_dir)
+
+            lesson_manifest = json.loads(
+                (course_dir / "lesson_01" / "lesson.json").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(lesson_manifest["practical_task"], "")
+            self.assertEqual(lesson_manifest["checklist"], [])
+            self.assertEqual(lesson_manifest["common_mistakes"], [])
+            self.assertEqual(lesson_manifest["key_takeaways"], [])
+            self.assertEqual(lesson_manifest["application_tips"], [])
 
     def test_empty_lessons_writes_only_course_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
