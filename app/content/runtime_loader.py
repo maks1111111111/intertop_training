@@ -33,6 +33,11 @@ class Lesson:
     description: str
     image_path: Optional[Path]
     narration_path: Optional[Path]
+    practical_task: str = ""
+    checklist: tuple[str, ...] = ()
+    common_mistakes: tuple[str, ...] = ()
+    key_takeaways: tuple[str, ...] = ()
+    application_tips: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -142,6 +147,44 @@ def _find_file(directory: Path, filenames: tuple[str, ...]) -> Optional[Path]:
     return None
 
 
+def _parse_lesson_string_field(
+    metadata: dict,
+    field_name: str,
+    *,
+    default: str = "",
+) -> Optional[str]:
+    """Return a lesson string field value, or ``None`` when the type is invalid."""
+    if field_name not in metadata:
+        return default
+
+    value = metadata[field_name]
+    if not isinstance(value, str):
+        return None
+
+    return value
+
+
+def _parse_lesson_string_tuple_field(
+    metadata: dict,
+    field_name: str,
+) -> Optional[tuple[str, ...]]:
+    """Return a tuple of strings from a lesson list field, or ``None`` on failure."""
+    if field_name not in metadata:
+        return ()
+
+    value = metadata[field_name]
+    if not isinstance(value, list):
+        return None
+
+    items: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            return None
+        items.append(item)
+
+    return tuple(items)
+
+
 def _load_lesson(lesson_dir: Path) -> Optional[Lesson]:
     metadata_path = lesson_dir / LESSON_JSON_FILENAME
 
@@ -154,6 +197,26 @@ def _load_lesson(lesson_dir: Path) -> Optional[Lesson]:
 
     title = str(metadata.get("title") or lesson_dir.name)
     description = str(metadata.get("description") or "")
+
+    practical_task = _parse_lesson_string_field(metadata, "practical_task")
+    if practical_task is None:
+        return None
+
+    checklist = _parse_lesson_string_tuple_field(metadata, "checklist")
+    if checklist is None:
+        return None
+
+    common_mistakes = _parse_lesson_string_tuple_field(metadata, "common_mistakes")
+    if common_mistakes is None:
+        return None
+
+    key_takeaways = _parse_lesson_string_tuple_field(metadata, "key_takeaways")
+    if key_takeaways is None:
+        return None
+
+    application_tips = _parse_lesson_string_tuple_field(metadata, "application_tips")
+    if application_tips is None:
+        return None
 
     try:
         number = int(metadata.get("order", 9999))
@@ -171,6 +234,11 @@ def _load_lesson(lesson_dir: Path) -> Optional[Lesson]:
         description=description,
         image_path=image_path,
         narration_path=narration_path,
+        practical_task=practical_task,
+        checklist=checklist,
+        common_mistakes=common_mistakes,
+        key_takeaways=key_takeaways,
+        application_tips=application_tips,
     )
 
 

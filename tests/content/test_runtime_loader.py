@@ -10,7 +10,12 @@ import unittest
 from pathlib import Path
 
 from app.content.content_pack import ContentPack, build_content_pack
-from app.content.runtime_loader import RuntimeContent, load_runtime_content
+from app.content.runtime_loader import (
+    RuntimeContent,
+    get_published_course,
+    load_published_courses,
+    load_runtime_content,
+)
 
 
 def _create_snapshot(root: Path, *, slug: str = "brands") -> tuple[Path, Path]:
@@ -131,3 +136,220 @@ class LoadRuntimeContentTests(unittest.TestCase):
 
             with self.assertRaises(dataclasses.FrozenInstanceError):
                 runtime.version = 2  # type: ignore[misc]
+
+
+def _write_published_course(courses_dir: Path, slug: str = "alpha") -> Path:
+    """Create a minimal published course directory."""
+    course_dir = courses_dir / slug
+    course_dir.mkdir()
+
+    (course_dir / "course.json").write_text(
+        json.dumps({"title": "Alpha Course", "status": "published", "version": 1}),
+        encoding="utf-8",
+    )
+
+    return course_dir
+
+
+def _write_lesson(
+    course_dir: Path,
+    slug: str,
+    manifest: dict,
+) -> Path:
+    """Create a lesson directory with the given manifest."""
+    lesson_dir = course_dir / slug
+    lesson_dir.mkdir()
+    (lesson_dir / "lesson.json").write_text(
+        json.dumps(manifest),
+        encoding="utf-8",
+    )
+    return lesson_dir
+
+
+class LessonQualityFieldsLoaderTests(unittest.TestCase):
+    """Tests for loading AI lesson quality fields from lesson.json."""
+
+    def test_loads_all_quality_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = _write_published_course(courses_dir)
+            _write_lesson(
+                course_dir,
+                "lesson_01",
+                {
+                    "title": "Safety basics",
+                    "order": 1,
+                    "description": "Main lesson text.",
+                    "practical_task": "Inspect the work area before starting.",
+                    "checklist": ["Wear PPE", "Check equipment"],
+                    "common_mistakes": ["Skipping inspection"],
+                    "key_takeaways": ["Safety first"],
+                    "application_tips": ["Apply the checklist daily"],
+                },
+            )
+
+            course = get_published_course(courses_dir, "alpha")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(len(course.lessons), 1)
+
+        lesson = course.lessons[0]
+        self.assertEqual(
+            lesson.practical_task,
+            "Inspect the work area before starting.",
+        )
+        self.assertEqual(lesson.checklist, ("Wear PPE", "Check equipment"))
+        self.assertEqual(lesson.common_mistakes, ("Skipping inspection",))
+        self.assertEqual(lesson.key_takeaways, ("Safety first",))
+        self.assertEqual(lesson.application_tips, ("Apply the checklist daily",))
+        self.assertIsInstance(lesson.checklist, tuple)
+        self.assertIsInstance(lesson.common_mistakes, tuple)
+        self.assertIsInstance(lesson.key_takeaways, tuple)
+        self.assertIsInstance(lesson.application_tips, tuple)
+
+    def test_legacy_lesson_json_uses_safe_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = _write_published_course(courses_dir)
+            _write_lesson(
+                course_dir,
+                "lesson_01",
+                {"title": "Legacy lesson", "order": 1, "description": "Body"},
+            )
+
+            course = get_published_course(courses_dir, "alpha")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        lesson = course.lessons[0]
+        self.assertEqual(lesson.practical_task, "")
+        self.assertEqual(lesson.checklist, ())
+        self.assertEqual(lesson.common_mistakes, ())
+        self.assertEqual(lesson.key_takeaways, ())
+        self.assertEqual(lesson.application_tips, ())
+
+    def test_empty_quality_values_are_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = _write_published_course(courses_dir)
+            _write_lesson(
+                course_dir,
+                "lesson_01",
+                {
+                    "title": "Lesson",
+                    "order": 1,
+                    "description": "Body",
+                    "practical_task": "",
+                    "checklist": [],
+                    "common_mistakes": [],
+                    "key_takeaways": [],
+                    "application_tips": [],
+                },
+            )
+
+            course = get_published_course(courses_dir, "alpha")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        lesson = course.lessons[0]
+        self.assertEqual(lesson.practical_task, "")
+        self.assertEqual(lesson.checklist, ())
+        self.assertEqual(lesson.common_mistakes, ())
+        self.assertEqual(lesson.key_takeaways, ())
+        self.assertEqual(lesson.application_tips, ())
+
+    def test_invalid_practical_task_type_rejects_lesson(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = _write_published_course(courses_dir)
+            _write_lesson(
+                course_dir,
+                "lesson_01",
+                {
+                    "title": "Lesson",
+                    "order": 1,
+                    "description": "Body",
+                    "practical_task": 123,
+                },
+            )
+
+            course = get_published_course(courses_dir, "alpha")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(course.lessons, [])
+
+    def test_invalid_string_list_field_rejects_lesson(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = _write_published_course(courses_dir)
+            _write_lesson(
+                course_dir,
+                "lesson_01",
+                {
+                    "title": "Lesson",
+                    "order": 1,
+                    "description": "Body",
+                    "checklist": "not-a-list",
+                },
+            )
+
+            course = get_published_course(courses_dir, "alpha")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(course.lessons, [])
+
+    def test_non_string_list_item_rejects_lesson(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = _write_published_course(courses_dir)
+            _write_lesson(
+                course_dir,
+                "lesson_01",
+                {
+                    "title": "Lesson",
+                    "order": 1,
+                    "description": "Body",
+                    "application_tips": ["Valid tip", 123],
+                },
+            )
+
+            course = get_published_course(courses_dir, "alpha")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(course.lessons, [])
+
+    def test_valid_lesson_loads_alongside_invalid_quality_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = _write_published_course(courses_dir)
+            _write_lesson(
+                course_dir,
+                "lesson_broken",
+                {
+                    "title": "Broken",
+                    "order": 1,
+                    "description": "Body",
+                    "checklist": {"invalid": "object"},
+                },
+            )
+            _write_lesson(
+                course_dir,
+                "lesson_02",
+                {
+                    "title": "Valid",
+                    "order": 2,
+                    "description": "Valid body",
+                    "checklist": ["Step one"],
+                },
+            )
+
+            courses = load_published_courses(courses_dir)
+
+        self.assertEqual(len(courses), 1)
+        self.assertEqual(len(courses[0].lessons), 1)
+        self.assertEqual(courses[0].lessons[0].path.name, "lesson_02")
+        self.assertEqual(courses[0].lessons[0].checklist, ("Step one",))
