@@ -161,3 +161,43 @@ class GenerationValidatorTests(unittest.TestCase):
         self.assertEqual(report.lessons, 2)
         self.assertEqual(report.empty_contents, 1)
         self.assertFalse(report.valid)
+
+    def test_valid_result_with_all_quality_fields(self) -> None:
+        result = LessonGenerationResult(
+            lessons=[
+                _valid_lesson(
+                    practical_task="Inspect the work area before opening.",
+                    checklist=("Check equipment", "Review safety notes"),
+                    common_mistakes=("Skipping the pre-shift briefing",),
+                    key_takeaways=("Safety comes first",),
+                    application_tips=("Apply the checklist daily",),
+                )
+            ]
+        )
+
+        report = self.validator.validate(result)
+
+        self.assertEqual(report.lessons, 1)
+        self.assertEqual(report.empty_contents, 0)
+        self.assertEqual(report.empty_summaries, 0)
+        self.assertEqual(report.empty_titles, 0)
+        self.assertEqual(report.empty_learning_objectives, 0)
+        self.assertTrue(report.valid)
+
+    def test_legacy_lesson_with_empty_quality_fields(self) -> None:
+        result = LessonGenerationResult(
+            lessons=[
+                _valid_lesson(
+                    practical_task="",
+                    checklist=(),
+                    common_mistakes=(),
+                    key_takeaways=(),
+                    application_tips=(),
+                )
+            ]
+        )
+
+        report = self.validator.validate(result)
+
+        self.assertEqual(report.lessons, 1)
+        self.assertTrue(report.valid)
