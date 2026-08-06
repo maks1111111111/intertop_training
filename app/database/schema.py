@@ -128,5 +128,41 @@ def create_tables(connection: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_quiz_answers_attempt_id
             ON quiz_answers(attempt_id);
+
+        CREATE TABLE IF NOT EXISTS practical_task_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            course_slug TEXT NOT NULL,
+            lesson_slug TEXT NOT NULL,
+            task_title TEXT NOT NULL,
+            task_description TEXT NOT NULL,
+            expected_result TEXT NOT NULL,
+            learner_answer TEXT NOT NULL,
+            score INTEGER,
+            max_score INTEGER,
+            passed INTEGER,
+            feedback_summary TEXT,
+            feedback_strengths_json TEXT,
+            feedback_improvements_json TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            reviewed_at TEXT,
+            FOREIGN KEY (user_id)
+                REFERENCES users(id)
+                ON DELETE CASCADE,
+            CHECK (status IN ('pending', 'reviewed', 'failed')),
+            CHECK (passed IS NULL OR passed IN (0, 1)),
+            CHECK (score IS NULL OR score >= 0),
+            CHECK (max_score IS NULL OR max_score >= 0)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_practical_task_attempts_user_id
+            ON practical_task_attempts(user_id);
+
+        CREATE INDEX IF NOT EXISTS idx_practical_task_attempts_course_lesson
+            ON practical_task_attempts(course_slug, lesson_slug);
+
+        CREATE INDEX IF NOT EXISTS idx_practical_task_attempts_status
+            ON practical_task_attempts(status);
         """
     )
