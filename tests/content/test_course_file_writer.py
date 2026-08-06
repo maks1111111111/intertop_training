@@ -10,6 +10,7 @@ from pathlib import Path
 from app.content.course_file_writer import CourseFileWriter
 from app.content.course_writer import CourseDraft
 from app.content.lesson_builder import LessonCandidate
+from app.content.practical_task import PracticalTask
 
 
 def _sample_draft() -> CourseDraft:
@@ -94,6 +95,7 @@ class CourseFileWriterTests(unittest.TestCase):
                     "title": "Lesson One",
                     "description": "Full lesson body for lesson one.",
                     "practical_task": "Inspect the work area before starting.",
+                    "structured_practical_task": None,
                     "checklist": ["Wear PPE", "Check equipment"],
                     "common_mistakes": ["Skipping inspection"],
                     "key_takeaways": ["Safety first"],
@@ -107,6 +109,7 @@ class CourseFileWriterTests(unittest.TestCase):
                     "title": "Lesson Two",
                     "description": "Second lesson body.",
                     "practical_task": "",
+                    "structured_practical_task": None,
                     "checklist": [],
                     "common_mistakes": [],
                     "key_takeaways": [],
@@ -175,6 +178,7 @@ class CourseFileWriterTests(unittest.TestCase):
                 "Legacy content only.",
             )
             self.assertEqual(lesson_manifest["practical_task"], "")
+            self.assertIsNone(lesson_manifest["structured_practical_task"])
             self.assertEqual(lesson_manifest["checklist"], [])
             self.assertEqual(lesson_manifest["common_mistakes"], [])
             self.assertEqual(lesson_manifest["key_takeaways"], [])
@@ -207,6 +211,7 @@ class CourseFileWriterTests(unittest.TestCase):
             )
 
             self.assertEqual(lesson_manifest["practical_task"], "")
+            self.assertIsNone(lesson_manifest["structured_practical_task"])
             self.assertEqual(lesson_manifest["checklist"], [])
             self.assertEqual(lesson_manifest["common_mistakes"], [])
             self.assertEqual(lesson_manifest["key_takeaways"], [])
@@ -243,6 +248,146 @@ class CourseFileWriterTests(unittest.TestCase):
 
             with self.assertRaises(NotADirectoryError):
                 self.writer.write(_sample_draft(), destination)
+
+    def test_writes_structured_practical_task(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = Path(tmp) / "structured-task-course"
+            draft = CourseDraft(
+                slug="structured-task-course",
+                title="Structured Task Course",
+                description="",
+                language="ru",
+                lessons=(
+                    LessonCandidate(
+                        title="Lesson One",
+                        content="Lesson body.",
+                        structured_practical_task=PracticalTask(
+                            title="Проверка рабочего места",
+                            description="Осмотрите рабочую зону перед началом смены.",
+                            expected_result="Все риски обнаружены и устранены.",
+                            estimated_minutes=10,
+                        ),
+                    ),
+                ),
+            )
+
+            self.writer.write(draft, course_dir)
+
+            lesson_manifest = json.loads(
+                (course_dir / "lesson_01" / "lesson.json").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(
+                lesson_manifest["structured_practical_task"],
+                {
+                    "title": "Проверка рабочего места",
+                    "description": "Осмотрите рабочую зону перед началом смены.",
+                    "expected_result": "Все риски обнаружены и устранены.",
+                    "estimated_minutes": 10,
+                },
+            )
+
+    def test_writes_null_structured_practical_task_when_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = Path(tmp) / "no-structured-task"
+            draft = CourseDraft(
+                slug="no-structured-task",
+                title="No Structured Task",
+                description="",
+                language="en",
+                lessons=(
+                    LessonCandidate(
+                        title="Lesson One",
+                        content="Body.",
+                    ),
+                ),
+            )
+
+            self.writer.write(draft, course_dir)
+
+            lesson_manifest = json.loads(
+                (course_dir / "lesson_01" / "lesson.json").read_text(encoding="utf-8")
+            )
+
+            self.assertIn("structured_practical_task", lesson_manifest)
+            self.assertIsNone(lesson_manifest["structured_practical_task"])
+
+    def test_writes_null_estimated_minutes_in_structured_practical_task(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = Path(tmp) / "no-estimate-course"
+            draft = CourseDraft(
+                slug="no-estimate-course",
+                title="No Estimate Course",
+                description="",
+                language="en",
+                lessons=(
+                    LessonCandidate(
+                        title="Lesson One",
+                        content="Body.",
+                        structured_practical_task=PracticalTask(
+                            title="Task title",
+                            description="Task description.",
+                            expected_result="Expected outcome.",
+                        ),
+                    ),
+                ),
+            )
+
+            self.writer.write(draft, course_dir)
+
+            lesson_manifest = json.loads(
+                (course_dir / "lesson_01" / "lesson.json").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(
+                lesson_manifest["structured_practical_task"],
+                {
+                    "title": "Task title",
+                    "description": "Task description.",
+                    "expected_result": "Expected outcome.",
+                    "estimated_minutes": None,
+                },
+            )
+
+    def test_legacy_and_structured_practical_task_coexist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = Path(tmp) / "coexist-course"
+            draft = CourseDraft(
+                slug="coexist-course",
+                title="Coexist Course",
+                description="",
+                language="en",
+                lessons=(
+                    LessonCandidate(
+                        title="Lesson One",
+                        content="Body.",
+                        practical_task="Legacy task",
+                        structured_practical_task=PracticalTask(
+                            title="Structured title",
+                            description="Structured description.",
+                            expected_result="Structured result.",
+                            estimated_minutes=5,
+                        ),
+                    ),
+                ),
+            )
+
+            self.writer.write(draft, course_dir)
+
+            lesson_manifest = json.loads(
+                (course_dir / "lesson_01" / "lesson.json").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(lesson_manifest["practical_task"], "Legacy task")
+            self.assertEqual(
+                lesson_manifest["structured_practical_task"],
+                {
+                    "title": "Structured title",
+                    "description": "Structured description.",
+                    "expected_result": "Structured result.",
+                    "estimated_minutes": 5,
+                },
+            )
 
 
 if __name__ == "__main__":

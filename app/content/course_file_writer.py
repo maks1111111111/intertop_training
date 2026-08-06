@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Optional
 
 from app.content.contract import COURSE_JSON_FILENAME, LESSON_JSON_FILENAME
 from app.content.course_writer import CourseDraft
+from app.content.practical_task import PracticalTask
 
 
 class CourseFileWriter:
@@ -57,6 +59,9 @@ class CourseFileWriter:
                 "title": lesson.title,
                 "description": lesson.content,
                 "practical_task": lesson.practical_task,
+                "structured_practical_task": _serialize_structured_practical_task(
+                    lesson.structured_practical_task
+                ),
                 "checklist": list(lesson.checklist),
                 "common_mistakes": list(lesson.common_mistakes),
                 "key_takeaways": list(lesson.key_takeaways),
@@ -65,6 +70,19 @@ class CourseFileWriter:
             _write_json(lesson_dir / LESSON_JSON_FILENAME, lesson_manifest)
 
         return course_dir
+
+
+def _serialize_structured_practical_task(
+    task: Optional[PracticalTask],
+) -> Optional[dict]:
+    if task is None:
+        return None
+    return {
+        "title": task.title,
+        "description": task.description,
+        "expected_result": task.expected_result,
+        "estimated_minutes": task.estimated_minutes,
+    }
 
 
 def _write_json(path: Path, data: dict) -> None:
