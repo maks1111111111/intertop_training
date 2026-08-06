@@ -20,6 +20,7 @@ from app.content.contract import (
     LESSON_NARRATION_FILENAMES,
     QUIZ_JSON_FILENAME,
 )
+from app.content.practical_task import PracticalTask
 
 _PUBLISHED_STATUS = "published"
 _COURSE_STATUSES = frozenset({"draft", "published", "archived"})
@@ -34,6 +35,7 @@ class Lesson:
     image_path: Optional[Path]
     narration_path: Optional[Path]
     practical_task: str = ""
+    structured_practical_task: Optional[PracticalTask] = None
     checklist: tuple[str, ...] = ()
     common_mistakes: tuple[str, ...] = ()
     key_takeaways: tuple[str, ...] = ()
@@ -185,6 +187,68 @@ def _parse_lesson_string_tuple_field(
     return tuple(items)
 
 
+def _parse_structured_practical_task(
+    metadata: dict,
+) -> tuple[Optional[PracticalTask], bool]:
+    """Parse ``structured_practical_task`` from lesson metadata.
+
+    Returns:
+        A pair ``(task, ok)``. When ``ok`` is ``False``, the lesson is
+        invalid. When ``ok`` is ``True``, ``task`` is ``None`` if the field
+        is absent or JSON ``null``, otherwise a parsed :class:`PracticalTask`.
+    """
+    if "structured_practical_task" not in metadata:
+        return None, True
+
+    raw = metadata["structured_practical_task"]
+    if raw is None:
+        return None, True
+
+    if not isinstance(raw, dict):
+        return None, False
+
+    if "title" not in raw:
+        return None, False
+    title = raw["title"]
+    if not isinstance(title, str):
+        return None, False
+
+    if "description" not in raw:
+        return None, False
+    description = raw["description"]
+    if not isinstance(description, str):
+        return None, False
+
+    if "expected_result" not in raw:
+        return None, False
+    expected_result = raw["expected_result"]
+    if not isinstance(expected_result, str):
+        return None, False
+
+    if "estimated_minutes" in raw:
+        estimated_minutes_raw = raw["estimated_minutes"]
+        if estimated_minutes_raw is None:
+            estimated_minutes = None
+        elif isinstance(estimated_minutes_raw, bool):
+            return None, False
+        elif isinstance(estimated_minutes_raw, int):
+            estimated_minutes = estimated_minutes_raw
+        else:
+            return None, False
+    else:
+        estimated_minutes = None
+
+    return (
+        PracticalTask(
+            title=title,
+            description=description,
+            expected_result=expected_result,
+            estimated_minutes=estimated_minutes,
+        ),
+        True,
+    )
+
+
 def _load_lesson(lesson_dir: Path) -> Optional[Lesson]:
     metadata_path = lesson_dir / LESSON_JSON_FILENAME
 
@@ -218,6 +282,12 @@ def _load_lesson(lesson_dir: Path) -> Optional[Lesson]:
     if application_tips is None:
         return None
 
+    structured_practical_task, structured_ok = _parse_structured_practical_task(
+        metadata
+    )
+    if not structured_ok:
+        return None
+
     try:
         number = int(metadata.get("order", 9999))
     except (TypeError, ValueError):
@@ -235,6 +305,7 @@ def _load_lesson(lesson_dir: Path) -> Optional[Lesson]:
         image_path=image_path,
         narration_path=narration_path,
         practical_task=practical_task,
+        structured_practical_task=structured_practical_task,
         checklist=checklist,
         common_mistakes=common_mistakes,
         key_takeaways=key_takeaways,
