@@ -31,7 +31,12 @@ def _json_instruction_lines() -> list[str]:
         '        "...",',
         '        "..."',
         "      ],",
-        '      "practical_task": "...",',
+        '      "structured_practical_task": {',
+        '        "title": "...",',
+        '        "description": "...",',
+        '        "expected_result": "...",',
+        '        "estimated_minutes": 10',
+        "      },",
         '      "checklist": [',
         '        "...",',
         '        "..."',
@@ -65,8 +70,18 @@ def _json_instruction_lines() -> list[str]:
         "  material; do not use generic filler; do not reduce the",
         "  lesson to a summary; write a complete training lesson.",
         '- "learning_objectives": list of short, measurable outcomes.',
-        '- "practical_task": one concrete practical task or work',
-        "  scenario based on the source material; string.",
+        '- "structured_practical_task": one concrete hands-on exercise or',
+        "  work scenario based on the source material; JSON object.",
+        '- "structured_practical_task.title": short, action-oriented',
+        "  task title.",
+        '- "structured_practical_task.description": clear instructions',
+        "  describing what the learner should do.",
+        '- "structured_practical_task.expected_result": observable result',
+        "  that indicates successful completion.",
+        '- "structured_practical_task.estimated_minutes": realistic',
+        "  positive integer estimate for completing the task, or null",
+        "  when the source material does not support a reasonable",
+        "  estimate.",
         '- "checklist": list of short, actionable verification steps.',
         '- "common_mistakes": list of typical mistakes relevant to the',
         "  source material.",
@@ -91,9 +106,10 @@ def _task_instruction_lines() -> list[str]:
         "2. Detect the primary language of the material.",
         "3. Transform each source section into a training lesson.",
         "4. For every lesson provide a title, a brief summary, full",
-        "   lesson content, learning objectives, a practical task, a",
-        "   checklist, common mistakes, key takeaways, and application",
-        "   tips.",
+        "   lesson content, learning objectives, a structured practical",
+        "   task with title, instructions, expected result, and estimated",
+        "   completion time, a checklist, common mistakes, key takeaways,",
+        "   and application tips.",
         "",
     ]
 
@@ -252,16 +268,27 @@ class PromptBuilderTests(unittest.TestCase):
 
         prompt = self.builder.build_lesson_generation_prompt(request)
 
-        self.assertIn('"practical_task"', prompt)
+        self.assertIn('"structured_practical_task"', prompt)
+        self.assertIn('"structured_practical_task.title"', prompt)
+        self.assertIn('"structured_practical_task.description"', prompt)
+        self.assertIn('"structured_practical_task.expected_result"', prompt)
+        self.assertIn('"structured_practical_task.estimated_minutes"', prompt)
+        self.assertIn("positive integer estimate", prompt)
+        self.assertIn("or null", prompt)
         self.assertIn('"checklist"', prompt)
         self.assertIn('"common_mistakes"', prompt)
         self.assertIn('"key_takeaways"', prompt)
         self.assertIn('"application_tips"', prompt)
-        self.assertIn("practical task", prompt)
+        self.assertIn("structured practical", prompt)
         self.assertIn("checklist", prompt)
         self.assertIn("common mistakes", prompt)
         self.assertIn("key takeaways", prompt)
         self.assertIn("tips for applying", prompt)
+        self.assertNotIn('"practical_task": "..."', prompt)
+        self.assertNotIn(
+            '"practical_task": one concrete practical task',
+            prompt,
+        )
         self.assertIn(
             "Do not invent policies, rules, facts, or procedures",
             prompt,
