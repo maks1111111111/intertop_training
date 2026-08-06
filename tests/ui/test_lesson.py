@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+from app.content.practical_task import PracticalTask
 from app.content.runtime_loader import Lesson
 from app.ui.lesson import lesson_body_text, lesson_quality_sections_text
 
@@ -22,6 +23,7 @@ def _sample_lesson(**overrides: object) -> Lesson:
         "common_mistakes": (),
         "key_takeaways": (),
         "application_tips": (),
+        "structured_practical_task": None,
     }
     defaults.update(overrides)
     return Lesson(**defaults)
@@ -73,6 +75,104 @@ class LessonQualitySectionsTextTests(unittest.TestCase):
 
         self.assertIn("🛠 Практическое задание", text)
         self.assertNotIn("✅ Чек-лист", text)
+
+
+class StructuredPracticalTaskSectionTests(unittest.TestCase):
+    def test_full_structured_practical_task_renders_all_parts(self) -> None:
+        lesson = _sample_lesson(
+            structured_practical_task=PracticalTask(
+                title="Проверка рабочего места",
+                description="Осмотрите рабочую зону перед началом смены.",
+                expected_result="Все риски обнаружены и устранены.",
+                estimated_minutes=10,
+            ),
+        )
+
+        text = lesson_quality_sections_text(lesson)
+
+        self.assertIn("🛠 Практическое задание", text)
+        self.assertIn("<b>Проверка рабочего места</b>", text)
+        self.assertIn("Осмотрите рабочую зону перед началом смены.", text)
+        self.assertIn("🎯 Ожидаемый результат:", text)
+        self.assertIn("Все риски обнаружены и устранены.", text)
+        self.assertIn("⏱ Ориентировочное время: 10 мин.", text)
+
+    def test_structured_task_without_estimated_minutes_omits_time_line(self) -> None:
+        lesson = _sample_lesson(
+            structured_practical_task=PracticalTask(
+                title="Task title",
+                description="Task description.",
+                expected_result="Task result.",
+            ),
+        )
+
+        text = lesson_quality_sections_text(lesson)
+
+        self.assertNotIn("⏱ Ориентировочное время", text)
+
+    def test_structured_task_takes_precedence_over_legacy_practical_task(self) -> None:
+        lesson = _sample_lesson(
+            practical_task="Legacy task text.",
+            structured_practical_task=PracticalTask(
+                title="Structured title",
+                description="Structured description.",
+                expected_result="Structured result.",
+                estimated_minutes=5,
+            ),
+        )
+
+        text = lesson_quality_sections_text(lesson)
+
+        self.assertIn("<b>Structured title</b>", text)
+        self.assertNotIn("Legacy task text.", text)
+
+    def test_legacy_practical_task_when_structured_task_is_none(self) -> None:
+        lesson = _sample_lesson(
+            practical_task="Complete the safety checklist.",
+            structured_practical_task=None,
+        )
+
+        text = lesson_quality_sections_text(lesson)
+
+        self.assertIn("🛠 Практическое задание", text)
+        self.assertIn("Complete the safety checklist.", text)
+        self.assertNotIn("<b>", text)
+
+    def test_structured_task_html_characters_are_escaped(self) -> None:
+        lesson = _sample_lesson(
+            structured_practical_task=PracticalTask(
+                title="<script>alert(1)</script>",
+                description="Use <b>bold</b> & careful steps.",
+                expected_result="Result with <tag> & ampersand.",
+                estimated_minutes=15,
+            ),
+        )
+
+        text = lesson_quality_sections_text(lesson)
+
+        self.assertIn(
+            "<b>&lt;script&gt;alert(1)&lt;/script&gt;</b>",
+            text,
+        )
+        self.assertIn("Use &lt;b&gt;bold&lt;/b&gt; &amp; careful steps.", text)
+        self.assertIn("Result with &lt;tag&gt; &amp; ampersand.", text)
+
+    def test_legacy_and_bullet_html_characters_are_escaped(self) -> None:
+        lesson = _sample_lesson(
+            practical_task="Task with <tag> & ampersand.",
+            checklist=("<item>",),
+            common_mistakes=("Mistake & skip",),
+            key_takeaways=("Takeaway <note>",),
+            application_tips=("Tip & trick",),
+        )
+
+        text = lesson_quality_sections_text(lesson)
+
+        self.assertIn("Task with &lt;tag&gt; &amp; ampersand.", text)
+        self.assertIn("• &lt;item&gt;", text)
+        self.assertIn("• Mistake &amp; skip", text)
+        self.assertIn("• Takeaway &lt;note&gt;", text)
+        self.assertIn("• Tip &amp; trick", text)
 
 
 class LessonBodyTextTests(unittest.TestCase):

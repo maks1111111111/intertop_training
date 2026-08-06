@@ -1,5 +1,6 @@
 from html import escape
 
+from app.content.practical_task import PracticalTask
 from app.services.scanner import Course, Lesson
 from app.ui.theme import DIVIDER
 from app.ui.widgets import progress_bar
@@ -28,19 +29,44 @@ def lesson_header(
 
 def _format_bullet_section(title: str, items: tuple[str, ...]) -> str:
     lines = [title]
-    lines.extend(f"• {item}" for item in items)
+    lines.extend(f"• {escape(item)}" for item in items)
+    return "\n".join(lines)
+
+
+def _format_structured_practical_task(task: PracticalTask) -> str:
+    lines = [
+        "🛠 Практическое задание",
+        "",
+        f"<b>{escape(task.title)}</b>",
+        "",
+        escape(task.description),
+        "",
+        f"🎯 Ожидаемый результат:\n{escape(task.expected_result)}",
+    ]
+    if task.estimated_minutes is not None:
+        lines.extend(
+            [
+                "",
+                f"⏱ Ориентировочное время: {task.estimated_minutes} мин.",
+            ]
+        )
     return "\n".join(lines)
 
 
 def lesson_quality_sections_text(lesson: Lesson) -> str:
-    """Return optional lesson quality blocks for Telegram plain-text messages."""
+    """Return optional lesson quality blocks for Telegram HTML messages."""
     sections: list[str] = []
 
-    practical_task = lesson.practical_task.strip()
-    if practical_task:
+    if lesson.structured_practical_task is not None:
         sections.append(
-            f"🛠 Практическое задание\n{practical_task}",
+            _format_structured_practical_task(lesson.structured_practical_task),
         )
+    else:
+        practical_task = lesson.practical_task.strip()
+        if practical_task:
+            sections.append(
+                f"🛠 Практическое задание\n{escape(practical_task)}",
+            )
 
     if lesson.checklist:
         sections.append(
