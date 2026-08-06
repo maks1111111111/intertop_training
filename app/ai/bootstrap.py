@@ -9,6 +9,8 @@ from __future__ import annotations
 from app.ai.config import OpenAIConfig
 from app.ai.openai_client import OpenAIClient
 from app.ai.openai_provider import OpenAICourseGenerationAI
+from app.ai.openai_review_provider import OpenAIPracticalTaskReviewer
+from app.ai.review_service import PracticalTaskReviewService
 from app.ai.quiz_service import QuizGenerationService
 from app.ai.service import CourseGenerationService
 from app.services.course_generation_flow_service import (
@@ -69,3 +71,10 @@ def create_course_with_quiz_generation_service() -> CourseWithQuizGenerationServ
         quiz_generation_service=quiz_generation_service,
         quiz_persistence_service=quiz_persistence_service,
     )
+
+
+def create_practical_task_review_service() -> PracticalTaskReviewService:
+    """Build a PracticalTaskReviewService from environment config."""
+    config = OpenAIConfig.from_environment()
+    provider = OpenAIPracticalTaskReviewer.from_config(config)
+    return PracticalTaskReviewService(provider)

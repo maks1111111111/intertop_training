@@ -9,10 +9,13 @@ from app.ai.bootstrap import (
     create_course_generation_service,
     create_course_with_quiz_generation_service,
     create_imported_text_generation_service,
+    create_practical_task_review_service,
     create_quiz_generation_service,
 )
 from app.ai.config import OpenAIConfig
+from app.ai.openai_review_provider import OpenAIPracticalTaskReviewer
 from app.ai.quiz_service import QuizGenerationService
+from app.ai.review_service import PracticalTaskReviewService
 from app.ai.service import CourseGenerationService
 from app.services.course_with_quiz_generation_service import (
     CourseWithQuizGenerationService,
@@ -191,6 +194,70 @@ class CreateCourseWithQuizGenerationServiceTests(unittest.TestCase):
             quiz_persistence_service=mock_quiz_persistence,
         )
         self.assertIs(result, mock_course_with_quiz_service)
+
+
+class CreatePracticalTaskReviewServiceTests(unittest.TestCase):
+    """Tests for :func:`create_practical_task_review_service`."""
+
+    @patch("app.ai.bootstrap.PracticalTaskReviewService")
+    @patch("app.ai.bootstrap.OpenAIPracticalTaskReviewer.from_config")
+    @patch("app.ai.bootstrap.OpenAIConfig.from_environment")
+    def test_wires_practical_task_review_service(
+        self,
+        mock_from_environment: MagicMock,
+        mock_from_config: MagicMock,
+        mock_review_service_class: MagicMock,
+    ) -> None:
+        config = OpenAIConfig(api_key="test-key", model="gpt-4o")
+        mock_from_environment.return_value = config
+        mock_provider = MagicMock()
+        mock_from_config.return_value = mock_provider
+        mock_review_service = MagicMock(spec=PracticalTaskReviewService)
+        mock_review_service_class.return_value = mock_review_service
+
+        result = create_practical_task_review_service()
+
+        mock_from_environment.assert_called_once_with()
+        mock_from_config.assert_called_once_with(config)
+        mock_review_service_class.assert_called_once_with(mock_provider)
+        self.assertIs(result, mock_review_service)
+
+    @patch("app.ai.bootstrap.PracticalTaskReviewService")
+    @patch("app.ai.bootstrap.OpenAIPracticalTaskReviewer.from_config")
+    @patch("app.ai.bootstrap.OpenAIConfig.from_environment")
+    def test_composition_order(
+        self,
+        mock_from_environment: MagicMock,
+        mock_from_config: MagicMock,
+        mock_review_service_class: MagicMock,
+    ) -> None:
+        call_log: list[str] = []
+        config = OpenAIConfig(api_key="test-key", model="gpt-4o")
+        mock_provider = MagicMock(spec=OpenAIPracticalTaskReviewer)
+        mock_review_service = MagicMock(spec=PracticalTaskReviewService)
+
+        def record_config() -> OpenAIConfig:
+            call_log.append("config")
+            return config
+
+        def record_provider(cfg: OpenAIConfig) -> MagicMock:
+            call_log.append("provider")
+            self.assertIs(cfg, config)
+            return mock_provider
+
+        def record_service(provider: MagicMock) -> MagicMock:
+            call_log.append("service")
+            self.assertIs(provider, mock_provider)
+            return mock_review_service
+
+        mock_from_environment.side_effect = record_config
+        mock_from_config.side_effect = record_provider
+        mock_review_service_class.side_effect = record_service
+
+        result = create_practical_task_review_service()
+
+        self.assertEqual(call_log, ["config", "provider", "service"])
+        self.assertIs(result, mock_review_service)
 
 
 if __name__ == "__main__":
