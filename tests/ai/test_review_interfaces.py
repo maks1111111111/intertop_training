@@ -6,6 +6,7 @@ import unittest
 from typing import Optional, Tuple
 
 from app.ai.review_interfaces import (
+    PracticalTaskReviewerAI,
     ReviewCriterion,
     ReviewFeedback,
     ReviewRequest,
@@ -223,3 +224,35 @@ class ReviewRequestTests(unittest.TestCase):
 
         self.assertEqual(request.criteria, ())
         self.assertIsInstance(request.criteria, tuple)
+
+
+class PracticalTaskReviewerAIProtocolTests(unittest.TestCase):
+    """Tests for :class:`PracticalTaskReviewerAI` protocol compatibility."""
+
+    def test_fake_provider_satisfies_protocol(self) -> None:
+        expected_result = ReviewResult(
+            score=8,
+            max_score=10,
+            passed=True,
+            feedback=_sample_feedback(summary="Strong answer."),
+        )
+
+        class FakeReviewer:
+            def review(self, request: ReviewRequest) -> ReviewResult:
+                self.last_request = request
+                return expected_result
+
+        reviewer: PracticalTaskReviewerAI = FakeReviewer()
+        request = ReviewRequest(
+            lesson_title="Safety Basics",
+            practical_task_title="Inspect the work area",
+            practical_task_description="Walk through the area and identify hazards.",
+            expected_result="All hazards are documented and addressed.",
+            learner_answer="I checked the floor and removed loose cables.",
+            criteria=(_sample_criterion(),),
+        )
+
+        result = reviewer.review(request)
+
+        self.assertIs(result, expected_result)
+        self.assertIs(reviewer.last_request, request)  # type: ignore[attr-defined]

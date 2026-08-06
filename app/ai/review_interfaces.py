@@ -7,7 +7,7 @@ tasks. No concrete review providers or business logic are included here.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Protocol, Tuple
 
 
 @dataclass(frozen=True)
@@ -49,3 +49,14 @@ class ReviewRequest:
     expected_result: str
     learner_answer: str
     criteria: Tuple[ReviewCriterion, ...]
+
+
+class PracticalTaskReviewerAI(Protocol):
+    """Protocol for AI backends that review practical-task answers."""
+
+    def review(
+        self,
+        request: ReviewRequest,
+    ) -> ReviewResult:
+        """Review a learner answer and return structured feedback."""
+        ...
