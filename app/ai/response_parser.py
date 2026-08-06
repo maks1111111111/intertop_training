@@ -7,6 +7,7 @@ from typing import Any, Optional, Tuple
 
 from app.ai.interfaces import GeneratedCourseMetadata, LessonGenerationResult
 from app.content.lesson_builder import LessonCandidate
+from app.content.practical_task import PracticalTask
 
 _SUPPORTED_LANGUAGES = frozenset({"en", "kk", "ru"})
 
@@ -133,12 +134,17 @@ def _parse_lesson_item(item: Any, index: int) -> LessonCandidate:
         "application_tips",
         default=(),
     )
+    structured_practical_task = _parse_optional_structured_practical_task(
+        item,
+        index,
+    )
     return LessonCandidate(
         title=title,
         content=content,
         summary=summary,
         learning_objectives=learning_objectives,
         practical_task=practical_task,
+        structured_practical_task=structured_practical_task,
         checklist=checklist,
         common_mistakes=common_mistakes,
         key_takeaways=key_takeaways,
@@ -242,3 +248,56 @@ def _parse_string_list_field(
         validated_values.append(value)
 
     return tuple(validated_values)
+
+
+def _parse_optional_structured_practical_task(
+    item: dict[str, Any],
+    index: int,
+) -> Optional[PracticalTask]:
+    """Parse an optional structured practical task from a lesson object."""
+    if "structured_practical_task" not in item:
+        return None
+
+    value = item["structured_practical_task"]
+    if value is None:
+        return None
+
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"Lesson at index {index} field 'structured_practical_task' "
+            "must be a JSON object or null."
+        )
+
+    for field_name in ("title", "description", "expected_result"):
+        if field_name not in value:
+            raise ValueError(
+                f"Lesson at index {index} field "
+                f"'structured_practical_task.{field_name}' is required."
+            )
+        field_value = value[field_name]
+        if not isinstance(field_value, str):
+            raise ValueError(
+                f"Lesson at index {index} field "
+                f"'structured_practical_task.{field_name}' must be a string."
+            )
+
+    estimated_minutes: Optional[int] = None
+    if "estimated_minutes" in value:
+        raw_minutes = value["estimated_minutes"]
+        if raw_minutes is None:
+            estimated_minutes = None
+        elif isinstance(raw_minutes, bool) or not isinstance(raw_minutes, int):
+            raise ValueError(
+                f"Lesson at index {index} field "
+                "'structured_practical_task.estimated_minutes' "
+                "must be an integer or null."
+            )
+        else:
+            estimated_minutes = raw_minutes
+
+    return PracticalTask(
+        title=value["title"],
+        description=value["description"],
+        expected_result=value["expected_result"],
+        estimated_minutes=estimated_minutes,
+    )

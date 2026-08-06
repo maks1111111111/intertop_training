@@ -8,6 +8,7 @@ import unittest
 from app.ai.interfaces import GeneratedCourseMetadata, LessonGenerationResult
 from app.ai.response_parser import AIResponseParser
 from app.content.lesson_builder import LessonCandidate
+from app.content.practical_task import PracticalTask
 
 
 class AIResponseParserTests(unittest.TestCase):
@@ -576,6 +577,292 @@ class AIResponseParserTests(unittest.TestCase):
             "Lesson at index 0 field 'application_tips' item at index 0 "
             "must be a string.",
         )
+
+
+class StructuredPracticalTaskParserTests(unittest.TestCase):
+    """Tests for structured_practical_task parsing in AIResponseParser."""
+
+    def setUp(self) -> None:
+        self.parser = AIResponseParser()
+
+    def _lesson_payload(self, **extra: object) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "title": "Lesson One",
+            "content": "Lesson content.",
+        }
+        payload.update(extra)
+        return payload
+
+    def test_full_structured_practical_task_parsed(self) -> None:
+        response = json.dumps(
+            {
+                "lessons": [
+                    self._lesson_payload(
+                        structured_practical_task={
+                            "title": "Проверка рабочего места",
+                            "description": "Осмотрите рабочую зону.",
+                            "expected_result": "Все риски устранены.",
+                            "estimated_minutes": 10,
+                        }
+                    )
+                ]
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        task = result.lessons[0].structured_practical_task
+        self.assertIsInstance(task, PracticalTask)
+        self.assertEqual(task.title, "Проверка рабочего места")
+        self.assertEqual(task.description, "Осмотрите рабочую зону.")
+        self.assertEqual(task.expected_result, "Все риски устранены.")
+        self.assertEqual(task.estimated_minutes, 10)
+
+    def test_missing_structured_practical_task_returns_none(self) -> None:
+        response = json.dumps({"lessons": [self._lesson_payload()]})
+
+        result = self.parser.parse_lessons(response)
+
+        self.assertIsNone(result.lessons[0].structured_practical_task)
+
+    def test_null_structured_practical_task_returns_none(self) -> None:
+        response = json.dumps(
+            {
+                "lessons": [
+                    self._lesson_payload(structured_practical_task=None)
+                ]
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        self.assertIsNone(result.lessons[0].structured_practical_task)
+
+    def test_missing_estimated_minutes_returns_none(self) -> None:
+        response = json.dumps(
+            {
+                "lessons": [
+                    self._lesson_payload(
+                        structured_practical_task={
+                            "title": "Task",
+                            "description": "Do something.",
+                            "expected_result": "Done.",
+                        }
+                    )
+                ]
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        task = result.lessons[0].structured_practical_task
+        self.assertIsNotNone(task)
+        self.assertIsNone(task.estimated_minutes)
+
+    def test_null_estimated_minutes_returns_none(self) -> None:
+        response = json.dumps(
+            {
+                "lessons": [
+                    self._lesson_payload(
+                        structured_practical_task={
+                            "title": "Task",
+                            "description": "Do something.",
+                            "expected_result": "Done.",
+                            "estimated_minutes": None,
+                        }
+                    )
+                ]
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        task = result.lessons[0].structured_practical_task
+        self.assertIsNotNone(task)
+        self.assertIsNone(task.estimated_minutes)
+
+    def test_legacy_and_structured_fields_parse_independently(self) -> None:
+        response = json.dumps(
+            {
+                "lessons": [
+                    self._lesson_payload(
+                        practical_task="Legacy task text.",
+                        structured_practical_task={
+                            "title": "Structured task",
+                            "description": "Structured description.",
+                            "expected_result": "Structured result.",
+                            "estimated_minutes": 5,
+                        },
+                    )
+                ]
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        lesson = result.lessons[0]
+        self.assertEqual(lesson.practical_task, "Legacy task text.")
+        self.assertIsNotNone(lesson.structured_practical_task)
+        self.assertEqual(lesson.structured_practical_task.title, "Structured task")
+
+    def test_invalid_root_type_raises_value_error(self) -> None:
+        invalid_values = ("not-an-object", ["list"], 123)
+        for invalid_value in invalid_values:
+            with self.subTest(invalid_value=invalid_value):
+                response = json.dumps(
+                    {
+                        "lessons": [
+                            self._lesson_payload(
+                                structured_practical_task=invalid_value
+                            )
+                        ]
+                    }
+                )
+
+                with self.assertRaises(ValueError) as context:
+                    self.parser.parse_lessons(response)
+
+                self.assertEqual(
+                    str(context.exception),
+                    "Lesson at index 0 field 'structured_practical_task' "
+                    "must be a JSON object or null.",
+                )
+
+    def test_missing_required_fields_raise_value_error(self) -> None:
+        missing_fields = ("title", "description", "expected_result")
+        for field_name in missing_fields:
+            with self.subTest(field_name=field_name):
+                task_payload = {
+                    "title": "Task",
+                    "description": "Description.",
+                    "expected_result": "Result.",
+                }
+                del task_payload[field_name]
+                response = json.dumps(
+                    {
+                        "lessons": [
+                            self._lesson_payload(
+                                structured_practical_task=task_payload
+                            )
+                        ]
+                    }
+                )
+
+                with self.assertRaises(ValueError) as context:
+                    self.parser.parse_lessons(response)
+
+                self.assertEqual(
+                    str(context.exception),
+                    f"Lesson at index 0 field "
+                    f"'structured_practical_task.{field_name}' is required.",
+                )
+
+    def test_non_string_required_fields_raise_value_error(self) -> None:
+        invalid_fields = {
+            "title": 123,
+            "description": True,
+            "expected_result": ["result"],
+        }
+        for field_name, invalid_value in invalid_fields.items():
+            with self.subTest(field_name=field_name):
+                task_payload = {
+                    "title": "Task",
+                    "description": "Description.",
+                    "expected_result": "Result.",
+                }
+                task_payload[field_name] = invalid_value
+                response = json.dumps(
+                    {
+                        "lessons": [
+                            self._lesson_payload(
+                                structured_practical_task=task_payload
+                            )
+                        ]
+                    }
+                )
+
+                with self.assertRaises(ValueError) as context:
+                    self.parser.parse_lessons(response)
+
+                self.assertEqual(
+                    str(context.exception),
+                    f"Lesson at index 0 field "
+                    f"'structured_practical_task.{field_name}' must be a string.",
+                )
+
+    def test_invalid_estimated_minutes_raises_value_error(self) -> None:
+        invalid_values = ("10", 10.5, True)
+        for invalid_value in invalid_values:
+            with self.subTest(invalid_value=invalid_value):
+                response = json.dumps(
+                    {
+                        "lessons": [
+                            self._lesson_payload(
+                                structured_practical_task={
+                                    "title": "Task",
+                                    "description": "Description.",
+                                    "expected_result": "Result.",
+                                    "estimated_minutes": invalid_value,
+                                }
+                            )
+                        ]
+                    }
+                )
+
+                with self.assertRaises(ValueError) as context:
+                    self.parser.parse_lessons(response)
+
+                self.assertEqual(
+                    str(context.exception),
+                    "Lesson at index 0 field "
+                    "'structured_practical_task.estimated_minutes' "
+                    "must be an integer or null.",
+                )
+
+    def test_extra_field_does_not_break_parsing(self) -> None:
+        response = json.dumps(
+            {
+                "lessons": [
+                    self._lesson_payload(
+                        structured_practical_task={
+                            "title": "Task",
+                            "description": "Description.",
+                            "expected_result": "Result.",
+                            "extra_field": "ignored",
+                        }
+                    )
+                ]
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        task = result.lessons[0].structured_practical_task
+        self.assertIsNotNone(task)
+        self.assertEqual(task.title, "Task")
+
+    def test_empty_strings_in_required_fields_are_accepted(self) -> None:
+        response = json.dumps(
+            {
+                "lessons": [
+                    self._lesson_payload(
+                        structured_practical_task={
+                            "title": "",
+                            "description": "",
+                            "expected_result": "",
+                        }
+                    )
+                ]
+            }
+        )
+
+        result = self.parser.parse_lessons(response)
+
+        task = result.lessons[0].structured_practical_task
+        self.assertIsNotNone(task)
+        self.assertEqual(task.title, "")
+        self.assertEqual(task.description, "")
+        self.assertEqual(task.expected_result, "")
 
 
 if __name__ == "__main__":
