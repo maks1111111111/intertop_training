@@ -11,6 +11,7 @@ from app.ai.interfaces import GeneratedCourseMetadata, LessonGenerationResult
 from app.content.course_file_writer import CourseFileWriter
 from app.content.course_writer import CourseWriter
 from app.content.lesson_builder import LessonCandidate
+from app.content.practical_task import PracticalTask
 
 
 class LessonQualityFieldsPersistenceIntegrationTests(unittest.TestCase):
@@ -67,6 +68,104 @@ class LessonQualityFieldsPersistenceIntegrationTests(unittest.TestCase):
         self.assertIsInstance(lesson_manifest["common_mistakes"], list)
         self.assertIsInstance(lesson_manifest["key_takeaways"], list)
         self.assertIsInstance(lesson_manifest["application_tips"], list)
+
+    def test_structured_practical_task_persists_through_writer_pipeline(self) -> None:
+        structured_task = PracticalTask(
+            title="Inspect the work area",
+            description="Walk through the area and identify hazards.",
+            expected_result="All hazards are documented and addressed.",
+            estimated_minutes=10,
+        )
+        result = LessonGenerationResult(
+            lessons=[
+                LessonCandidate(
+                    title="Safety Basics",
+                    content="Full lesson body text.",
+                    practical_task="Legacy inspection task.",
+                    structured_practical_task=structured_task,
+                )
+            ],
+            course=GeneratedCourseMetadata(
+                language="ru",
+                title="Safety Training",
+                description="Introductory safety course.",
+            ),
+        )
+
+        draft = CourseWriter().write(result)
+
+        self.assertEqual(
+            draft.lessons[0].structured_practical_task,
+            structured_task,
+        )
+        self.assertEqual(
+            draft.lessons[0].practical_task,
+            "Legacy inspection task.",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = Path(tmp) / draft.slug
+            CourseFileWriter().write(draft, course_dir)
+
+            lesson_manifest = json.loads(
+                (course_dir / "lesson_01" / "lesson.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(
+            lesson_manifest["structured_practical_task"],
+            {
+                "title": "Inspect the work area",
+                "description": "Walk through the area and identify hazards.",
+                "expected_result": "All hazards are documented and addressed.",
+                "estimated_minutes": 10,
+            },
+        )
+        self.assertEqual(
+            lesson_manifest["practical_task"],
+            "Legacy inspection task.",
+        )
+
+    def test_structured_practical_task_with_null_estimate_persists(self) -> None:
+        structured_task = PracticalTask(
+            title="Review safety checklist",
+            description="Compare the checklist against the current area.",
+            expected_result="All checklist items are verified.",
+            estimated_minutes=None,
+        )
+        result = LessonGenerationResult(
+            lessons=[
+                LessonCandidate(
+                    title="Checklist Review",
+                    content="Lesson body.",
+                    structured_practical_task=structured_task,
+                )
+            ],
+            course=GeneratedCourseMetadata(
+                language="ru",
+                title="Checklist Course",
+                description="Course description.",
+            ),
+        )
+
+        draft = CourseWriter().write(result)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = Path(tmp) / draft.slug
+            CourseFileWriter().write(draft, course_dir)
+
+            lesson_manifest = json.loads(
+                (course_dir / "lesson_01" / "lesson.json").read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(
+            lesson_manifest["structured_practical_task"],
+            {
+                "title": "Review safety checklist",
+                "description": "Compare the checklist against the current area.",
+                "expected_result": "All checklist items are verified.",
+                "estimated_minutes": None,
+            },
+        )
 
 
 if __name__ == "__main__":
