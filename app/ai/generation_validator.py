@@ -13,13 +13,22 @@ from app.ai.interfaces import LessonGenerationResult
 
 @dataclass(frozen=True)
 class GenerationValidationReport:
-    """Summary of AI generation quality checks."""
+    """Summary of AI generation quality checks.
+
+    Counts reflect per-lesson failures for required fields and, when
+    present, for :attr:`~app.content.lesson_builder.LessonCandidate.structured_practical_task`
+    quality fields.
+    """
 
     lessons: int
     empty_contents: int
     empty_summaries: int
     empty_titles: int
     empty_learning_objectives: int
+    empty_practical_task_titles: int
+    empty_practical_task_descriptions: int
+    empty_practical_task_expected_results: int
+    invalid_practical_task_estimates: int
     valid: bool
 
 
@@ -30,12 +39,20 @@ class GenerationValidator:
         """Check each generated lesson for required non-empty fields.
 
         A lesson fails when ``title``, ``summary``, or ``content`` is empty
-        after stripping, or when ``learning_objectives`` has no elements.
+        after stripping, when ``learning_objectives`` has no elements, or
+        when ``structured_practical_task`` is present but its ``title``,
+        ``description``, or ``expected_result`` is empty after stripping, or
+        when ``estimated_minutes`` is not ``None`` and is less than or equal
+        to zero.
         """
         empty_titles = 0
         empty_summaries = 0
         empty_contents = 0
         empty_learning_objectives = 0
+        empty_practical_task_titles = 0
+        empty_practical_task_descriptions = 0
+        empty_practical_task_expected_results = 0
+        invalid_practical_task_estimates = 0
 
         for lesson in result.lessons:
             if not lesson.title.strip():
@@ -47,11 +64,29 @@ class GenerationValidator:
             if not lesson.learning_objectives:
                 empty_learning_objectives += 1
 
+            task = lesson.structured_practical_task
+            if task is not None:
+                if not task.title.strip():
+                    empty_practical_task_titles += 1
+                if not task.description.strip():
+                    empty_practical_task_descriptions += 1
+                if not task.expected_result.strip():
+                    empty_practical_task_expected_results += 1
+                if (
+                    task.estimated_minutes is not None
+                    and task.estimated_minutes <= 0
+                ):
+                    invalid_practical_task_estimates += 1
+
         valid = (
             empty_titles == 0
             and empty_summaries == 0
             and empty_contents == 0
             and empty_learning_objectives == 0
+            and empty_practical_task_titles == 0
+            and empty_practical_task_descriptions == 0
+            and empty_practical_task_expected_results == 0
+            and invalid_practical_task_estimates == 0
         )
 
         return GenerationValidationReport(
@@ -60,5 +95,9 @@ class GenerationValidator:
             empty_summaries=empty_summaries,
             empty_titles=empty_titles,
             empty_learning_objectives=empty_learning_objectives,
+            empty_practical_task_titles=empty_practical_task_titles,
+            empty_practical_task_descriptions=empty_practical_task_descriptions,
+            empty_practical_task_expected_results=empty_practical_task_expected_results,
+            invalid_practical_task_estimates=invalid_practical_task_estimates,
             valid=valid,
         )
