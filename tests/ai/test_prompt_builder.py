@@ -82,6 +82,21 @@ def _json_instruction_lines() -> list[str]:
         "  positive integer estimate for completing the task, or null",
         "  when the source material does not support a reasonable",
         "  estimate.",
+        '- "structured_practical_task" must model a realistic on-the-job',
+        "  work situation.",
+        "- Base the task only on information from the source material",
+        "  below.",
+        "- Do not turn the task into a recap or summary of the lesson",
+        "  content.",
+        "- Describe concrete actions the employee should perform.",
+        '- "structured_practical_task.expected_result" must be verifiable',
+        "  and observable.",
+        "- If the source material lacks enough detail, create the",
+        "  simplest safe task possible from available information; do not",
+        "  invent corporate rules or procedures.",
+        '- "structured_practical_task.estimated_minutes" should match the',
+        "  task scope; typically choose a value between 5 and 30 minutes",
+        "  unless the source material clearly supports null.",
         '- "checklist": list of short, actionable verification steps.',
         '- "common_mistakes": list of typical mistakes relevant to the',
         "  source material.",
@@ -293,6 +308,34 @@ class PromptBuilderTests(unittest.TestCase):
             "Do not invent policies, rules, facts, or procedures",
             prompt,
         )
+
+    def test_prompt_requires_structured_practical_task_quality_rules(self) -> None:
+        request = LessonGenerationRequest(
+            lessons=[
+                LessonCandidate(title="Section 1", content="First content."),
+            ]
+        )
+
+        prompt = self.builder.build_lesson_generation_prompt(request)
+
+        self.assertIn("realistic on-the-job", prompt)
+        self.assertIn(
+            "Base the task only on information from the source material",
+            prompt,
+        )
+        self.assertIn(
+            "Do not turn the task into a recap or summary of the lesson",
+            prompt,
+        )
+        self.assertIn(
+            "Describe concrete actions the employee should perform",
+            prompt,
+        )
+        self.assertIn("verifiable", prompt)
+        self.assertIn("observable", prompt)
+        self.assertIn("simplest safe task possible", prompt)
+        self.assertIn("invent corporate rules or procedures", prompt)
+        self.assertIn("between 5 and 30 minutes", prompt)
 
 
 if __name__ == "__main__":
