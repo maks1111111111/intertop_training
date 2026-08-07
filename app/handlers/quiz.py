@@ -288,13 +288,21 @@ async def answer_quiz(
 
     if attempt is not None:
         is_correct = option_id in question.correct_option_ids
-        quiz_repository.save_answer(
+        saved = quiz_repository.save_answer(
             db_path=db_path,
             attempt_id=int(attempt["id"]),
             question_id=question.id,
             selected_option_id=option_id,
             is_correct=is_correct,
         )
+        if not saved:
+            await callback.answer(
+                "Ответ на этот вопрос уже принят.",
+                show_alert=True,
+            )
+            return
+
+        await callback.message.edit_reply_markup(reply_markup=None)
 
     await callback.message.answer(
         _quiz_answer_result_text(question, option_id),

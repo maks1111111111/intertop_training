@@ -92,9 +92,14 @@ def save_answer(
     question_id: str,
     selected_option_id: str,
     is_correct: bool,
-) -> None:
+) -> bool:
+    """Persist one answer for a question within an attempt.
+
+    Returns ``True`` when the answer is stored for the first time.
+    Returns ``False`` when the question was already answered in this attempt.
+    """
     with get_connection(db_path) as connection:
-        connection.execute(
+        cursor = connection.execute(
             """
             INSERT INTO quiz_answers (
                 attempt_id,
@@ -103,6 +108,7 @@ def save_answer(
                 is_correct
             )
             VALUES (?, ?, ?, ?)
+            ON CONFLICT(attempt_id, question_id) DO NOTHING
             """,
             (
                 attempt_id,
@@ -111,6 +117,7 @@ def save_answer(
                 int(is_correct),
             ),
         )
+        return cursor.rowcount == 1
 
 
 def finish_attempt(
@@ -148,10 +155,14 @@ def finish_attempt(
         ).fetchone()
 
         correct_answers = int(stats["correct_answers"])
+        if correct_answers > questions_count:
+            correct_answers = questions_count
         score_percent = round(
             correct_answers * 100 / questions_count,
             2,
         )
+        if score_percent > 100.0:
+            score_percent = 100.0
         passed = int(score_percent >= passing_score)
 
         connection.execute(
