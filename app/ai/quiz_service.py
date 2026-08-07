@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Optional
 
 from app.ai.client import AIClient
+from app.ai.quiz_coverage_validator import validate_quiz_coverage
 from app.ai.quiz_interfaces import QuizGenerationRequest, QuizGenerationResult
 from app.ai.quiz_prompt_builder import QuizPromptBuilder
 from app.ai.quiz_response_parser import QuizResponseParser
@@ -40,4 +41,6 @@ class QuizGenerationService:
         if prompt == "":
             raise ValueError("Quiz generation prompt must not be empty.")
         response = self._provider.generate(prompt)
-        return self._response_parser.parse_quiz(response)
+        result = self._response_parser.parse_quiz(response)
+        validate_quiz_coverage(request, result)
+        return result

@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.ai.interfaces import LessonGenerationResult
-from app.ai.quiz_interfaces import QuizGenerationRequest, QuizGenerationResult
+from app.ai.quiz_coverage import create_quiz_generation_request
+from app.ai.quiz_interfaces import QuizGenerationResult
 from app.ai.quiz_service import QuizGenerationService
 from app.services.course_generation_persistence_service import (
     CourseGenerationPersistenceService,
@@ -68,8 +69,8 @@ class CourseWithQuizGenerationService:
         if not lesson_result.lessons:
             raise ValueError("Cannot generate quiz for a course without lessons.")
 
-        quiz_request = QuizGenerationRequest(
-            lessons=tuple(lesson_result.lessons),
+        quiz_request = create_quiz_generation_request(
+            tuple(lesson_result.lessons),
         )
         quiz_result = self._quiz_generation_service.generate_quiz(quiz_request)
         quiz_path = self._quiz_persistence_service.persist(

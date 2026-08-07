@@ -5,9 +5,14 @@ from __future__ import annotations
 import json
 import unittest
 from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from app.ai.client import AIClient
+from app.ai.quiz_coverage import (
+    create_quiz_generation_request,
+    lesson_slug_for_index,
+    resolve_lesson_question_targets,
+)
 from app.ai.quiz_interfaces import (
     GeneratedQuiz,
     QuizGenerationRequest,
@@ -21,23 +26,33 @@ from app.ai.quiz_service import QuizGenerationService
 from app.content.lesson_builder import LessonCandidate
 
 
-def _valid_quiz_json() -> str:
+def _valid_quiz_json_for_request(request: QuizGenerationRequest) -> str:
+    targets = resolve_lesson_question_targets(request)
+    questions: List[Dict[str, Any]] = []
+    question_number = 1
+
+    for lesson_index, required_count in enumerate(targets, start=1):
+        lesson_slug = lesson_slug_for_index(lesson_index)
+        for _ in range(required_count):
+            questions.append(
+                {
+                    "id": f"q{question_number}",
+                    "lesson": lesson_slug,
+                    "question": f"Question {question_number}?",
+                    "options": [
+                        {"id": "a", "text": "Correct answer", "correct": True},
+                        {"id": "b", "text": "Incorrect answer 1", "correct": False},
+                        {"id": "c", "text": "Incorrect answer 2", "correct": False},
+                        {"id": "d", "text": "Incorrect answer 3", "correct": False},
+                    ],
+                }
+            )
+            question_number += 1
+
     payload: Dict[str, Any] = {
         "title": "Final course quiz",
         "passing_score": 80,
-        "questions": [
-            {
-                "id": "q1",
-                "lesson": "lesson_01",
-                "question": "What should an employee do?",
-                "options": [
-                    {"id": "a", "text": "Correct answer", "correct": True},
-                    {"id": "b", "text": "Incorrect answer 1", "correct": False},
-                    {"id": "c", "text": "Incorrect answer 2", "correct": False},
-                    {"id": "d", "text": "Incorrect answer 3", "correct": False},
-                ],
-            }
-        ],
+        "questions": questions,
     }
     return json.dumps(payload)
 
@@ -52,7 +67,7 @@ def _sample_request(
                 content="Always wear protective equipment.",
             )
         ]
-    return QuizGenerationRequest(lessons=tuple(lessons))
+    return create_quiz_generation_request(tuple(lessons))
 
 
 class QuizGenerationServiceTests(unittest.TestCase):
@@ -60,25 +75,25 @@ class QuizGenerationServiceTests(unittest.TestCase):
 
     def test_successful_generation(self) -> None:
         provider = MagicMock(spec=AIClient)
-        provider.generate.return_value = _valid_quiz_json()
-        service = QuizGenerationService(provider)
         request = _sample_request()
+        provider.generate.return_value = _valid_quiz_json_for_request(request)
+        service = QuizGenerationService(provider)
 
         result = service.generate_quiz(request)
 
         self.assertIsInstance(result, QuizGenerationResult)
         self.assertEqual(result.quiz.title, "Final course quiz")
         self.assertEqual(result.quiz.passing_score, 80)
-        self.assertEqual(len(result.quiz.questions), 1)
+        self.assertEqual(len(result.quiz.questions), 2)
 
     def test_prompt_passed_to_ai_provider(self) -> None:
         provider = MagicMock(spec=AIClient)
-        provider.generate.return_value = _valid_quiz_json()
+        request = _sample_request()
+        provider.generate.return_value = _valid_quiz_json_for_request(request)
         prompt_builder = MagicMock(spec=QuizPromptBuilder)
         expected_prompt = "Create a final course quiz."
         prompt_builder.build_quiz_generation_prompt.return_value = expected_prompt
         service = QuizGenerationService(provider, prompt_builder=prompt_builder)
-        request = _sample_request()
 
         service.generate_quiz(request)
 
@@ -86,11 +101,11 @@ class QuizGenerationServiceTests(unittest.TestCase):
 
     def test_prompt_builder_receives_request(self) -> None:
         provider = MagicMock(spec=AIClient)
-        provider.generate.return_value = _valid_quiz_json()
+        request = _sample_request()
+        provider.generate.return_value = _valid_quiz_json_for_request(request)
         prompt_builder = MagicMock(spec=QuizPromptBuilder)
         prompt_builder.build_quiz_generation_prompt.return_value = "Prompt text."
         service = QuizGenerationService(provider, prompt_builder=prompt_builder)
-        request = _sample_request()
 
         service.generate_quiz(request)
 
@@ -98,25 +113,27 @@ class QuizGenerationServiceTests(unittest.TestCase):
 
     def test_parser_used_with_ai_response(self) -> None:
         provider = MagicMock(spec=AIClient)
-        ai_response = _valid_quiz_json()
+        request = _sample_request()
+        ai_response = _valid_quiz_json_for_request(request)
         provider.generate.return_value = ai_response
         response_parser = MagicMock(spec=QuizResponseParser)
         expected_result = QuizGenerationResult(
             quiz=GeneratedQuiz(
                 title="Parsed quiz",
                 passing_score=80,
-                questions=(
+                questions=tuple(
                     QuizQuestion(
-                        id="q1",
+                        id=f"q{index}",
                         lesson="lesson_01",
-                        question="Sample?",
+                        question=f"Sample {index}?",
                         options=(
                             QuizOption(id="a", text="Yes", correct=True),
                             QuizOption(id="b", text="No", correct=False),
                             QuizOption(id="c", text="Maybe", correct=False),
                             QuizOption(id="d", text="Never", correct=False),
                         ),
-                    ),
+                    )
+                    for index in range(1, 3)
                 ),
             )
         )
@@ -125,15 +142,19 @@ class QuizGenerationServiceTests(unittest.TestCase):
             provider,
             response_parser=response_parser,
         )
-        request = _sample_request()
 
         service.generate_quiz(request)
 
         response_parser.parse_quiz.assert_called_once_with(ai_response)
 
-    def test_returns_parser_result_unchanged(self) -> None:
+    @patch("app.ai.quiz_service.validate_quiz_coverage")
+    def test_returns_parser_result_unchanged(
+        self,
+        mock_validate: MagicMock,
+    ) -> None:
         provider = MagicMock(spec=AIClient)
-        provider.generate.return_value = _valid_quiz_json()
+        request = _sample_request()
+        provider.generate.return_value = _valid_quiz_json_for_request(request)
         response_parser = MagicMock(spec=QuizResponseParser)
         expected_result = QuizGenerationResult(
             quiz=GeneratedQuiz(
@@ -147,11 +168,11 @@ class QuizGenerationServiceTests(unittest.TestCase):
             provider,
             response_parser=response_parser,
         )
-        request = _sample_request()
 
         result = service.generate_quiz(request)
 
         self.assertIs(result, expected_result)
+        mock_validate.assert_called_once_with(request, expected_result)
 
     def test_empty_lessons_builds_empty_prompt(self) -> None:
         provider = MagicMock(spec=AIClient)
@@ -186,6 +207,7 @@ class QuizGenerationServiceTests(unittest.TestCase):
 
     def test_parser_exception_propagates(self) -> None:
         provider = MagicMock(spec=AIClient)
+        request = _sample_request()
         provider.generate.return_value = "not valid json"
         response_parser = MagicMock(spec=QuizResponseParser)
         response_parser.parse_quiz.side_effect = ValueError("Invalid quiz JSON.")
@@ -193,7 +215,6 @@ class QuizGenerationServiceTests(unittest.TestCase):
             provider,
             response_parser=response_parser,
         )
-        request = _sample_request()
 
         with self.assertRaises(ValueError):
             service.generate_quiz(request)
@@ -201,16 +222,17 @@ class QuizGenerationServiceTests(unittest.TestCase):
     def test_component_call_order(self) -> None:
         call_log: List[str] = []
         provider = MagicMock(spec=AIClient)
+        request = _sample_request()
 
         def record_generate(prompt: str) -> str:
             call_log.append("provider")
-            return _valid_quiz_json()
+            return _valid_quiz_json_for_request(request)
 
         provider.generate.side_effect = record_generate
 
         prompt_builder = MagicMock(spec=QuizPromptBuilder)
 
-        def record_build(request: QuizGenerationRequest) -> str:
+        def record_build(build_request: QuizGenerationRequest) -> str:
             call_log.append("prompt_builder")
             return "Prompt."
 
@@ -229,7 +251,6 @@ class QuizGenerationServiceTests(unittest.TestCase):
             prompt_builder=prompt_builder,
             response_parser=response_parser,
         )
-        request = _sample_request()
 
         service.generate_quiz(request)
 
@@ -237,15 +258,50 @@ class QuizGenerationServiceTests(unittest.TestCase):
 
     def test_default_prompt_builder_and_parser(self) -> None:
         provider = MagicMock(spec=AIClient)
-        provider.generate.return_value = _valid_quiz_json()
-        service = QuizGenerationService(provider)
         request = _sample_request()
+        provider.generate.return_value = _valid_quiz_json_for_request(request)
+        service = QuizGenerationService(provider)
 
         result = service.generate_quiz(request)
 
         self.assertIsInstance(service._prompt_builder, QuizPromptBuilder)
         self.assertIsInstance(service._response_parser, QuizResponseParser)
         self.assertIsInstance(result, QuizGenerationResult)
+
+    def test_under_delivered_quiz_raises(self) -> None:
+        provider = MagicMock(spec=AIClient)
+        request = _sample_request()
+        provider.generate.return_value = _valid_quiz_json_for_request(request)
+        response_parser = MagicMock(spec=QuizResponseParser)
+        response_parser.parse_quiz.return_value = QuizGenerationResult(
+            quiz=GeneratedQuiz(
+                title="Too small",
+                passing_score=80,
+                questions=(
+                    QuizQuestion(
+                        id="q1",
+                        lesson="lesson_01",
+                        question="Only one?",
+                        options=(
+                            QuizOption(id="a", text="Yes", correct=True),
+                            QuizOption(id="b", text="No", correct=False),
+                            QuizOption(id="c", text="Maybe", correct=False),
+                            QuizOption(id="d", text="Never", correct=False),
+                        ),
+                    ),
+                ),
+            )
+        )
+        service = QuizGenerationService(
+            provider,
+            response_parser=response_parser,
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Generated quiz contains 1 questions, but exactly 2 were required.",
+        ):
+            service.generate_quiz(request)
 
 
 if __name__ == "__main__":

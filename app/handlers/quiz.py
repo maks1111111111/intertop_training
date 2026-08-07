@@ -1,3 +1,4 @@
+import random
 import sqlite3
 from pathlib import Path
 from typing import Optional
@@ -30,14 +31,35 @@ def _quiz_question_text(
     )
 
 
+def _ordered_question_options(
+    question: QuizQuestion,
+    *,
+    randomize: bool,
+    rng: Optional[random.Random] = None,
+) -> tuple:
+    """Return question options in display order, optionally shuffled."""
+    options = list(question.options)
+    if randomize:
+        shuffler = rng if rng is not None else random
+        shuffler.shuffle(options)
+    return tuple(options)
+
+
 def _quiz_question_keyboard(
     course_slug: str,
     question_index: int,
     question: QuizQuestion,
+    *,
+    randomize_options: bool = False,
+    rng: Optional[random.Random] = None,
 ) -> InlineKeyboardMarkup:
     buttons: list[list[InlineKeyboardButton]] = []
 
-    for option in question.options:
+    for option in _ordered_question_options(
+        question,
+        randomize=randomize_options,
+        rng=rng,
+    ):
         buttons.append(
             [
                 InlineKeyboardButton(
@@ -216,6 +238,7 @@ async def start_quiz(
             course_slug=course_slug,
             question_index=question_index,
             question=question,
+            randomize_options=course.quiz.randomize_options,
         ),
     )
 
@@ -370,6 +393,7 @@ async def next_quiz_question(
             course_slug=course_slug,
             question_index=question_index,
             question=question,
+            randomize_options=course.quiz.randomize_options,
         ),
     )
 

@@ -45,6 +45,8 @@ class QuizGenerationRequest:
     """Input for AI quiz generation."""
 
     lessons: Tuple[LessonCandidate, ...]
+    questions_per_lesson: int = 0
+    lesson_question_targets: Tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)

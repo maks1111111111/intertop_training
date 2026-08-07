@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,7 +14,11 @@ from app.content.runtime_loader import (
     QuizOption,
     QuizQuestion,
 )
-from app.handlers.quiz import answer_quiz
+from app.handlers.quiz import (
+    _ordered_question_options,
+    _quiz_question_keyboard,
+    answer_quiz,
+)
 
 
 def _sample_quiz(*, question_count: int = 2) -> Quiz:
@@ -172,6 +177,92 @@ class AnswerQuizHandlerTests(unittest.IsolatedAsyncioTestCase):
             "Вопрос не найден.",
             show_alert=True,
         )
+
+
+class QuizOptionOrderingTests(unittest.TestCase):
+    """Tests for quiz option display order and shuffling."""
+
+    def test_randomize_false_preserves_original_order(self) -> None:
+        question = _sample_quiz().questions[0]
+
+        ordered = _ordered_question_options(question, randomize=False)
+
+        self.assertEqual([option.id for option in ordered], ["a", "b"])
+
+    def test_randomize_true_uses_shuffle_boundary(self) -> None:
+        question = _sample_quiz().questions[0]
+        rng = random.Random(42)
+
+        ordered = _ordered_question_options(
+            question,
+            randomize=True,
+            rng=rng,
+        )
+
+        option_ids = [option.id for option in ordered]
+        self.assertEqual(sorted(option_ids), ["a", "b"])
+        self.assertEqual(len(option_ids), len(set(option_ids)))
+
+    def test_shuffle_preserves_all_option_ids(self) -> None:
+        question = _sample_quiz().questions[0]
+        rng = random.Random(7)
+
+        ordered = _ordered_question_options(
+            question,
+            randomize=True,
+            rng=rng,
+        )
+
+        self.assertEqual(
+            {option.id for option in ordered},
+            {option.id for option in question.options},
+        )
+
+    def test_keyboard_uses_display_order_when_randomized(self) -> None:
+        question = _sample_quiz().questions[0]
+        rng = random.Random(1)
+
+        markup = _quiz_question_keyboard(
+            "alpha",
+            0,
+            question,
+            randomize_options=True,
+            rng=rng,
+        )
+
+        callback_option_ids = [
+            button.callback_data.split(":")[-1]
+            for row in markup.inline_keyboard
+            for button in row
+        ]
+        display_option_ids = [
+            option.id
+            for option in _ordered_question_options(
+                question,
+                randomize=True,
+                rng=rng,
+            )
+        ]
+
+        self.assertEqual(callback_option_ids, display_option_ids)
+
+    def test_keyboard_preserves_order_when_randomize_disabled(self) -> None:
+        question = _sample_quiz().questions[0]
+
+        markup = _quiz_question_keyboard(
+            "alpha",
+            0,
+            question,
+            randomize_options=False,
+        )
+
+        callback_option_ids = [
+            button.callback_data.split(":")[-1]
+            for row in markup.inline_keyboard
+            for button in row
+        ]
+
+        self.assertEqual(callback_option_ids, ["a", "b"])
 
 
 if __name__ == "__main__":

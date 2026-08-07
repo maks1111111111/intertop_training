@@ -4,12 +4,37 @@ from __future__ import annotations
 
 import unittest
 
+from app.ai.quiz_coverage import (
+    create_quiz_generation_request,
+    lesson_slug_for_index,
+    resolve_lesson_question_targets,
+    total_question_target,
+)
 from app.ai.quiz_interfaces import QuizGenerationRequest
 from app.ai.quiz_prompt_builder import QuizPromptBuilder
 from app.content.lesson_builder import LessonCandidate
 
 
-def _json_instruction_lines() -> list[str]:
+def _coverage_instruction_lines(request: QuizGenerationRequest) -> list[str]:
+    targets = resolve_lesson_question_targets(request)
+    required_total = total_question_target(request)
+    lines = [
+        "Coverage requirements:",
+        f"- Total questions required: {required_total}.",
+        "- Do not create fewer questions than required.",
+        "- Do not skip any lesson.",
+        "- Each question must use the lesson slug shown for that lesson.",
+        "- Question identifiers must be unique across the whole quiz.",
+        "",
+        "Required questions per lesson:",
+    ]
+    for lesson_index, required_count in enumerate(targets, start=1):
+        lesson_slug = lesson_slug_for_index(lesson_index)
+        lines.append(f"- {lesson_slug}: {required_count} questions")
+    return lines
+
+
+def _json_instruction_lines(required_total: int) -> list[str]:
     return [
         "Return ONLY valid JSON.",
         "Do not use Markdown.",
@@ -38,7 +63,10 @@ def _json_instruction_lines() -> list[str]:
         "Field rules:",
         '- "title": name of the final course quiz.',
         '- "passing_score": integer from 1 to 100 (use 80 if unsure).',
-        '- "questions": one or more questions linked to lessons.',
+        (
+            f'- "questions": exactly {required_total} questions in total, '
+            "matching the per-lesson counts above."
+        ),
         '- "id": unique question identifier.',
         '- "lesson": lesson slug (lesson_01, lesson_02, etc.).',
         '- "question": clear question text based on lesson content.',
@@ -54,9 +82,25 @@ def _task_instruction_lines() -> list[str]:
         "",
         "Your task:",
         "1. Write a quiz title and passing score for the course.",
-        "2. Create questions that test knowledge from the lessons.",
+        (
+            "2. Create exactly the required number of questions for each "
+            "lesson listed below."
+        ),
         "3. Use only information from the provided lesson material.",
+        "4. Do not invent policies, facts, or procedures absent from the source.",
         "",
+    ]
+
+
+def _quality_instruction_lines() -> list[str]:
+    return [
+        "Question quality:",
+        "- Cover facts and rules from the source material.",
+        "- Test understanding, not only memorization.",
+        "- Include application in a realistic work situation.",
+        "- Include recognizing a mistake or choosing the best action.",
+        "- Do not create near-duplicate questions for the same lesson.",
+        "- Vary which option is marked correct; do not always use the first option.",
     ]
 
 
@@ -74,11 +118,10 @@ class QuizPromptBuilderTests(unittest.TestCase):
         self.assertEqual(prompt, "")
 
     def test_single_lesson_prompt(self) -> None:
-        request = QuizGenerationRequest(
-            lessons=(
-                LessonCandidate(title="Safety basics", content="Wear PPE."),
-            )
+        request = create_quiz_generation_request(
+            (LessonCandidate(title="Safety basics", content="Wear PPE."),)
         )
+        required_total = total_question_target(request)
 
         prompt = self.builder.build_quiz_generation_prompt(request)
 
@@ -87,7 +130,11 @@ class QuizPromptBuilderTests(unittest.TestCase):
             "\n".join(
                 [
                     *_task_instruction_lines(),
-                    *_json_instruction_lines(),
+                    *_coverage_instruction_lines(request),
+                    "",
+                    *_quality_instruction_lines(),
+                    "",
+                    *_json_instruction_lines(required_total),
                     "",
                     "Lesson material:",
                     "",
@@ -102,12 +149,13 @@ class QuizPromptBuilderTests(unittest.TestCase):
         )
 
     def test_multiple_lessons_prompt(self) -> None:
-        request = QuizGenerationRequest(
-            lessons=(
+        request = create_quiz_generation_request(
+            (
                 LessonCandidate(title="Lesson A", content="Content A."),
                 LessonCandidate(title="Lesson B", content="Content B."),
             )
         )
+        required_total = total_question_target(request)
 
         prompt = self.builder.build_quiz_generation_prompt(request)
 
@@ -116,7 +164,11 @@ class QuizPromptBuilderTests(unittest.TestCase):
             "\n".join(
                 [
                     *_task_instruction_lines(),
-                    *_json_instruction_lines(),
+                    *_coverage_instruction_lines(request),
+                    "",
+                    *_quality_instruction_lines(),
+                    "",
+                    *_json_instruction_lines(required_total),
                     "",
                     "Lesson material:",
                     "",
@@ -138,10 +190,8 @@ class QuizPromptBuilderTests(unittest.TestCase):
         )
 
     def test_json_schema_is_present(self) -> None:
-        request = QuizGenerationRequest(
-            lessons=(
-                LessonCandidate(title="Lesson 1", content="Content."),
-            )
+        request = create_quiz_generation_request(
+            (LessonCandidate(title="Lesson 1", content="Content."),)
         )
 
         prompt = self.builder.build_quiz_generation_prompt(request)
@@ -155,10 +205,8 @@ class QuizPromptBuilderTests(unittest.TestCase):
         self.assertIn('"correct"', prompt)
 
     def test_passing_score_is_present(self) -> None:
-        request = QuizGenerationRequest(
-            lessons=(
-                LessonCandidate(title="Lesson 1", content="Content."),
-            )
+        request = create_quiz_generation_request(
+            (LessonCandidate(title="Lesson 1", content="Content."),)
         )
 
         prompt = self.builder.build_quiz_generation_prompt(request)
@@ -167,10 +215,8 @@ class QuizPromptBuilderTests(unittest.TestCase):
         self.assertIn('"passing_score": integer from 1 to 100', prompt)
 
     def test_lesson_01_slug_is_present(self) -> None:
-        request = QuizGenerationRequest(
-            lessons=(
-                LessonCandidate(title="Lesson 1", content="Content."),
-            )
+        request = create_quiz_generation_request(
+            (LessonCandidate(title="Lesson 1", content="Content."),)
         )
 
         prompt = self.builder.build_quiz_generation_prompt(request)
@@ -180,10 +226,8 @@ class QuizPromptBuilderTests(unittest.TestCase):
 
     def test_lesson_content_is_included(self) -> None:
         content = "Detailed lesson material.\nSecond paragraph."
-        request = QuizGenerationRequest(
-            lessons=(
-                LessonCandidate(title="Custom title", content=content),
-            )
+        request = create_quiz_generation_request(
+            (LessonCandidate(title="Custom title", content=content),)
         )
 
         prompt = self.builder.build_quiz_generation_prompt(request)
@@ -192,8 +236,8 @@ class QuizPromptBuilderTests(unittest.TestCase):
         self.assertIn(content, prompt)
 
     def test_prompt_is_deterministic(self) -> None:
-        request = QuizGenerationRequest(
-            lessons=(
+        request = create_quiz_generation_request(
+            (
                 LessonCandidate(title="Lesson 1", content="Content 1."),
                 LessonCandidate(title="Lesson 2", content="Content 2."),
             )
@@ -205,8 +249,8 @@ class QuizPromptBuilderTests(unittest.TestCase):
         self.assertEqual(first_prompt, second_prompt)
 
     def test_order_is_preserved(self) -> None:
-        request = QuizGenerationRequest(
-            lessons=(
+        request = create_quiz_generation_request(
+            (
                 LessonCandidate(title="Alpha", content="A."),
                 LessonCandidate(title="Beta", content="B."),
                 LessonCandidate(title="Gamma", content="C."),
@@ -227,10 +271,8 @@ class QuizPromptBuilderTests(unittest.TestCase):
         self.assertIn("Slug: lesson_03", prompt)
 
     def test_requires_json_only_response(self) -> None:
-        request = QuizGenerationRequest(
-            lessons=(
-                LessonCandidate(title="Lesson 1", content="Content."),
-            )
+        request = create_quiz_generation_request(
+            (LessonCandidate(title="Lesson 1", content="Content."),)
         )
 
         prompt = self.builder.build_quiz_generation_prompt(request)
@@ -240,16 +282,78 @@ class QuizPromptBuilderTests(unittest.TestCase):
         self.assertIn("Do not wrap JSON in code fences", prompt)
 
     def test_option_rules_are_present(self) -> None:
-        request = QuizGenerationRequest(
-            lessons=(
-                LessonCandidate(title="Lesson 1", content="Content."),
-            )
+        request = create_quiz_generation_request(
+            (LessonCandidate(title="Lesson 1", content="Content."),)
         )
 
         prompt = self.builder.build_quiz_generation_prompt(request)
 
         self.assertIn("at least 4 answer options", prompt)
         self.assertIn("exactly one option per question must be true", prompt)
+
+    def test_prompt_contains_total_target(self) -> None:
+        request = create_quiz_generation_request(
+            (
+                LessonCandidate(title="Short", content="Brief."),
+                LessonCandidate(title="Long", content="x" * 2500),
+            )
+        )
+
+        prompt = self.builder.build_quiz_generation_prompt(request)
+
+        self.assertIn(
+            f"- Total questions required: {total_question_target(request)}.",
+            prompt,
+        )
+
+    def test_prompt_contains_per_lesson_required_counts(self) -> None:
+        request = create_quiz_generation_request(
+            (
+                LessonCandidate(title="Short", content="Brief."),
+                LessonCandidate(title="Medium", content="x" * 900),
+            )
+        )
+
+        prompt = self.builder.build_quiz_generation_prompt(request)
+
+        self.assertIn("- lesson_01: 2 questions", prompt)
+        self.assertIn("- lesson_02: 3 questions", prompt)
+
+    def test_prompt_requires_each_lesson_coverage(self) -> None:
+        request = create_quiz_generation_request(
+            (LessonCandidate(title="Lesson 1", content="Content."),)
+        )
+
+        prompt = self.builder.build_quiz_generation_prompt(request)
+
+        self.assertIn("- Do not skip any lesson.", prompt)
+        self.assertIn("- Do not create fewer questions than required.", prompt)
+
+    def test_prompt_requires_question_variety(self) -> None:
+        request = create_quiz_generation_request(
+            (LessonCandidate(title="Lesson 1", content="Content."),)
+        )
+
+        prompt = self.builder.build_quiz_generation_prompt(request)
+
+        self.assertIn("Cover facts and rules from the source material.", prompt)
+        self.assertIn("Include application in a realistic work situation.", prompt)
+        self.assertIn(
+            "Include recognizing a mistake or choosing the best action.",
+            prompt,
+        )
+
+    def test_prompt_requires_varied_correct_option_position(self) -> None:
+        request = create_quiz_generation_request(
+            (LessonCandidate(title="Lesson 1", content="Content."),)
+        )
+
+        prompt = self.builder.build_quiz_generation_prompt(request)
+
+        self.assertIn(
+            "Vary which option is marked correct; do not always use the first option.",
+            prompt,
+        )
 
 
 if __name__ == "__main__":
