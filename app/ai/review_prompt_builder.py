@@ -7,6 +7,33 @@ No LLM calls or external dependencies are used here.
 from __future__ import annotations
 
 from app.ai.review_interfaces import ReviewCriterion, ReviewRequest
+from app.ai.review_language import normalize_review_language
+
+_LANGUAGE_LABELS = {
+    "ru": "Russian",
+    "kk": "Kazakh",
+    "en": "English",
+}
+
+
+def _language_instruction_lines(language: str) -> list[str]:
+    label = _LANGUAGE_LABELS.get(language, language)
+    lines = [
+        "",
+        "Response language:",
+        f"- Language code: {language}",
+        f"- Write all feedback strings in {label}.",
+        (
+            "- feedback.summary, every feedback.strengths item, and every "
+            "feedback.improvements item must use the same response language."
+        ),
+        "- Do not mix languages within the feedback.",
+    ]
+    if language != "en":
+        lines.append(
+            "- Do not reply in English unless the response language code is en."
+        )
+    return lines
 
 
 class ReviewPromptBuilder:
@@ -21,11 +48,14 @@ class ReviewPromptBuilder:
         Returns:
             A deterministic review prompt.
         """
+        language = normalize_review_language(request.language) or "ru"
+
         lines = [
             "You are an objective reviewer of a learner's practical-task answer.",
             "Evaluate only against the supplied task, expected result, and criteria.",
             "Do not invent requirements, policies, facts, or missing source information.",
             "Do not reward information unrelated to the task.",
+            *_language_instruction_lines(language),
             "",
             "Lesson context:",
             request.lesson_title,
@@ -126,6 +156,10 @@ class ReviewPromptBuilder:
                 (
                     "- Feedback must be specific, actionable, respectful, and based "
                     "on the answer."
+                ),
+                (
+                    "- All feedback strings must be written in the response language "
+                    "specified above."
                 ),
                 "- Do not invent requirements or reward unrelated information.",
             ]

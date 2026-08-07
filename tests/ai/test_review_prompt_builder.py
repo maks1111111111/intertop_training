@@ -46,6 +46,31 @@ def _json_schema_lines() -> list[str]:
     ]
 
 
+def _language_instruction_lines(language: str) -> list[str]:
+    labels = {
+        "ru": "Russian",
+        "kk": "Kazakh",
+        "en": "English",
+    }
+    label = labels.get(language, language)
+    lines = [
+        "",
+        "Response language:",
+        f"- Language code: {language}",
+        f"- Write all feedback strings in {label}.",
+        (
+            "- feedback.summary, every feedback.strengths item, and every "
+            "feedback.improvements item must use the same response language."
+        ),
+        "- Do not mix languages within the feedback.",
+    ]
+    if language != "en":
+        lines.append(
+            "- Do not reply in English unless the response language code is en."
+        )
+    return lines
+
+
 def _scoring_rule_lines(max_score_rule: str) -> list[str]:
     return [
         "",
@@ -66,16 +91,21 @@ def _scoring_rule_lines(max_score_rule: str) -> list[str]:
             "- Feedback must be specific, actionable, respectful, and based "
             "on the answer."
         ),
+        (
+            "- All feedback strings must be written in the response language "
+            "specified above."
+        ),
         "- Do not invent requirements or reward unrelated information.",
     ]
 
 
-def _role_lines() -> list[str]:
+def _role_lines(language: str = "ru") -> list[str]:
     return [
         "You are an objective reviewer of a learner's practical-task answer.",
         "Evaluate only against the supplied task, expected result, and criteria.",
         "Do not invent requirements, policies, facts, or missing source information.",
         "Do not reward information unrelated to the task.",
+        *_language_instruction_lines(language),
     ]
 
 
@@ -272,6 +302,62 @@ class ReviewPromptBuilderTests(unittest.TestCase):
         second_prompt = self.builder.build(request)
 
         self.assertEqual(first_prompt, second_prompt)
+
+    def test_prompt_uses_explicit_russian_language(self) -> None:
+        request = ReviewRequest(
+            lesson_title="Урок",
+            practical_task_title="Задание",
+            practical_task_description="Описание.",
+            expected_result="Результат.",
+            learner_answer="Ответ.",
+            criteria=(),
+            language="ru",
+        )
+
+        prompt = self.builder.build(request)
+
+        self.assertIn("- Language code: ru", prompt)
+        self.assertIn("- Write all feedback strings in Russian.", prompt)
+        self.assertIn(
+            "- Do not reply in English unless the response language code is en.",
+            prompt,
+        )
+
+    def test_prompt_uses_explicit_english_language(self) -> None:
+        request = ReviewRequest(
+            lesson_title="Lesson",
+            practical_task_title="Task",
+            practical_task_description="Description.",
+            expected_result="Result.",
+            learner_answer="Answer.",
+            criteria=(),
+            language="en",
+        )
+
+        prompt = self.builder.build(request)
+
+        self.assertIn("- Language code: en", prompt)
+        self.assertIn("- Write all feedback strings in English.", prompt)
+        self.assertNotIn(
+            "- Do not reply in English unless the response language code is en.",
+            prompt,
+        )
+
+    def test_prompt_uses_explicit_kazakh_language(self) -> None:
+        request = ReviewRequest(
+            lesson_title="Сабақ",
+            practical_task_title="Тапсырма",
+            practical_task_description="Сипаттама.",
+            expected_result="Нәтиже.",
+            learner_answer="Жауап.",
+            criteria=(),
+            language="kk",
+        )
+
+        prompt = self.builder.build(request)
+
+        self.assertIn("- Language code: kk", prompt)
+        self.assertIn("- Write all feedback strings in Kazakh.", prompt)
 
 
 if __name__ == "__main__":

@@ -59,6 +59,7 @@ def _sample_course(*, lesson: Optional[Lesson] = None) -> Course:
         lessons=[lesson],
         cover_path=None,
         quiz=None,
+        language="ru",
     )
 
 
@@ -358,6 +359,7 @@ class ReceivePracticalTaskAnswerTests(unittest.IsolatedAsyncioTestCase):
             "I checked the floor.",
         )
         self.assertEqual(request.criteria, ())
+        self.assertEqual(request.language, "ru")
 
         state.clear.assert_awaited_once()
         final_answer = message.answer.call_args_list[-1]

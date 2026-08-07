@@ -19,6 +19,7 @@ from aiogram.types import (
 )
 
 from app.ai.review_interfaces import ReviewRequest, ReviewResult
+from app.ai.review_language import resolve_review_language
 from app.content.practical_task import PracticalTask
 from app.content.runtime import ContentRuntime
 from app.services.practical_task_review_flow_service import (
@@ -311,6 +312,13 @@ async def receive_practical_task_answer(
         expected_result=task.expected_result,
         learner_answer=learner_answer,
         criteria=(),
+        language=resolve_review_language(
+            course.language,
+            lesson.title,
+            task.title,
+            task.description,
+            task.expected_result,
+        ),
     )
 
     await message.answer("🤖 Проверяю ответ...")

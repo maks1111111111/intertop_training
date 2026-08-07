@@ -82,6 +82,7 @@ class Course:
     lessons: list[Lesson]
     cover_path: Optional[Path]
     quiz: Optional[Quiz]
+    language: str = ""
 
 
 @dataclass(frozen=True)
@@ -109,6 +110,17 @@ def _parse_course_status(metadata: dict) -> str:
         return raw_status
 
     return ""
+
+
+def _parse_course_language(metadata: dict) -> str:
+    if "language" not in metadata:
+        return ""
+
+    raw_language = metadata["language"]
+    if not isinstance(raw_language, str):
+        return ""
+
+    return raw_language.strip()
 
 
 def _parse_course_version(metadata: dict) -> int:
@@ -571,6 +583,7 @@ def _load_course_from_directory(course_dir: Path) -> Optional[tuple[int, Course]
         lessons=lessons,
         cover_path=cover_path,
         quiz=_load_quiz(course_dir),
+        language=_parse_course_language(metadata),
     )
 
     return order, course

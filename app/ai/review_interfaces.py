@@ -49,6 +49,7 @@ class ReviewRequest:
     expected_result: str
     learner_answer: str
     criteria: Tuple[ReviewCriterion, ...]
+    language: str = "ru"
 
 
 class PracticalTaskReviewerAI(Protocol):
