@@ -22,9 +22,22 @@ def _lesson_keyboard(
     course_slug: str,
     lesson_index: int,
     lessons_count: int,
+    lesson: Lesson,
 ) -> InlineKeyboardMarkup:
     buttons: list[list[InlineKeyboardButton]] = []
     navigation: list[InlineKeyboardButton] = []
+
+    if lesson.structured_practical_task is not None:
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text="🛠 Выполнить практическое задание",
+                    callback_data=(
+                        f"practical_task:start:{course_slug}:{lesson_index}"
+                    ),
+                )
+            ]
+        )
 
     if lesson_index > 0:
         navigation.append(
@@ -106,6 +119,7 @@ async def _send_lesson(
             course_slug=course.slug,
             lesson_index=lesson_index,
             lessons_count=lessons_count,
+            lesson=lesson,
         ),
     )
 

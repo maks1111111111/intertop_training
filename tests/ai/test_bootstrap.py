@@ -9,6 +9,8 @@ from app.ai.bootstrap import (
     create_course_generation_service,
     create_course_with_quiz_generation_service,
     create_imported_text_generation_service,
+    create_optional_practical_task_review_flow_service,
+    create_practical_task_review_flow_service,
     create_practical_task_review_service,
     create_quiz_generation_service,
 )
@@ -22,6 +24,9 @@ from app.services.course_with_quiz_generation_service import (
 )
 from app.services.imported_text_generation_service import (
     ImportedTextGenerationService,
+)
+from app.services.practical_task_review_flow_service import (
+    PracticalTaskReviewFlowService,
 )
 
 
@@ -258,6 +263,69 @@ class CreatePracticalTaskReviewServiceTests(unittest.TestCase):
 
         self.assertEqual(call_log, ["config", "provider", "service"])
         self.assertIs(result, mock_review_service)
+
+
+class CreatePracticalTaskReviewFlowServiceTests(unittest.TestCase):
+    """Tests for :func:`create_practical_task_review_flow_service`."""
+
+    @patch("app.ai.bootstrap.PracticalTaskReviewFlowService")
+    @patch("app.ai.bootstrap.create_practical_task_review_service")
+    def test_wires_flow_service(
+        self,
+        mock_create_review_service: MagicMock,
+        mock_flow_service_class: MagicMock,
+    ) -> None:
+        mock_review_service = MagicMock(spec=PracticalTaskReviewService)
+        mock_create_review_service.return_value = mock_review_service
+        mock_flow_service = MagicMock(spec=PracticalTaskReviewFlowService)
+        mock_flow_service_class.return_value = mock_flow_service
+
+        result = create_practical_task_review_flow_service()
+
+        mock_create_review_service.assert_called_once_with()
+        mock_flow_service_class.assert_called_once_with(mock_review_service)
+        self.assertIs(result, mock_flow_service)
+
+
+class CreateOptionalPracticalTaskReviewFlowServiceTests(unittest.TestCase):
+    """Tests for :func:`create_optional_practical_task_review_flow_service`."""
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_returns_none_when_api_key_missing(self) -> None:
+        result = create_optional_practical_task_review_flow_service()
+        self.assertIsNone(result)
+
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "   "}, clear=True)
+    def test_returns_none_when_api_key_blank(self) -> None:
+        result = create_optional_practical_task_review_flow_service()
+        self.assertIsNone(result)
+
+    @patch("app.ai.bootstrap.create_practical_task_review_flow_service")
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}, clear=True)
+    def test_builds_flow_when_api_key_present(
+        self,
+        mock_create_flow: MagicMock,
+    ) -> None:
+        mock_flow = MagicMock(spec=PracticalTaskReviewFlowService)
+        mock_create_flow.return_value = mock_flow
+
+        result = create_optional_practical_task_review_flow_service()
+
+        mock_create_flow.assert_called_once_with()
+        self.assertIs(result, mock_flow)
+
+    @patch("app.ai.bootstrap.create_practical_task_review_flow_service")
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}, clear=True)
+    def test_does_not_mask_unexpected_configuration_errors(
+        self,
+        mock_create_flow: MagicMock,
+    ) -> None:
+        mock_create_flow.side_effect = RuntimeError("unexpected config error")
+
+        with self.assertRaises(RuntimeError) as context:
+            create_optional_practical_task_review_flow_service()
+
+        self.assertEqual(str(context.exception), "unexpected config error")
 
 
 if __name__ == "__main__":

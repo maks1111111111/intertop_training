@@ -6,6 +6,9 @@ dependencies from environment configuration.
 
 from __future__ import annotations
 
+import os
+from typing import Optional
+
 from app.ai.config import OpenAIConfig
 from app.ai.openai_client import OpenAIClient
 from app.ai.openai_provider import OpenAICourseGenerationAI
@@ -27,6 +30,9 @@ from app.services.course_generation_persistence_service import (
 )
 from app.services.imported_text_generation_service import (
     ImportedTextGenerationService,
+)
+from app.services.practical_task_review_flow_service import (
+    PracticalTaskReviewFlowService,
 )
 from app.services.quiz_generation_persistence_service import (
     QuizGenerationPersistenceService,
@@ -78,3 +84,24 @@ def create_practical_task_review_service() -> PracticalTaskReviewService:
     config = OpenAIConfig.from_environment()
     provider = OpenAIPracticalTaskReviewer.from_config(config)
     return PracticalTaskReviewService(provider)
+
+
+def create_practical_task_review_flow_service() -> PracticalTaskReviewFlowService:
+    """Build a PracticalTaskReviewFlowService from environment config."""
+    review_service = create_practical_task_review_service()
+    return PracticalTaskReviewFlowService(review_service)
+
+
+def create_optional_practical_task_review_flow_service() -> (
+    Optional[PracticalTaskReviewFlowService]
+):
+    """Build review flow when OpenAI is configured, otherwise return ``None``.
+
+    Missing or blank ``OPENAI_API_KEY`` means AI practical-task review is
+    disabled. Other configuration errors are not masked and propagate to the
+    caller.
+    """
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key is None or not api_key.strip():
+        return None
+    return create_practical_task_review_flow_service()

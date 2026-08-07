@@ -6,11 +6,13 @@ from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
 
+from app.ai.bootstrap import create_optional_practical_task_review_flow_service
 from app.content.runtime import ContentRuntime
 from app.env import load_project_env
 from app.database import initialize_database
-from app.handlers import courses, quiz, start
+from app.handlers import courses, practical_tasks, quiz, start
 from app.services.course_sync import sync_courses
 
 def _get_base_dir() -> Path:
@@ -49,15 +51,27 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
 
-    dp = Dispatcher()
+    dp = Dispatcher(storage=MemoryStorage())
+
+    practical_task_review_flow = (
+        create_optional_practical_task_review_flow_service()
+    )
+    if practical_task_review_flow is None:
+        logging.info(
+            "AI practical-task review is disabled (OPENAI_API_KEY not set).",
+        )
+    else:
+        logging.info("AI practical-task review is enabled.")
 
     dp["base_dir"] = base_dir
     dp["db_path"] = db_path
     dp["content_runtime"] = content_runtime
+    dp["practical_task_review_flow"] = practical_task_review_flow
 
     dp.include_router(start.router)
     dp.include_router(courses.router)
     dp.include_router(quiz.router)
+    dp.include_router(practical_tasks.router)
 
     logging.info("База данных подготовлена: %s", db_path)
     logging.info("Бот запущен. Каталог курсов: %s", base_dir)
