@@ -67,8 +67,9 @@ def _json_instruction_lines() -> list[str]:
         '- "summary": brief description of the lesson (2-4 sentences).',
         '- "content": main educational material for the lesson;',
         "  write 5-15 paragraphs using information from the source",
-        "  material; do not use generic filler; do not reduce the",
-        "  lesson to a summary; write a complete training lesson.",
+        "  material; follow the lesson content blueprint above;",
+        "  do not use generic filler; do not reduce the lesson to a",
+        "  summary; write a complete training lesson.",
         '- "learning_objectives": list of short, measurable outcomes.',
         '- "structured_practical_task": one concrete hands-on exercise or',
         "  work scenario based on the source material; JSON object.",
@@ -129,6 +130,41 @@ def _task_instruction_lines() -> list[str]:
     ]
 
 
+def _blueprint_instruction_lines() -> list[str]:
+    return [
+        "Lesson content blueprint:",
+        'Write each lesson\'s "content" as flowing training text. Do NOT',
+        "insert section headings into the JSON. Instead, naturally cover:",
+        "- Introduction to the topic",
+        "- Why this topic matters for the learner's work",
+        "- Core concepts the learner must understand",
+        "- Step-by-step process (when the material supports one)",
+        "- Real workplace examples from the source material",
+        "- Typical mistakes to avoid",
+        "- Best practices to follow",
+        "- Key takeaways within the narrative",
+        "- A brief transition toward the next lesson",
+        "",
+    ]
+
+
+def _writing_quality_instruction_lines() -> list[str]:
+    return [
+        "Writing quality:",
+        "- Use logical progression from basics to application.",
+        "- Do not duplicate information within or across lessons.",
+        "- Give practical explanations and concrete examples.",
+        "- Use concise paragraphs and a professional training style.",
+        "- Avoid filler text and generic phrases.",
+        "- Do not repeat the lesson title inside the content.",
+        "- Do not repeat material from previous lessons.",
+        "- Every lesson should feel complete on its own.",
+        "- Explain WHY things matter, CONSEQUENCES of mistakes, and",
+        "  CORRECT ACTIONS rather than listing facts only.",
+        "",
+    ]
+
+
 class PromptBuilderTests(unittest.TestCase):
     """Tests for :class:`PromptBuilder`."""
 
@@ -156,6 +192,8 @@ class PromptBuilderTests(unittest.TestCase):
             "\n".join(
                 [
                     *_task_instruction_lines(),
+                    *_blueprint_instruction_lines(),
+                    *_writing_quality_instruction_lines(),
                     *_json_instruction_lines(),
                     "",
                     "Source material:",
@@ -184,6 +222,8 @@ class PromptBuilderTests(unittest.TestCase):
             "\n".join(
                 [
                     *_task_instruction_lines(),
+                    *_blueprint_instruction_lines(),
+                    *_writing_quality_instruction_lines(),
                     *_json_instruction_lines(),
                     "",
                     "Source material:",
@@ -336,6 +376,48 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("simplest safe task possible", prompt)
         self.assertIn("invent corporate rules or procedures", prompt)
         self.assertIn("between 5 and 30 minutes", prompt)
+
+    def test_prompt_contains_lesson_content_blueprint(self) -> None:
+        request = LessonGenerationRequest(
+            lessons=[
+                LessonCandidate(title="Section 1", content="First content."),
+            ]
+        )
+
+        prompt = self.builder.build_lesson_generation_prompt(request)
+
+        self.assertIn("Lesson content blueprint:", prompt)
+        self.assertIn("insert section headings into the JSON", prompt)
+        self.assertIn("Do NOT", prompt)
+        self.assertIn("- Introduction to the topic", prompt)
+        self.assertIn("- Why this topic matters for the learner's work", prompt)
+        self.assertIn("- Core concepts the learner must understand", prompt)
+        self.assertIn(
+            "- Step-by-step process (when the material supports one)",
+            prompt,
+        )
+        self.assertIn(
+            "- Real workplace examples from the source material",
+            prompt,
+        )
+        self.assertIn("- Typical mistakes to avoid", prompt)
+        self.assertIn("- Best practices to follow", prompt)
+        self.assertIn("- Key takeaways within the narrative", prompt)
+        self.assertIn("- A brief transition toward the next lesson", prompt)
+        self.assertIn("Writing quality:", prompt)
+        self.assertIn("logical progression", prompt)
+        self.assertIn("Do not duplicate information", prompt)
+        self.assertIn("concrete examples", prompt)
+        self.assertIn("concise paragraphs", prompt)
+        self.assertIn("professional training style", prompt)
+        self.assertIn("Avoid filler text", prompt)
+        self.assertIn("Do not repeat the lesson title", prompt)
+        self.assertIn("Do not repeat material from previous lessons", prompt)
+        self.assertIn("Every lesson should feel complete", prompt)
+        self.assertIn("Explain WHY things matter", prompt)
+        self.assertIn("CONSEQUENCES of mistakes", prompt)
+        self.assertIn("CORRECT ACTIONS", prompt)
+        self.assertIn("follow the lesson content blueprint above", prompt)
 
 
 if __name__ == "__main__":
