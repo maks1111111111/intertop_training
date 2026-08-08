@@ -93,6 +93,46 @@ class CourseMapperTests(unittest.TestCase):
         self.assertEqual(detail.lessons[0].title, "First lesson")
         self.assertEqual(detail.lessons[0].order, 1)
 
+    def test_to_lesson_detail_maps_full_lesson(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = courses_dir / "alpha"
+            course_dir.mkdir()
+            (course_dir / "course.json").write_text(
+                '{"title": "Alpha Course", "status": "published", "language": "ru"}',
+                encoding="utf-8",
+            )
+            lesson_dir = course_dir / "lesson_01"
+            lesson_dir.mkdir()
+            (lesson_dir / "lesson.json").write_text(
+                (
+                    '{"title": "First lesson", "order": 1, "description": "Body text.", '
+                    '"practical_task": "Inspect the work area.", '
+                    '"checklist": ["Wear PPE"], '
+                    '"common_mistakes": ["Skipping inspection"], '
+                    '"key_takeaways": ["Safety first"], '
+                    '"application_tips": ["Apply the checklist daily"]}'
+                ),
+                encoding="utf-8",
+            )
+            runtime = ContentRuntime(courses_dir)
+            course = runtime.get_course("alpha")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+
+        detail = course_mapper.to_lesson_detail(course.lessons[0])
+
+        self.assertEqual(detail.id, "lesson_01")
+        self.assertEqual(detail.title, "First lesson")
+        self.assertEqual(detail.order, 1)
+        self.assertEqual(detail.content, "Body text.")
+        self.assertEqual(detail.practical_task, "Inspect the work area.")
+        self.assertEqual(detail.checklist, ["Wear PPE"])
+        self.assertEqual(detail.common_mistakes, ["Skipping inspection"])
+        self.assertEqual(detail.key_takeaways, ["Safety first"])
+        self.assertEqual(detail.application_tips, ["Apply the checklist daily"])
+
 
 if __name__ == "__main__":
     unittest.main()

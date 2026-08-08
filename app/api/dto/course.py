@@ -35,3 +35,17 @@ class CourseDetailDTO(BaseModel):
     description: str
     language: str
     lessons: list[LessonSummaryDTO]
+
+
+class LessonDetailDTO(BaseModel):
+    """Full published lesson content for read-only API consumers."""
+
+    id: str
+    title: str
+    order: int
+    content: str
+    practical_task: str
+    checklist: list[str]
+    common_mistakes: list[str]
+    key_takeaways: list[str]
+    application_tips: list[str]

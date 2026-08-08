@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -115,6 +116,87 @@ class CourseApiTests(unittest.TestCase):
         response = self.client.get("/health")
 
         self.assertNotEqual(response.status_code, 200)
+
+    def test_get_existing_lesson_returns_200(self) -> None:
+        response = self.client.get("/api/v1/courses/alpha/lessons/lesson_01")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["id"], "lesson_01")
+        self.assertEqual(data["title"], "First lesson")
+        self.assertEqual(data["order"], 1)
+        self.assertEqual(data["content"], "Body text.")
+        self.assertEqual(data["practical_task"], "")
+        self.assertEqual(data["checklist"], [])
+        self.assertEqual(data["common_mistakes"], [])
+        self.assertEqual(data["key_takeaways"], [])
+        self.assertEqual(data["application_tips"], [])
+
+    def test_get_lesson_returns_quality_fields(self) -> None:
+        lesson_path = self.courses_dir / "alpha" / "lesson_01" / "lesson.json"
+        lesson_path.write_text(
+            json.dumps(
+                {
+                    "title": "First lesson",
+                    "order": 1,
+                    "description": "Body text.",
+                    "practical_task": "Inspect the work area.",
+                    "checklist": ["Wear PPE", "Check equipment"],
+                    "common_mistakes": ["Skipping inspection"],
+                    "key_takeaways": ["Safety first"],
+                    "application_tips": ["Apply the checklist daily"],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        self.app.state.content_runtime.refresh()
+
+        response = self.client.get("/api/v1/courses/alpha/lessons/lesson_01")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "id": "lesson_01",
+                "title": "First lesson",
+                "order": 1,
+                "content": "Body text.",
+                "practical_task": "Inspect the work area.",
+                "checklist": ["Wear PPE", "Check equipment"],
+                "common_mistakes": ["Skipping inspection"],
+                "key_takeaways": ["Safety first"],
+                "application_tips": ["Apply the checklist daily"],
+            },
+        )
+
+    def test_get_lesson_for_unknown_course_returns_404(self) -> None:
+        response = self.client.get("/api/v1/courses/missing/lessons/lesson_01")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(
+            response.json(),
+            {
+                "error": {
+                    "code": "course_not_found",
+                    "message": "Course not found.",
+                }
+            },
+        )
+
+    def test_get_unknown_lesson_returns_404(self) -> None:
+        response = self.client.get("/api/v1/courses/alpha/lessons/lesson_99")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(
+            response.json(),
+            {
+                "error": {
+                    "code": "lesson_not_found",
+                    "message": "Lesson not found.",
+                }
+            },
+        )
 
 
 if __name__ == "__main__":

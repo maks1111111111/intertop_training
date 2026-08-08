@@ -6,6 +6,7 @@ from app.api.dto.course import (
     CourseDetailDTO,
     CourseListDTO,
     CourseSummaryDTO,
+    LessonDetailDTO,
     LessonSummaryDTO,
 )
 from app.content.runtime_loader import Course, Lesson
@@ -42,4 +43,19 @@ def to_detail(course: Course) -> CourseDetailDTO:
         description=course.description,
         language=course.language,
         lessons=[to_lesson_summary(lesson) for lesson in course.lessons],
+    )
+
+
+def to_lesson_detail(lesson: Lesson) -> LessonDetailDTO:
+    """Convert a runtime lesson to a full lesson DTO."""
+    return LessonDetailDTO(
+        id=lesson.path.name,
+        title=lesson.title,
+        order=lesson.number,
+        content=lesson.description,
+        practical_task=lesson.practical_task,
+        checklist=list(lesson.checklist),
+        common_mistakes=list(lesson.common_mistakes),
+        key_takeaways=list(lesson.key_takeaways),
+        application_tips=list(lesson.application_tips),
     )

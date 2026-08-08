@@ -7,7 +7,7 @@ from typing import Union
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
-from app.api.dto.course import CourseDetailDTO, CourseListDTO
+from app.api.dto.course import CourseDetailDTO, CourseListDTO, LessonDetailDTO
 from app.api.mappers import course_mapper
 from app.content.runtime import ContentRuntime
 
@@ -63,3 +63,67 @@ def get_course(
             },
         )
     return course_mapper.to_detail(course)
+
+
+@router.get(
+    "/courses/{slug}/lessons/{lesson_id}",
+    response_model=LessonDetailDTO,
+    responses={
+        404: {
+            "description": "Course or lesson not found.",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "course_not_found": {
+                            "value": {
+                                "error": {
+                                    "code": "course_not_found",
+                                    "message": "Course not found.",
+                                }
+                            }
+                        },
+                        "lesson_not_found": {
+                            "value": {
+                                "error": {
+                                    "code": "lesson_not_found",
+                                    "message": "Lesson not found.",
+                                }
+                            }
+                        },
+                    }
+                }
+            },
+        }
+    },
+)
+def get_lesson(
+    slug: str,
+    lesson_id: str,
+    content_runtime: ContentRuntime = Depends(get_content_runtime),
+) -> Union[LessonDetailDTO, JSONResponse]:
+    """Return one published lesson by course slug and lesson directory name."""
+    course = content_runtime.get_course(slug)
+    if course is None:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": {
+                    "code": "course_not_found",
+                    "message": "Course not found.",
+                }
+            },
+        )
+
+    for lesson in course.lessons:
+        if lesson.path.name == lesson_id:
+            return course_mapper.to_lesson_detail(lesson)
+
+    return JSONResponse(
+        status_code=404,
+        content={
+            "error": {
+                "code": "lesson_not_found",
+                "message": "Lesson not found.",
+            }
+        },
+    )
