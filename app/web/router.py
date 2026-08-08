@@ -10,6 +10,13 @@ from fastapi.templating import Jinja2Templates
 
 from app.api.mappers import course_mapper
 from app.content.runtime import ContentRuntime
+from app.web.progress_service import WebProgressService
+from app.web.quiz_scoring import (
+    build_quiz_page_view,
+    build_quiz_summary_view,
+    format_score_percent,
+    score_web_quiz,
+)
 
 router = APIRouter(tags=["web"])
 
@@ -20,6 +27,26 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 def get_content_runtime(request: Request) -> ContentRuntime:
     """Return the ContentRuntime instance attached to the application."""
     return request.app.state.content_runtime
+
+
+def get_db_path(request: Request) -> Path:
+    """Return the SQLite database path attached to the application."""
+    return request.app.state.db_path
+
+
+def get_progress_service(db_path: Path = Depends(get_db_path)) -> WebProgressService:
+    """Return the Web progress service for the current database."""
+    return WebProgressService(db_path)
+
+
+def _parse_quiz_answers(form_data) -> dict[str, str]:
+    """Extract question answers from submitted form fields."""
+    answers: dict[str, str] = {}
+    for key in form_data.keys():
+        if not key.startswith("answer_"):
+            continue
+        answers[key[len("answer_"):]] = str(form_data[key])
+    return answers
 
 
 @router.get("/", include_in_schema=False)
@@ -56,6 +83,7 @@ def course_detail_page(
     slug: str,
     request: Request,
     content_runtime: ContentRuntime = Depends(get_content_runtime),
+    progress_service: WebProgressService = Depends(get_progress_service),
 ) -> HTMLResponse:
     """Render one published course and its lesson list."""
     course = content_runtime.get_course(slug)
@@ -71,10 +99,22 @@ def course_detail_page(
         )
 
     course_detail = course_mapper.to_detail(course)
+    progress = progress_service.build_course_progress_view(
+        slug,
+        course_detail.lessons,
+        has_quiz=course.quiz is not None,
+    )
+    quiz_summary = None
+    if course.quiz is not None:
+        quiz_summary = build_quiz_summary_view(course.quiz)
     return templates.TemplateResponse(
         request,
         "course_detail.html",
-        {"course": course_detail},
+        {
+            "course": course_detail,
+            "progress": progress,
+            "quiz": quiz_summary,
+        },
     )
 
 
@@ -88,6 +128,7 @@ def lesson_detail_page(
     lesson_id: str,
     request: Request,
     content_runtime: ContentRuntime = Depends(get_content_runtime),
+    progress_service: WebProgressService = Depends(get_progress_service),
 ) -> HTMLResponse:
     """Render one published lesson."""
     course = content_runtime.get_course(slug)
@@ -104,6 +145,7 @@ def lesson_detail_page(
 
     for lesson in course.lessons:
         if lesson.path.name == lesson_id:
+            progress_service.mark_lesson_completed(slug, lesson_id)
             lesson_detail = course_mapper.to_lesson_detail(course, lesson)
             return templates.TemplateResponse(
                 request,
@@ -122,4 +164,102 @@ def lesson_detail_page(
             "message": "Запрошенный урок недоступен или не существует.",
         },
         status_code=404,
+    )
+
+
+@router.get(
+    "/courses/{slug}/quiz",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def quiz_page(
+    slug: str,
+    request: Request,
+    content_runtime: ContentRuntime = Depends(get_content_runtime),
+) -> HTMLResponse:
+    """Render the course quiz form."""
+    course = content_runtime.get_course(slug)
+    if course is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    if course.quiz is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Тест недоступен",
+                "message": "Для этого курса итоговый тест пока недоступен.",
+            },
+            status_code=404,
+        )
+
+    quiz = build_quiz_page_view(course.quiz)
+    return templates.TemplateResponse(
+        request,
+        "quiz.html",
+        {
+            "course": course_mapper.to_detail(course),
+            "quiz": quiz,
+        },
+    )
+
+
+@router.post(
+    "/courses/{slug}/quiz",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def quiz_submit_page(
+    slug: str,
+    request: Request,
+    content_runtime: ContentRuntime = Depends(get_content_runtime),
+) -> HTMLResponse:
+    """Score submitted quiz answers and render the result page."""
+    course = content_runtime.get_course(slug)
+    if course is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    if course.quiz is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Тест недоступен",
+                "message": "Для этого курса итоговый тест пока недоступен.",
+            },
+            status_code=404,
+        )
+
+    form_data = await request.form()
+    answers = _parse_quiz_answers(form_data)
+    result = score_web_quiz(course.quiz, answers)
+
+    return templates.TemplateResponse(
+        request,
+        "quiz_result.html",
+        {
+            "course": course_mapper.to_detail(course),
+            "score_percent": format_score_percent(result.score_percent),
+            "correct_answers": result.correct_answers,
+            "questions_count": result.questions_count,
+            "passing_score": result.passing_score,
+            "passed": result.passed,
+            "reviews": result.reviews,
+        },
     )

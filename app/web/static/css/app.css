@@ -193,6 +193,35 @@ a:focus-visible,
     gap: 0.75rem;
 }
 
+.course-progress {
+    padding: 1.25rem 1.5rem;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+}
+
+.course-progress-percent {
+    margin: 0;
+    font-size: 2rem;
+    font-weight: 700;
+    color: #111827;
+}
+
+.course-progress-count {
+    margin: 0.35rem 0 0;
+    color: #6b7280;
+}
+
+.course-completion-banner {
+    margin-bottom: 1.5rem;
+    padding: 1rem 1.25rem;
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    border-radius: 0.75rem;
+    color: #065f46;
+    font-weight: 600;
+}
+
 .lesson-list-item {
     display: grid;
     grid-template-columns: 5rem minmax(0, 1fr);
@@ -204,9 +233,41 @@ a:focus-visible,
     border-radius: 0.75rem;
 }
 
+.lesson-list-item--current {
+    border-color: #93c5fd;
+    background: #eff6ff;
+}
+
 .lesson-list-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
     color: #6b7280;
     font-size: 0.875rem;
+}
+
+.lesson-status {
+    display: inline-block;
+    width: fit-content;
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.lesson-status--completed {
+    color: #065f46;
+    background: #d1fae5;
+}
+
+.lesson-status--current {
+    color: #1d4ed8;
+    background: #dbeafe;
+}
+
+.lesson-status--not_started {
+    color: #6b7280;
+    background: #f3f4f6;
 }
 
 .lesson-link {
@@ -335,6 +396,176 @@ a:focus-visible,
 .empty-inline {
     margin: 0;
     color: #6b7280;
+}
+
+.quiz-section {
+    margin-top: 2rem;
+}
+
+.quiz-card {
+    max-width: 36rem;
+    padding: 1.5rem;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+}
+
+.quiz-card-title {
+    margin: 0 0 0.5rem;
+    font-size: 1.125rem;
+    color: #111827;
+}
+
+.quiz-card-meta,
+.quiz-meta {
+    margin: 0 0 1rem;
+    color: #6b7280;
+}
+
+.quiz-header .quiz-meta {
+    margin-bottom: 0;
+}
+
+.quiz-form {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.quiz-question {
+    padding: 1.5rem;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+}
+
+.quiz-question-title {
+    margin: 0 0 1rem;
+    font-size: 1.125rem;
+    line-height: 1.5;
+    color: #111827;
+}
+
+.quiz-options {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    display: grid;
+    gap: 0.75rem;
+}
+
+.quiz-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    background: #ffffff;
+}
+
+.quiz-option:hover {
+    border-color: #93c5fd;
+    background: #f8fafc;
+}
+
+.quiz-option input {
+    margin-top: 0.2rem;
+    flex-shrink: 0;
+}
+
+.quiz-option-text {
+    line-height: 1.5;
+    color: #111827;
+}
+
+.quiz-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.quiz-result {
+    max-width: 42rem;
+}
+
+.quiz-result-score {
+    margin: 0.5rem 0;
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: #111827;
+}
+
+.quiz-result-summary,
+.quiz-result-passing {
+    margin: 0.25rem 0;
+    color: #374151;
+}
+
+.quiz-result-status {
+    margin: 1rem 0 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.quiz-result-status-passed {
+    color: #047857;
+}
+
+.quiz-result-status-failed {
+    color: #b91c1c;
+}
+
+.quiz-review {
+    margin-top: 2rem;
+}
+
+.quiz-review-list {
+    margin: 0;
+    padding-left: 1.25rem;
+    display: grid;
+    gap: 1rem;
+}
+
+.quiz-review-item {
+    padding: 1rem 0;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.quiz-review-question {
+    margin: 0 0 0.5rem;
+    font-weight: 600;
+    color: #111827;
+}
+
+.quiz-review-answer {
+    margin: 0 0 0.25rem;
+    color: #374151;
+}
+
+.quiz-review-verdict {
+    margin: 0;
+    font-weight: 600;
+}
+
+.quiz-review-verdict-correct {
+    color: #047857;
+}
+
+.quiz-review-verdict-incorrect {
+    color: #b91c1c;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 @media (max-width: 768px) {

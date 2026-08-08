@@ -164,5 +164,17 @@ def create_tables(connection: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_practical_task_attempts_status
             ON practical_task_attempts(status);
+
+        CREATE TABLE IF NOT EXISTS web_lesson_progress (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            course_slug TEXT NOT NULL,
+            lesson_id TEXT NOT NULL,
+            completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, course_slug, lesson_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_web_lesson_progress_user_course
+            ON web_lesson_progress(user_id, course_slug);
         """
     )
