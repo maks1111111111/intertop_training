@@ -648,3 +648,62 @@ class StructuredPracticalTaskLoaderTests(unittest.TestCase):
         task = course.lessons[0].structured_practical_task
         assert task is not None
         self.assertEqual(task.title, "Task")
+
+
+class CourseDescriptionLoaderTests(unittest.TestCase):
+    """Tests for loading course description from course.json."""
+
+    def test_loads_description_from_course_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = courses_dir / "alpha"
+            course_dir.mkdir()
+            (course_dir / "course.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Alpha Course",
+                        "description": "Retail training overview.",
+                        "status": "published",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            course = get_published_course(courses_dir, "alpha")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(course.description, "Retail training overview.")
+
+    def test_missing_description_defaults_to_empty_string(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _write_published_course(courses_dir)
+
+            course = get_published_course(courses_dir, "alpha")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(course.description, "")
+
+    def test_non_string_description_defaults_to_empty_string(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = courses_dir / "alpha"
+            course_dir.mkdir()
+            (course_dir / "course.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Alpha Course",
+                        "description": 123,
+                        "status": "published",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            course = get_published_course(courses_dir, "alpha")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(course.description, "")

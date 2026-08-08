@@ -82,6 +82,7 @@ class Course:
     lessons: list[Lesson]
     cover_path: Optional[Path]
     quiz: Optional[Quiz]
+    description: str = ""
     language: str = ""
 
 
@@ -121,6 +122,17 @@ def _parse_course_language(metadata: dict) -> str:
         return ""
 
     return raw_language.strip()
+
+
+def _parse_course_description(metadata: dict) -> str:
+    if "description" not in metadata:
+        return ""
+
+    raw_description = metadata["description"]
+    if not isinstance(raw_description, str):
+        return ""
+
+    return raw_description
 
 
 def _parse_course_version(metadata: dict) -> int:
@@ -583,6 +595,7 @@ def _load_course_from_directory(course_dir: Path) -> Optional[tuple[int, Course]
         lessons=lessons,
         cover_path=cover_path,
         quiz=_load_quiz(course_dir),
+        description=_parse_course_description(metadata),
         language=_parse_course_language(metadata),
     )
 
