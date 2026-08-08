@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -49,3 +51,7 @@ class LessonDetailDTO(BaseModel):
     common_mistakes: list[str]
     key_takeaways: list[str]
     application_tips: list[str]
+    previous_lesson_id: Optional[str] = None
+    next_lesson_id: Optional[str] = None
+    is_first: bool = False
+    is_last: bool = False

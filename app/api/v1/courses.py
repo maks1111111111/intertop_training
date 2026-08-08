@@ -116,7 +116,7 @@ def get_lesson(
 
     for lesson in course.lessons:
         if lesson.path.name == lesson_id:
-            return course_mapper.to_lesson_detail(lesson)
+            return course_mapper.to_lesson_detail(course, lesson)
 
     return JSONResponse(
         status_code=404,

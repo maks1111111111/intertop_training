@@ -9,6 +9,8 @@ from app.api.dto.course import (
     LessonDetailDTO,
     LessonSummaryDTO,
 )
+from typing import Optional
+
 from app.content.runtime_loader import Course, Lesson
 
 
@@ -46,8 +48,31 @@ def to_detail(course: Course) -> CourseDetailDTO:
     )
 
 
-def to_lesson_detail(lesson: Lesson) -> LessonDetailDTO:
-    """Convert a runtime lesson to a full lesson DTO."""
+def _lesson_navigation(
+    course: Course,
+    lesson: Lesson,
+) -> tuple[Optional[str], Optional[str], bool, bool]:
+    """Return previous/next lesson ids and first/last flags for one lesson."""
+    lessons = list(course.lessons)
+    lesson_ids = [item.path.name for item in lessons]
+    try:
+        index = lesson_ids.index(lesson.path.name)
+    except ValueError:
+        return None, None, True, True
+
+    is_first = index == 0
+    is_last = index == len(lessons) - 1
+    previous_lesson_id = None if is_first else lessons[index - 1].path.name
+    next_lesson_id = None if is_last else lessons[index + 1].path.name
+    return previous_lesson_id, next_lesson_id, is_first, is_last
+
+
+def to_lesson_detail(course: Course, lesson: Lesson) -> LessonDetailDTO:
+    """Convert a runtime lesson to a full lesson DTO with course navigation."""
+    previous_lesson_id, next_lesson_id, is_first, is_last = _lesson_navigation(
+        course,
+        lesson,
+    )
     return LessonDetailDTO(
         id=lesson.path.name,
         title=lesson.title,
@@ -58,4 +83,8 @@ def to_lesson_detail(lesson: Lesson) -> LessonDetailDTO:
         common_mistakes=list(lesson.common_mistakes),
         key_takeaways=list(lesson.key_takeaways),
         application_tips=list(lesson.application_tips),
+        previous_lesson_id=previous_lesson_id,
+        next_lesson_id=next_lesson_id,
+        is_first=is_first,
+        is_last=is_last,
     )

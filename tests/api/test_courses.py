@@ -131,6 +131,10 @@ class CourseApiTests(unittest.TestCase):
         self.assertEqual(data["common_mistakes"], [])
         self.assertEqual(data["key_takeaways"], [])
         self.assertEqual(data["application_tips"], [])
+        self.assertIsNone(data["previous_lesson_id"])
+        self.assertIsNone(data["next_lesson_id"])
+        self.assertTrue(data["is_first"])
+        self.assertTrue(data["is_last"])
 
     def test_get_lesson_returns_quality_fields(self) -> None:
         lesson_path = self.courses_dir / "alpha" / "lesson_01" / "lesson.json"
@@ -167,6 +171,10 @@ class CourseApiTests(unittest.TestCase):
                 "common_mistakes": ["Skipping inspection"],
                 "key_takeaways": ["Safety first"],
                 "application_tips": ["Apply the checklist daily"],
+                "previous_lesson_id": None,
+                "next_lesson_id": None,
+                "is_first": True,
+                "is_last": True,
             },
         )
 

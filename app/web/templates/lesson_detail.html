@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}{{ lesson.title }} — {{ course.title }}{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/courses">Курсы</a>
+    <span aria-hidden="true">/</span>
+    <a href="/courses/{{ course.slug }}">{{ course.title }}</a>
+    <span aria-hidden="true">/</span>
+    <span>{{ lesson.title }}</span>
+</nav>
+
+<article class="lesson-article">
+    <header class="page-header">
+        <p class="lesson-order">Урок {{ lesson.order }}</p>
+        <h1>{{ lesson.title }}</h1>
+    </header>
+
+    {% if lesson.content %}
+    <div class="lesson-content">
+        {{ lesson.content }}
+    </div>
+    {% endif %}
+
+    {% if lesson.practical_task %}
+    <section class="lesson-block">
+        <h2 class="lesson-block-title">Практическое задание</h2>
+        <div class="lesson-block-body">{{ lesson.practical_task }}</div>
+    </section>
+    {% endif %}
+
+    {% if lesson.checklist %}
+    <section class="lesson-block">
+        <h2 class="lesson-block-title">Чек-лист</h2>
+        <ul class="lesson-block-list">
+            {% for item in lesson.checklist %}
+            <li>{{ item }}</li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    {% if lesson.common_mistakes %}
+    <section class="lesson-block">
+        <h2 class="lesson-block-title">Типичные ошибки</h2>
+        <ul class="lesson-block-list">
+            {% for item in lesson.common_mistakes %}
+            <li>{{ item }}</li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    {% if lesson.key_takeaways %}
+    <section class="lesson-block">
+        <h2 class="lesson-block-title">Главное запомнить</h2>
+        <ul class="lesson-block-list">
+            {% for item in lesson.key_takeaways %}
+            <li>{{ item }}</li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    {% if lesson.application_tips %}
+    <section class="lesson-block">
+        <h2 class="lesson-block-title">Советы по применению</h2>
+        <ul class="lesson-block-list">
+            {% for item in lesson.application_tips %}
+            <li>{{ item }}</li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+</article>
+
+<nav class="lesson-nav" aria-label="Навигация по урокам">
+    <div class="lesson-nav-previous">
+        {% if lesson.previous_lesson_id %}
+        <a
+            class="button button-secondary"
+            href="/courses/{{ course.slug }}/lessons/{{ lesson.previous_lesson_id }}"
+        >
+            ← Предыдущий урок
+        </a>
+        {% endif %}
+    </div>
+    <div class="lesson-nav-next">
+        {% if lesson.next_lesson_id %}
+        <a
+            class="button"
+            href="/courses/{{ course.slug }}/lessons/{{ lesson.next_lesson_id }}"
+        >
+            Следующий урок →
+        </a>
+        {% elif lesson.is_last %}
+        <span class="lesson-complete-label">✓ Завершить курс</span>
+        {% endif %}
+    </div>
+</nav>
+
+<p class="back-link-wrap">
+    <a class="text-link" href="/courses/{{ course.slug }}">← Вернуться к курсу</a>
+</p>
+{% endblock %}

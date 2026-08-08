@@ -1,0 +1,363 @@
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 16px;
+}
+
+body {
+    margin: 0;
+    color: #1f2937;
+    background: #f8fafc;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+        Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+    line-height: 1.6;
+}
+
+a {
+    color: #2563eb;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+a:focus-visible,
+.button:focus-visible,
+.nav-link:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+.layout {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+}
+
+.sidebar {
+    background: #ffffff;
+    border-right: 1px solid #e5e7eb;
+    padding: 1.5rem 1rem;
+}
+
+.brand-link {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #111827;
+    text-decoration: none;
+}
+
+.brand-link:hover {
+    text-decoration: none;
+    color: #2563eb;
+}
+
+.sidebar-nav {
+    margin-top: 2rem;
+}
+
+.nav-link {
+    display: block;
+    padding: 0.625rem 0.75rem;
+    border-radius: 0.5rem;
+    color: #374151;
+    text-decoration: none;
+}
+
+.nav-link:hover {
+    background: #f3f4f6;
+    text-decoration: none;
+}
+
+.nav-link.is-active {
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-weight: 600;
+}
+
+.main {
+    padding: 2rem 1.5rem 3rem;
+}
+
+.page-header {
+    margin-bottom: 2rem;
+}
+
+.page-header h1 {
+    margin: 0 0 0.75rem;
+    font-size: 2rem;
+    line-height: 1.2;
+    color: #111827;
+}
+
+.page-subtitle,
+.lead {
+    margin: 0;
+    color: #4b5563;
+    max-width: 48rem;
+}
+
+.lead {
+    font-size: 1.0625rem;
+}
+
+.meta-badge {
+    display: inline-block;
+    margin-top: 1rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #4338ca;
+    font-size: 0.875rem;
+}
+
+.section {
+    margin-top: 2rem;
+}
+
+.section-title {
+    margin: 0 0 1rem;
+    font-size: 1.25rem;
+    color: #111827;
+}
+
+.course-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 1rem;
+}
+
+.course-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding: 1.25rem 1.5rem;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+}
+
+.course-card-title {
+    margin: 0 0 0.5rem;
+    font-size: 1.125rem;
+    color: #111827;
+}
+
+.course-card-description {
+    margin: 0;
+    color: #4b5563;
+}
+
+.button {
+    display: inline-block;
+    padding: 0.625rem 1rem;
+    border-radius: 0.5rem;
+    background: #2563eb;
+    color: #ffffff;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.button:hover {
+    background: #1d4ed8;
+    text-decoration: none;
+}
+
+.text-link {
+    font-weight: 500;
+}
+
+.breadcrumb {
+    margin-bottom: 1.5rem;
+    color: #6b7280;
+    font-size: 0.9375rem;
+}
+
+.breadcrumb a {
+    color: #2563eb;
+}
+
+.lesson-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.75rem;
+}
+
+.lesson-list-item {
+    display: grid;
+    grid-template-columns: 5rem minmax(0, 1fr);
+    gap: 1rem;
+    align-items: center;
+    padding: 1rem 1.25rem;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+}
+
+.lesson-list-meta {
+    color: #6b7280;
+    font-size: 0.875rem;
+}
+
+.lesson-link {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #111827;
+}
+
+.lesson-link:hover {
+    color: #2563eb;
+}
+
+.lesson-article {
+    max-width: 44rem;
+}
+
+.lesson-order {
+    margin: 0 0 0.5rem;
+    color: #6b7280;
+    font-size: 0.875rem;
+}
+
+.lesson-content {
+    margin-bottom: 2rem;
+    white-space: pre-wrap;
+    color: #1f2937;
+    font-size: 1.0625rem;
+    line-height: 1.75;
+}
+
+.lesson-block {
+    margin-bottom: 1.5rem;
+    padding: 1.25rem 1.5rem;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+}
+
+.lesson-block-title {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+    color: #111827;
+}
+
+.lesson-block-body {
+    white-space: pre-wrap;
+    color: #374151;
+}
+
+.lesson-block-list {
+    margin: 0;
+    padding-left: 1.25rem;
+    color: #374151;
+}
+
+.lesson-block-list li + li {
+    margin-top: 0.375rem;
+}
+
+.lesson-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #e5e7eb;
+    max-width: 44rem;
+}
+
+.lesson-nav-previous,
+.lesson-nav-next {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.lesson-nav-previous {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.lesson-nav-next {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.button-secondary {
+    background: #ffffff;
+    color: #2563eb;
+    border: 1px solid #d1d5db;
+}
+
+.button-secondary:hover {
+    background: #f9fafb;
+    color: #1d4ed8;
+    text-decoration: none;
+}
+
+.lesson-complete-label {
+    display: inline-block;
+    padding: 0.625rem 1rem;
+    border-radius: 0.5rem;
+    background: #ecfdf5;
+    color: #047857;
+    font-weight: 600;
+}
+
+.back-link-wrap {
+    margin-top: 2rem;
+}
+
+.empty-state {
+    max-width: 36rem;
+    padding: 2rem;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+}
+
+.empty-state h1,
+.empty-state h2 {
+    margin-top: 0;
+    color: #111827;
+}
+
+.empty-inline {
+    margin: 0;
+    color: #6b7280;
+}
+
+@media (max-width: 768px) {
+    .layout {
+        grid-template-columns: 1fr;
+    }
+
+    .sidebar {
+        border-right: none;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .course-card {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .lesson-list-item {
+        grid-template-columns: 1fr;
+        gap: 0.25rem;
+    }
+
+    .main {
+        padding: 1.25rem 1rem 2rem;
+    }
+}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}{{ course.title }} — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/courses">Курсы</a>
+    <span aria-hidden="true">/</span>
+    <span>{{ course.title }}</span>
+</nav>
+
+<header class="page-header">
+    <h1>{{ course.title }}</h1>
+    {% if course.description %}
+    <p class="lead">{{ course.description }}</p>
+    {% endif %}
+    {% if course.language %}
+    <p class="meta-badge">Язык: {{ course.language }}</p>
+    {% endif %}
+</header>
+
+<section class="section">
+    <h2 class="section-title">Уроки</h2>
+    {% if course.lessons %}
+    <ol class="lesson-list">
+        {% for lesson in course.lessons %}
+        <li class="lesson-list-item">
+            <div class="lesson-list-meta">Урок {{ lesson.order }}</div>
+            <div class="lesson-list-content">
+                <a class="lesson-link" href="/courses/{{ course.slug }}/lessons/{{ lesson.id }}">
+                    {{ lesson.title }}
+                </a>
+            </div>
+        </li>
+        {% endfor %}
+    </ol>
+    {% else %}
+    <p class="empty-inline">В этом курсе пока нет уроков.</p>
+    {% endif %}
+</section>
+{% endblock %}
