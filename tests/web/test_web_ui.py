@@ -356,6 +356,28 @@ class WebProgressUiTests(unittest.TestCase):
         self.assertIn("0 из 3 уроков", html)
         self.assertIn("0%", html)
 
+    def test_course_page_shows_continue_action_for_not_started(self) -> None:
+        response = self.client.get("/courses/progress-course")
+        html = response.text
+
+        self.assertIn("Начать обучение", html)
+        self.assertIn('href="/courses/progress-course/lessons/lesson_01"', html)
+
+    def test_course_page_shows_continue_action_after_progress(self) -> None:
+        self.client.get("/courses/progress-course/lessons/lesson_01")
+        response = self.client.get("/courses/progress-course")
+        html = response.text
+
+        self.assertIn("Продолжить обучение", html)
+        self.assertIn('href="/courses/progress-course/lessons/lesson_02"', html)
+
+    def test_course_page_shows_lesson_open_buttons(self) -> None:
+        response = self.client.get("/courses/progress-course")
+        html = response.text
+
+        self.assertIn("lesson-open-btn", html)
+        self.assertIn("Начать", html)
+
     def test_course_page_shows_lesson_status_labels(self) -> None:
         response = self.client.get("/courses/progress-course")
         html = response.text
@@ -460,7 +482,7 @@ class WebProgressUiTests(unittest.TestCase):
             html = response.text
 
             self.assertEqual(response.status_code, 200)
-            self.assertNotIn("course-progress-percent", html)
+            self.assertNotIn("course-detail-progress-percent", html)
             self.assertIn("В этом курсе пока нет уроков", html)
             db_tmp.cleanup()
 

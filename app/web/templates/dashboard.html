@@ -50,12 +50,14 @@
                 <div class="dashboard-metrics">
                     {% if course.best_quiz_score is not none %}
                     <div class="dashboard-metric">
-                        <p class="dashboard-metric-text">Лучший результат теста: {{ course.best_quiz_score }}%</p>
+                        <span class="dashboard-metric-label">Лучший результат теста</span>
+                        <span class="dashboard-metric-value">{{ course.best_quiz_score }}%</span>
                     </div>
                     {% endif %}
                     {% if course.last_quiz_score is not none %}
                     <div class="dashboard-metric">
-                        <p class="dashboard-metric-text">Последний результат теста: {{ course.last_quiz_score }}%</p>
+                        <span class="dashboard-metric-label">Последний результат теста</span>
+                        <span class="dashboard-metric-value">{{ course.last_quiz_score }}%</span>
                     </div>
                     {% endif %}
                 </div>

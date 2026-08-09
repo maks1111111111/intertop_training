@@ -230,8 +230,9 @@ class DashboardPageIntegrationTests(unittest.TestCase):
         response = self.client.get("/dashboard")
         html = response.text
 
-        self.assertIn("Лучший результат теста: 50.0%", html)
-        self.assertIn("Последний результат теста: 50.0%", html)
+        self.assertIn("Лучший результат теста", html)
+        self.assertIn("50.0%", html)
+        self.assertIn("Последний результат теста", html)
 
     def test_continue_url_changes_after_progress(self) -> None:
         _write_multi_lesson_course(self.courses_dir, "alpha")

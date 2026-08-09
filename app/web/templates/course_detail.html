@@ -3,24 +3,63 @@
 {% block title %}{{ course.title }} — Intertop Training{% endblock %}
 
 {% block content %}
-<section class="page-header">
-    <a class="text-link" href="/courses">← К курсам</a>
-    <h1 class="page-title">{{ course.title }}</h1>
-    {% if course.description %}
-    <p class="page-lead">{{ course.description }}</p>
-    {% endif %}
-    {% if course.language %}
-    <p class="page-meta">Язык: {{ course.language }}</p>
-    {% endif %}
-</section>
+<section class="page-header course-detail-header">
+    <a class="text-link course-detail-back" href="/courses">← К курсам</a>
 
-{% if progress.total_count > 0 %}
-<section class="section course-progress">
-    <h2 class="section-title">Прогресс</h2>
-    <p class="course-progress-percent">{{ progress.percent }}%</p>
-    <p class="course-progress-count">{{ progress.completed_count }} из {{ progress.total_count }} уроков</p>
+    <div class="course-detail-header-body">
+        <h1 class="page-title">{{ course.title }}</h1>
+        {% if course.description %}
+        <p class="page-lead">{{ course.description }}</p>
+        {% endif %}
+        {% if course.language %}
+        <p class="page-meta">Язык: {{ course.language }}</p>
+        {% endif %}
+    </div>
+
+    {% if progress.total_count > 0 %}
+    <div class="course-detail-overview">
+        <div class="course-detail-progress-panel">
+            <div class="course-detail-progress-top">
+                <span class="course-detail-progress-heading">Прогресс</span>
+                <span class="course-detail-progress-percent">{{ progress.percent }}%</span>
+            </div>
+            <div
+                class="course-detail-progress{% if progress.is_completed %} course-detail-progress--completed{% endif %}"
+                aria-label="Прогресс курса {{ progress.percent }} процентов"
+            >
+                <div class="course-detail-progress-fill" style="width: {{ progress.percent }}%;"></div>
+            </div>
+            <p class="course-detail-progress-count">{{ progress.completed_count }} из {{ progress.total_count }} уроков</p>
+        </div>
+
+        {% if not progress.is_completed %}
+        {% set ns = namespace(continue_lesson=none) %}
+        {% for row in progress.lesson_rows %}
+            {% if row.status == 'current' %}
+                {% set ns.continue_lesson = row %}
+            {% endif %}
+        {% endfor %}
+        {% if ns.continue_lesson is none and progress.lesson_rows %}
+            {% set ns.continue_lesson = progress.lesson_rows[0] %}
+        {% endif %}
+        {% if ns.continue_lesson %}
+        <div class="course-detail-continue">
+            <a
+                class="button button-primary course-detail-continue-btn"
+                href="/courses/{{ course.slug }}/lessons/{{ ns.continue_lesson.id }}"
+            >
+                {% if progress.completed_count == 0 %}
+                Начать обучение
+                {% else %}
+                Продолжить обучение
+                {% endif %}
+            </a>
+        </div>
+        {% endif %}
+        {% endif %}
+    </div>
+    {% endif %}
 </section>
-{% endif %}
 
 {% if progress.completion_message %}
 <div class="course-completion-banner" role="status">
@@ -28,17 +67,34 @@
 </div>
 {% endif %}
 
-<section class="section">
+<section class="section course-detail-lessons">
     <h2 class="section-title">Уроки</h2>
     {% if progress.lesson_rows %}
-    <ul class="lesson-list">
+    <ul class="lesson-list course-lesson-list">
         {% for row in progress.lesson_rows %}
         <li class="lesson-list-item lesson-list-item--{{ row.status }}">
-            <div class="lesson-list-meta">
-                <span>Урок {{ row.order }}</span>
-                <span class="lesson-status lesson-status--{{ row.status }}">{{ row.status_label }}</span>
+            <div class="lesson-list-number" aria-hidden="true">{{ row.order }}</div>
+            <div class="lesson-list-body">
+                <div class="lesson-list-meta">
+                    <span class="lesson-list-order">Урок {{ row.order }}</span>
+                    <span class="lesson-status lesson-status--{{ row.status }}">{{ row.status_label }}</span>
+                </div>
+                <p class="lesson-list-title">{{ row.title }}</p>
             </div>
-            <a class="lesson-link" href="/courses/{{ course.slug }}/lessons/{{ row.id }}">{{ row.title }}</a>
+            <div class="lesson-list-action">
+                <a
+                    class="button button-secondary lesson-open-btn"
+                    href="/courses/{{ course.slug }}/lessons/{{ row.id }}"
+                >
+                    {% if row.status == 'completed' %}
+                    Открыть
+                    {% elif row.status == 'current' %}
+                    Продолжить
+                    {% else %}
+                    Начать
+                    {% endif %}
+                </a>
+            </div>
         </li>
         {% endfor %}
     </ul>
@@ -48,12 +104,18 @@
 </section>
 
 {% if quiz %}
-<section class="section quiz-card">
-    <h2 class="section-title">Итоговый тест</h2>
-    <p class="quiz-card-title">{{ quiz.title }}</p>
-    <p class="quiz-card-meta">Вопросов: {{ quiz.questions_count }}</p>
-    <p class="quiz-card-meta">Проходной балл: {{ quiz.passing_score }}%</p>
-    <a class="button button-primary" href="/courses/{{ course.slug }}/quiz">Начать тест</a>
+<section class="section course-detail-quiz">
+    <div class="quiz-card course-quiz-card">
+        <div class="course-quiz-card-header">
+            <span class="course-quiz-badge">Итоговый тест</span>
+            <h2 class="section-title course-quiz-title">{{ quiz.title }}</h2>
+        </div>
+        <div class="course-quiz-meta">
+            <span class="course-quiz-meta-item">Вопросов: {{ quiz.questions_count }}</span>
+            <span class="course-quiz-meta-item">Проходной балл: {{ quiz.passing_score }}%</span>
+        </div>
+        <a class="button button-primary" href="/courses/{{ course.slug }}/quiz">Начать тест</a>
+    </div>
 </section>
 {% endif %}
 {% endblock %}
