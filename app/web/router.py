@@ -119,6 +119,27 @@ def admin_dashboard_page(
     )
 
 
+@router.get(
+    "/admin/courses/new",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_course_create_page(
+    request: Request,
+    admin_service: AdminService = Depends(get_admin_service),
+) -> HTMLResponse:
+    """Render the first step of the course creation wizard."""
+    create_view = admin_service.get_course_create_view()
+    return templates.TemplateResponse(
+        request,
+        "admin_course_create.html",
+        {
+            "active_nav": "admin",
+            "language_options": create_view.language_options,
+        },
+    )
+
+
 @router.get("/courses", response_class=HTMLResponse, include_in_schema=False)
 def courses_page(
     request: Request,

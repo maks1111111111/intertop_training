@@ -12,6 +12,29 @@ from app.content.runtime import ContentRuntime
 
 
 @dataclass(frozen=True)
+class AdminLanguageOption:
+    """One selectable language option for the course creation form."""
+
+    value: str
+    label: str
+
+
+@dataclass(frozen=True)
+class AdminCourseCreateView:
+    """View model for the course creation wizard foundation page."""
+
+    language_options: tuple[AdminLanguageOption, ...]
+
+
+LANGUAGE_OPTIONS: tuple[AdminLanguageOption, ...] = (
+    AdminLanguageOption("auto", "Авто"),
+    AdminLanguageOption("ru", "Русский"),
+    AdminLanguageOption("kk", "Қазақша"),
+    AdminLanguageOption("en", "English"),
+)
+
+
+@dataclass(frozen=True)
 class AdminCourseItem:
     """One course row on the admin dashboard."""
 
@@ -46,3 +69,7 @@ class AdminService:
                 )
             )
         return tuple(items)
+
+    def get_course_create_view(self) -> AdminCourseCreateView:
+        """Return the static view model for the course creation form."""
+        return AdminCourseCreateView(language_options=LANGUAGE_OPTIONS)

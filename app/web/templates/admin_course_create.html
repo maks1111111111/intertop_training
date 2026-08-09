@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Создание курса — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/admin">Админ</a>
+    <span aria-hidden="true">/</span>
+    <span>Создание курса</span>
+</nav>
+
+<section class="page-header admin-create-page-header">
+    <h1 class="page-title">Создание курса</h1>
+    <p class="page-lead">Укажите основные сведения о курсе. На следующем шаге можно будет продолжить настройку.</p>
+</section>
+
+<form class="admin-create-form" action="#" method="get" aria-label="Форма создания курса">
+    <div class="admin-form-field">
+        <label class="admin-form-label" for="course-title">Название курса</label>
+        <input
+            class="admin-form-input"
+            type="text"
+            id="course-title"
+            name="title"
+            autocomplete="off"
+            placeholder="Введите название курса"
+        >
+    </div>
+
+    <div class="admin-form-field">
+        <label class="admin-form-label" for="course-description">Описание курса</label>
+        <textarea
+            class="admin-form-textarea"
+            id="course-description"
+            name="description"
+            rows="4"
+            placeholder="Кратко опишите содержание и цели курса"
+        ></textarea>
+    </div>
+
+    <div class="admin-form-field">
+        <label class="admin-form-label" for="course-language">Язык</label>
+        <select class="admin-form-select" id="course-language" name="language">
+            {% for option in language_options %}
+            <option value="{{ option.value }}">{{ option.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="admin-form-actions">
+        <a class="button button-secondary" href="/admin">Назад</a>
+        <button class="button button-primary" type="submit">Продолжить</button>
+    </div>
+</form>
+{% endblock %}
