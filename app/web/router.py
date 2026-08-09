@@ -44,12 +44,14 @@ def get_progress_service(db_path: Path = Depends(get_db_path)) -> WebProgressSer
 
 def get_dashboard_service(
     runtime: ContentRuntime = Depends(get_content_runtime),
+    db_path: Path = Depends(get_db_path),
 ) -> DashboardService:
     """Return the dashboard service wired to the application runtime."""
     return DashboardService(
         runtime,
         ProgressRepository(),
         quiz_repository,
+        db_path,
     )
 
 
@@ -78,7 +80,7 @@ def dashboard_page(
     request: Request,
     dashboard_service: DashboardService = Depends(get_dashboard_service),
 ) -> HTMLResponse:
-    """Render the student dashboard with course progress placeholders."""
+    """Render the student dashboard with course progress and quiz stats."""
     courses = dashboard_service.get_courses_for_user(_WEB_DASHBOARD_TELEGRAM_ID)
     return templates.TemplateResponse(
         request,
