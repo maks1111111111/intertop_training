@@ -241,14 +241,19 @@ class WebUiTests(unittest.TestCase):
         html = response.text
 
         self.assertIn("Практическое задание", html)
+        self.assertIn("lesson-block--practical", html)
         self.assertIn("Inspect the work area.", html)
         self.assertIn("Чек-лист", html)
+        self.assertIn("lesson-block--checklist", html)
         self.assertIn("Wear PPE", html)
         self.assertIn("Типичные ошибки", html)
+        self.assertIn("lesson-block--mistakes", html)
         self.assertIn("Skipping inspection", html)
         self.assertIn("Главное запомнить", html)
+        self.assertIn("lesson-block--takeaways", html)
         self.assertIn("Safety first", html)
         self.assertIn("Советы по применению", html)
+        self.assertIn("lesson-block--tips", html)
         self.assertIn("Apply the checklist daily", html)
 
     def test_lesson_page_hides_empty_quality_sections(self) -> None:
@@ -298,6 +303,31 @@ class WebUiTests(unittest.TestCase):
         self.assertNotIn("← Предыдущий урок", html)
         self.assertNotIn("Следующий урок →", html)
         self.assertIn("✓ Завершить курс", html)
+
+    def test_lesson_page_shows_header_context(self) -> None:
+        response = self.client.get("/courses/alpha/lessons/lesson_01")
+        html = response.text
+
+        self.assertIn("lesson-header", html)
+        self.assertIn("lesson-header-meta", html)
+        self.assertIn("Урок 1 из 1", html)
+        self.assertIn("Alpha Course", html)
+
+    def test_lesson_page_shows_sidebar_for_multi_lesson_course(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _write_multi_lesson_course(courses_dir, "nav-course")
+            app, db_tmp, _db_path = _create_test_app(courses_dir)
+            client = TestClient(app)
+
+            response = client.get("/courses/nav-course/lessons/lesson_02")
+            html = response.text
+
+            self.assertIn("lesson-sidebar", html)
+            self.assertIn("lesson-sidebar-item--current", html)
+            self.assertIn("Second lesson", html)
+            self.assertIn('href="/courses/nav-course/lessons/lesson_01"', html)
+            db_tmp.cleanup()
 
     def test_lesson_navigation_for_multi_lesson_course(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
