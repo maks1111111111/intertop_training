@@ -12,18 +12,26 @@
 </nav>
 
 <header class="page-header quiz-header">
-    <h1>{{ quiz.title }}</h1>
-    <p class="quiz-meta">
-        Вопросов: {{ quiz.questions_count }} · Проходной балл: {{ quiz.passing_score }}%
+    <p class="quiz-header-course">{{ course.title }}</p>
+    <h1 class="quiz-header-title">{{ quiz.title }}</h1>
+    <p class="quiz-header-lead">
+        Ответьте на все вопросы и нажмите «Завершить тест». Для прохождения нужно набрать не менее {{ quiz.passing_score }}%.
     </p>
+    <div class="quiz-header-meta">
+        <span class="quiz-header-meta-item">Вопросов: {{ quiz.questions_count }}</span>
+        <span class="quiz-header-meta-item">Проходной балл: {{ quiz.passing_score }}%</span>
+    </div>
 </header>
 
 <form class="quiz-form" method="post" action="/courses/{{ course.slug }}/quiz">
     {% for question in quiz.questions %}
-    <section class="quiz-question">
-        <h2 class="quiz-question-title">{{ loop.index }}. {{ question.text }}</h2>
+    <section class="quiz-question-card" aria-labelledby="quiz-q-{{ question.id }}">
+        <div class="quiz-question-header">
+            <span class="quiz-question-number">Вопрос {{ loop.index }}</span>
+            <h2 class="quiz-question-title" id="quiz-q-{{ question.id }}">{{ question.text }}</h2>
+        </div>
         <fieldset class="quiz-options">
-            <legend class="visually-hidden">Варианты ответа</legend>
+            <legend class="visually-hidden">Варианты ответа на вопрос {{ loop.index }}</legend>
             {% for option in question.options %}
             <label class="quiz-option">
                 <input
@@ -39,8 +47,8 @@
     {% endfor %}
 
     <div class="quiz-actions">
-        <button class="button" type="submit">Завершить тест</button>
-        <a class="button-secondary button" href="/courses/{{ course.slug }}">Вернуться к курсу</a>
+        <button class="button button-primary quiz-submit-btn" type="submit">Завершить тест</button>
+        <a class="button button-secondary" href="/courses/{{ course.slug }}">Вернуться к курсу</a>
     </div>
 </form>
 {% endblock %}

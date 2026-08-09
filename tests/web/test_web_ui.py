@@ -557,16 +557,49 @@ class WebQuizUiTests(unittest.TestCase):
         html = response.text
 
         self.assertEqual(response.status_code, 200)
+        self.assertIn("quiz-header", html)
+        self.assertIn("Quiz Course", html)
         self.assertIn("Итоговый тест", html)
+        self.assertIn("quiz-question-card", html)
         self.assertIn("First question?", html)
         self.assertIn("Second question?", html)
         self.assertIn("Wrong one", html)
         self.assertIn("Right one", html)
         self.assertIn('name="answer_q1"', html)
         self.assertIn('name="answer_q2"', html)
+        self.assertIn("quiz-submit-btn", html)
         self.assertIn("Завершить тест", html)
         self.assertNotIn("correct_option_ids", html)
         self.assertNotIn('type="hidden"', html)
+
+    def test_quiz_result_page_shows_passed_state(self) -> None:
+        response = self.client.post(
+            "/courses/quiz-course/quiz",
+            data={"answer_q1": "b", "answer_q2": "d"},
+        )
+        html = response.text
+
+        self.assertIn("quiz-result--passed", html)
+        self.assertIn("quiz-result-score-panel", html)
+        self.assertIn("100%", html)
+        self.assertIn("Правильных ответов", html)
+        self.assertIn("2 из 2", html)
+        self.assertIn("Тест пройден", html)
+        self.assertNotIn("Тест не пройден", html)
+        self.assertIn("Пройти ещё раз", html)
+
+    def test_quiz_result_page_shows_failed_state(self) -> None:
+        response = self.client.post(
+            "/courses/quiz-course/quiz",
+            data={"answer_q1": "a", "answer_q2": "c"},
+        )
+        html = response.text
+
+        self.assertIn("quiz-result--failed", html)
+        self.assertIn("0%", html)
+        self.assertIn("0 из 2", html)
+        self.assertIn("Тест не пройден", html)
+        self.assertIn("quiz-review-item--incorrect", html)
 
     def test_quiz_post_all_correct_passes(self) -> None:
         response = self.client.post(
@@ -577,7 +610,8 @@ class WebQuizUiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("100%", html)
-        self.assertIn("Правильных ответов: 2 из 2", html)
+        self.assertIn("Правильных ответов", html)
+        self.assertIn("2 из 2", html)
         self.assertIn("Тест пройден", html)
         self.assertNotIn("Тест не пройден", html)
 
@@ -590,7 +624,8 @@ class WebQuizUiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("0%", html)
-        self.assertIn("Правильных ответов: 0 из 2", html)
+        self.assertIn("Правильных ответов", html)
+        self.assertIn("0 из 2", html)
         self.assertIn("Тест не пройден", html)
 
     def test_quiz_post_unanswered_question_counts_as_wrong(self) -> None:
@@ -602,7 +637,8 @@ class WebQuizUiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("50%", html)
-        self.assertIn("Правильных ответов: 1 из 2", html)
+        self.assertIn("Правильных ответов", html)
+        self.assertIn("1 из 2", html)
         self.assertIn("Тест не пройден", html)
         self.assertIn("Ответ не выбран", html)
 
@@ -634,7 +670,8 @@ class WebQuizUiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("50%", html)
-        self.assertIn("Правильных ответов: 1 из 2", html)
+        self.assertIn("Правильных ответов", html)
+        self.assertIn("1 из 2", html)
         self.assertIn("Тест не пройден", html)
 
 

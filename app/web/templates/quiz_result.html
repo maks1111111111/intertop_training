@@ -11,27 +11,40 @@
     <span>Результат теста</span>
 </nav>
 
-<section class="quiz-result">
-    <h1>Результат теста</h1>
-    <p class="quiz-result-score">{{ score_percent }}%</p>
-    <p class="quiz-result-summary">
-        Правильных ответов: {{ correct_answers }} из {{ questions_count }}
-    </p>
-    <p class="quiz-result-passing">Проходной балл: {{ passing_score }}%</p>
+<section class="quiz-result{% if passed %} quiz-result--passed{% else %} quiz-result--failed{% endif %}">
+    <header class="quiz-result-header">
+        <p class="quiz-result-course">{{ course.title }}</p>
+        <h1 class="quiz-result-title">Результат теста</h1>
+        {% if passed %}
+        <p class="quiz-result-status quiz-result-status-passed" role="status">Тест пройден</p>
+        {% else %}
+        <p class="quiz-result-status quiz-result-status-failed" role="status">Тест не пройден</p>
+        {% endif %}
+    </header>
 
-    {% if passed %}
-    <p class="quiz-result-status quiz-result-status-passed">Тест пройден</p>
-    {% else %}
-    <p class="quiz-result-status quiz-result-status-failed">Тест не пройден</p>
-    {% endif %}
+    <div class="quiz-result-score-panel">
+        <span class="quiz-result-score-label">Ваш результат</span>
+        <p class="quiz-result-score">{{ score_percent }}%</p>
+    </div>
+
+    <div class="quiz-result-metrics">
+        <div class="quiz-result-metric">
+            <span class="quiz-result-metric-label">Правильных ответов</span>
+            <span class="quiz-result-metric-value">{{ correct_answers }} из {{ questions_count }}</span>
+        </div>
+        <div class="quiz-result-metric">
+            <span class="quiz-result-metric-label">Проходной балл</span>
+            <span class="quiz-result-metric-value">{{ passing_score }}%</span>
+        </div>
+    </div>
 
     {% if reviews %}
     <section class="quiz-review">
         <h2 class="section-title">Разбор ответов</h2>
         <ol class="quiz-review-list">
             {% for item in reviews %}
-            <li class="quiz-review-item">
-                <p class="quiz-review-question">{{ item.question_text }}</p>
+            <li class="quiz-review-item{% if item.is_correct %} quiz-review-item--correct{% else %} quiz-review-item--incorrect{% endif %}">
+                <p class="quiz-review-question">{{ loop.index }}. {{ item.question_text }}</p>
                 {% if item.selected_option_text %}
                 <p class="quiz-review-answer">Ваш ответ: {{ item.selected_option_text }}</p>
                 {% else %}
@@ -48,9 +61,9 @@
     </section>
     {% endif %}
 
-    <div class="quiz-actions">
-        <a class="button" href="/courses/{{ course.slug }}/quiz">Пройти ещё раз</a>
-        <a class="button-secondary button" href="/courses/{{ course.slug }}">Вернуться к курсу</a>
+    <div class="quiz-actions quiz-result-actions">
+        <a class="button button-primary" href="/courses/{{ course.slug }}/quiz">Пройти ещё раз</a>
+        <a class="button button-secondary" href="/courses/{{ course.slug }}">Вернуться к курсу</a>
     </div>
 </section>
 {% endblock %}
