@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Новый вопрос — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/admin">Админ</a>
+    <span aria-hidden="true">/</span>
+    <a href="/admin/courses/{{ create.slug }}">{{ create.course_title or create.slug }}</a>
+    <span aria-hidden="true">/</span>
+    <a href="{{ create.quiz_edit_url }}">Итоговый тест</a>
+    <span aria-hidden="true">/</span>
+    <span>Новый вопрос</span>
+</nav>
+
+<section class="page-header admin-create-page-header">
+    <h1 class="page-title">Новый вопрос</h1>
+    <p class="page-lead">
+        Курс «{{ create.course_title }}». Добавьте новый вопрос с четырьмя вариантами ответа.
+    </p>
+</section>
+
+{% if error_message %}
+<div class="admin-form-error" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<form
+    class="admin-create-form"
+    action="/admin/courses/{{ create.slug }}/quiz/questions/new"
+    method="post"
+    aria-label="Форма создания вопроса теста"
+>
+    <fieldset class="admin-form-section">
+        <legend class="admin-form-section-title">Вопрос</legend>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="question-text">Текст вопроса</label>
+            <textarea
+                class="admin-form-textarea admin-form-textarea--tall"
+                id="question-text"
+                name="text"
+                rows="4"
+                required
+            >{{ form_text }}</textarea>
+        </div>
+    </fieldset>
+
+    <fieldset class="admin-form-section">
+        <legend class="admin-form-section-title">Варианты ответа</legend>
+        <p class="admin-form-hint">Выберите один правильный вариант. Новый вопрос всегда содержит 4 варианта.</p>
+
+        <div class="admin-quiz-option-edit-list">
+            {% for index in range(4) %}
+            <div class="admin-quiz-option-edit-row">
+                <div class="admin-quiz-option-edit-radio">
+                    <input
+                        type="radio"
+                        id="correct-index-{{ index }}"
+                        name="correct_option_index"
+                        value="{{ index }}"
+                        {% if form_correct_option_index == index %}checked{% endif %}
+                        required
+                    >
+                    <label for="correct-index-{{ index }}">Правильный</label>
+                </div>
+                <div class="admin-quiz-option-edit-input">
+                    <label class="admin-form-label" for="option-text-{{ index }}">
+                        Вариант {{ ["a", "b", "c", "d"][index] }}
+                    </label>
+                    <input
+                        class="admin-form-input"
+                        type="text"
+                        id="option-text-{{ index }}"
+                        name="option_text_{{ index }}"
+                        value="{{ form_option_texts[index] }}"
+                        required
+                        autocomplete="off"
+                    >
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </fieldset>
+
+    <fieldset class="admin-form-section">
+        <legend class="admin-form-section-title">Дополнительно</legend>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="question-explanation">Пояснение</label>
+            <textarea
+                class="admin-form-textarea"
+                id="question-explanation"
+                name="explanation"
+                rows="3"
+            >{{ form_explanation }}</textarea>
+        </div>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="question-lesson">Урок</label>
+            <select class="admin-form-input" id="question-lesson" name="lesson">
+                <option value=""{% if not form_lesson %} selected{% endif %}>— Не привязан —</option>
+                {% for lesson in create.course_lessons %}
+                <option value="{{ lesson.id }}"{% if form_lesson == lesson.id %} selected{% endif %}>
+                    {{ lesson.id }} — {{ lesson.title }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="question-difficulty">Сложность</label>
+            <input
+                class="admin-form-input"
+                type="number"
+                id="question-difficulty"
+                name="difficulty"
+                value="{{ form_difficulty }}"
+                min="0"
+                max="5"
+                required
+            >
+        </div>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="question-tags">Теги</label>
+            <span class="admin-form-hint">Каждый тег — с новой строки</span>
+            <textarea
+                class="admin-form-textarea"
+                id="question-tags"
+                name="tags"
+                rows="3"
+            >{{ form_tags }}</textarea>
+        </div>
+    </fieldset>
+
+    <div class="admin-form-actions">
+        <a class="button button-secondary" href="{{ create.cancel_url }}">Отмена</a>
+        <button class="button button-primary" type="submit">Создать вопрос</button>
+    </div>
+</form>
+{% endblock %}

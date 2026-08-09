@@ -2020,8 +2020,39 @@ a:focus-visible,
 
 .admin-quiz-question-edit-link {
     flex-shrink: 0;
+    align-self: flex-start;
+}
+
+.admin-quiz-questions-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.admin-quiz-question-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    flex-shrink: 0;
     margin-left: auto;
     align-self: flex-start;
+}
+
+.admin-quiz-question-delete-form {
+    margin: 0;
+}
+
+.admin-quiz-question-delete-button {
+    color: #b91c1c;
+    border-color: #fecaca;
+}
+
+.admin-quiz-question-delete-button:hover {
+    background: #fef2f2;
+    border-color: #fca5a5;
 }
 
 .admin-quiz-option-edit-list {

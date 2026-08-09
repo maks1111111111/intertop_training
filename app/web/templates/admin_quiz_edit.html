@@ -91,7 +91,13 @@
 </form>
 
 <section class="section admin-quiz-readonly-section">
-    <h2 class="section-title">Вопросы теста</h2>
+    <div class="admin-quiz-questions-header">
+        <h2 class="section-title">Вопросы теста</h2>
+        <a
+            class="button button-primary button-small"
+            href="/admin/courses/{{ edit.slug }}/quiz/questions/new"
+        >Добавить вопрос</a>
+    </div>
     <p class="admin-quiz-readonly-count">Всего вопросов: {{ edit.questions_count }}</p>
 
     {% if edit.questions %}
@@ -101,10 +107,22 @@
             <div class="admin-quiz-question-header">
                 <span class="admin-quiz-question-number">{{ loop.index }}</span>
                 <p class="admin-quiz-question-text">{{ question.text }}</p>
-                <a
-                    class="button button-secondary button-small admin-quiz-question-edit-link"
-                    href="/admin/courses/{{ edit.slug }}/quiz/questions/{{ question.id }}/edit"
-                >Редактировать</a>
+                <div class="admin-quiz-question-actions">
+                    <a
+                        class="button button-secondary button-small admin-quiz-question-edit-link"
+                        href="/admin/courses/{{ edit.slug }}/quiz/questions/{{ question.id }}/edit"
+                    >Редактировать</a>
+                    <form
+                        class="admin-quiz-question-delete-form"
+                        action="/admin/courses/{{ edit.slug }}/quiz/questions/{{ question.id }}/delete"
+                        method="post"
+                    >
+                        <button
+                            class="button button-secondary button-small admin-quiz-question-delete-button"
+                            type="submit"
+                        >Удалить</button>
+                    </form>
+                </div>
             </div>
 
             {% if question.lesson or question.difficulty or question.tags %}

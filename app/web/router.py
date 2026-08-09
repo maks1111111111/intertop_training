@@ -33,6 +33,12 @@ from app.web.admin_quiz_edit_service import (
     AdminQuizEditRequest,
     AdminQuizEditService,
 )
+from app.web.admin_quiz_question_create_service import (
+    AdminQuizQuestionCreateError,
+    AdminQuizQuestionCreateRequest,
+    AdminQuizQuestionCreateService,
+    AdminQuizQuestionDeleteRequest,
+)
 from app.web.admin_quiz_question_edit_service import (
     AdminQuizQuestionEditError,
     AdminQuizQuestionEditRequest,
@@ -158,6 +164,13 @@ def get_admin_quiz_question_edit_service(
 ) -> AdminQuizQuestionEditService:
     """Return the admin quiz question edit service for the current application."""
     return AdminQuizQuestionEditService(runtime.base_dir, runtime)
+
+
+def get_admin_quiz_question_create_service(
+    runtime: ContentRuntime = Depends(get_content_runtime),
+) -> AdminQuizQuestionCreateService:
+    """Return the admin quiz question create/delete service for the current application."""
+    return AdminQuizQuestionCreateService(runtime.base_dir, runtime)
 
 
 # TODO: Replace with authenticated web user identity when auth is implemented.
@@ -1100,6 +1113,226 @@ async def admin_quiz_question_edit_submit(
             form_lesson=lesson,
             form_difficulty=difficulty,
             form_tags=tags_raw,
+        )
+
+    return RedirectResponse(
+        url=f"/admin/courses/{result.slug}/quiz/edit",
+        status_code=303,
+    )
+
+
+def _render_admin_quiz_question_create_page(
+    request: Request,
+    create_view,
+    *,
+    error_message: str = "",
+    form_text: str = "",
+    form_option_texts: Optional[list[str]] = None,
+    form_correct_option_index: Optional[int] = None,
+    form_explanation: str = "",
+    form_lesson: str = "",
+    form_difficulty: str = "0",
+    form_tags: str = "",
+) -> HTMLResponse:
+    """Render the admin quiz question create form."""
+    default_option_texts = ["", "", "", ""]
+    option_texts = (
+        default_option_texts
+        if form_option_texts is None
+        else form_option_texts
+    )
+    return templates.TemplateResponse(
+        request,
+        "admin_quiz_question_create.html",
+        {
+            "active_nav": "admin",
+            "create": create_view,
+            "error_message": error_message,
+            "form_text": form_text,
+            "form_option_texts": option_texts,
+            "form_correct_option_index": (
+                0 if form_correct_option_index is None else form_correct_option_index
+            ),
+            "form_explanation": form_explanation,
+            "form_lesson": form_lesson,
+            "form_difficulty": form_difficulty,
+            "form_tags": form_tags,
+        },
+    )
+
+
+@router.get(
+    "/admin/courses/{slug}/quiz/questions/new",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_quiz_question_create_page(
+    slug: str,
+    request: Request,
+    runtime: ContentRuntime = Depends(get_content_runtime),
+    create_service: AdminQuizQuestionCreateService = Depends(
+        get_admin_quiz_question_create_service
+    ),
+) -> HTMLResponse:
+    """Render the quiz question create form for one published course."""
+    course = runtime.get_course(slug)
+    if course is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+    if course.quiz is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Тест не найден",
+                "message": "Для этого курса итоговый тест не создан.",
+            },
+            status_code=404,
+        )
+
+    create_view = create_service.get_create_view(slug)
+    if create_view is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Тест не найден",
+                "message": "Для этого курса итоговый тест не создан.",
+            },
+            status_code=404,
+        )
+
+    return _render_admin_quiz_question_create_page(request, create_view)
+
+
+@router.post(
+    "/admin/courses/{slug}/quiz/questions/new",
+    include_in_schema=False,
+)
+async def admin_quiz_question_create_submit(
+    slug: str,
+    request: Request,
+    runtime: ContentRuntime = Depends(get_content_runtime),
+    create_service: AdminQuizQuestionCreateService = Depends(
+        get_admin_quiz_question_create_service
+    ),
+):
+    """Validate and persist a new quiz question, then redirect to quiz edit."""
+    form = await request.form()
+    text = str(form.get("text") or "")
+    explanation = str(form.get("explanation") or "")
+    lesson = str(form.get("lesson") or "")
+    difficulty = str(form.get("difficulty") or "")
+    tags_raw = str(form.get("tags") or "")
+    correct_option_index = str(form.get("correct_option_index") or "")
+    option_texts = [
+        str(form.get(f"option_text_{index}") or "")
+        for index in range(4)
+    ]
+
+    try:
+        parsed_index = int(correct_option_index) if correct_option_index else 0
+    except ValueError:
+        parsed_index = -1
+
+    try:
+        result = create_service.create_question(
+            AdminQuizQuestionCreateRequest(
+                slug=slug,
+                text=text,
+                option_texts=tuple(option_texts),
+                correct_option_index=correct_option_index,
+                explanation=explanation,
+                lesson=lesson,
+                difficulty=difficulty,
+                tags=parse_question_tags(tags_raw),
+            )
+        )
+    except AdminQuizQuestionCreateError as exc:
+        create_view = create_service.get_create_view_for_errors(slug)
+        if create_view is None:
+            return templates.TemplateResponse(
+                request,
+                "not_found.html",
+                {
+                    "title": "Курс не найден",
+                    "message": "Запрошенный курс недоступен или не существует.",
+                },
+                status_code=404,
+            )
+        return _render_admin_quiz_question_create_page(
+            request,
+            create_view,
+            error_message=exc.message,
+            form_text=text,
+            form_option_texts=option_texts,
+            form_correct_option_index=parsed_index if parsed_index >= 0 else None,
+            form_explanation=explanation,
+            form_lesson=lesson,
+            form_difficulty=difficulty or "0",
+            form_tags=tags_raw,
+        )
+
+    return RedirectResponse(
+        url=f"/admin/courses/{result.slug}/quiz/edit",
+        status_code=303,
+    )
+
+
+@router.post(
+    "/admin/courses/{slug}/quiz/questions/{question_id}/delete",
+    include_in_schema=False,
+)
+async def admin_quiz_question_delete_submit(
+    slug: str,
+    question_id: str,
+    request: Request,
+    runtime: ContentRuntime = Depends(get_content_runtime),
+    edit_service: AdminQuizEditService = Depends(get_admin_quiz_edit_service),
+    create_service: AdminQuizQuestionCreateService = Depends(
+        get_admin_quiz_question_create_service
+    ),
+):
+    """Delete one quiz question and redirect to quiz edit."""
+    edit_view = edit_service.get_edit_view(slug)
+
+    try:
+        result = create_service.delete_question(
+            AdminQuizQuestionDeleteRequest(slug=slug, question_id=question_id)
+        )
+    except AdminQuizQuestionCreateError as exc:
+        if edit_view is None:
+            course = runtime.get_course(slug)
+            if course is None:
+                return templates.TemplateResponse(
+                    request,
+                    "not_found.html",
+                    {
+                        "title": "Курс не найден",
+                        "message": "Запрошенный курс недоступен или не существует.",
+                    },
+                    status_code=404,
+                )
+            return templates.TemplateResponse(
+                request,
+                "not_found.html",
+                {
+                    "title": "Тест не найден",
+                    "message": "Для этого курса итоговый тест не создан.",
+                },
+                status_code=404,
+            )
+        return _render_admin_quiz_edit_page(
+            request,
+            edit_view,
+            error_message=exc.message,
         )
 
     return RedirectResponse(
