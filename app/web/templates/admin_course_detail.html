@@ -48,7 +48,15 @@
 </section>
 
 <section class="section admin-course-detail-section">
-    <h2 class="section-title">Структура курса</h2>
+    <div class="admin-course-detail-section-header">
+        <h2 class="section-title">Структура курса</h2>
+        <form class="admin-lesson-create-form" action="/admin/courses/{{ detail.slug }}/lessons/create" method="post">
+            <button class="button button-primary button-small" type="submit">Добавить урок</button>
+        </form>
+    </div>
+    {% if error_message %}
+    <div class="admin-form-error" role="alert">{{ error_message }}</div>
+    {% endif %}
     {% if detail.lessons %}
     <ul class="admin-lesson-list">
         {% for lesson in detail.lessons %}

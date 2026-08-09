@@ -18,6 +18,10 @@ from app.web.admin_course_edit_service import (
     AdminCourseEditRequest,
     AdminCourseEditService,
 )
+from app.web.admin_lesson_create_service import (
+    AdminLessonCreateError,
+    AdminLessonCreateService,
+)
 from app.web.admin_lesson_edit_service import (
     AdminLessonEditError,
     AdminLessonEditRequest,
@@ -122,6 +126,13 @@ def get_admin_lesson_edit_service(
 ) -> AdminLessonEditService:
     """Return the admin lesson edit service for the current application."""
     return AdminLessonEditService(runtime.base_dir, runtime)
+
+
+def get_admin_lesson_create_service(
+    runtime: ContentRuntime = Depends(get_content_runtime),
+) -> AdminLessonCreateService:
+    """Return the admin lesson create service for the current application."""
+    return AdminLessonCreateService(runtime.base_dir, runtime)
 
 
 # TODO: Replace with authenticated web user identity when auth is implemented.
@@ -420,11 +431,25 @@ def admin_course_created_page(
     )
 
 
-@router.get(
-    "/admin/courses/{slug}",
-    response_class=HTMLResponse,
-    include_in_schema=False,
-)
+def _render_admin_course_detail_page(
+    request: Request,
+    detail,
+    *,
+    error_message: str = "",
+) -> HTMLResponse:
+    """Render the read-only admin overview for one course."""
+    return templates.TemplateResponse(
+        request,
+        "admin_course_detail.html",
+        {
+            "active_nav": "admin",
+            "detail": detail,
+            "error_message": error_message,
+        },
+    )
+
+
+@router.get("/admin/courses/{slug}", response_class=HTMLResponse, include_in_schema=False)
 def admin_course_detail_page(
     slug: str,
     request: Request,
@@ -443,14 +468,7 @@ def admin_course_detail_page(
             status_code=404,
         )
 
-    return templates.TemplateResponse(
-        request,
-        "admin_course_detail.html",
-        {
-            "active_nav": "admin",
-            "detail": detail,
-        },
-    )
+    return _render_admin_course_detail_page(request, detail)
 
 
 def _render_admin_course_edit_page(
@@ -691,6 +709,41 @@ async def admin_lesson_edit_submit(
         url=f"/admin/courses/{result.slug}",
         status_code=303,
     )
+
+
+@router.post(
+    "/admin/courses/{slug}/lessons/create",
+    include_in_schema=False,
+)
+def admin_lesson_create(
+    slug: str,
+    request: Request,
+    admin_service: AdminService = Depends(get_admin_service),
+    create_service: AdminLessonCreateService = Depends(get_admin_lesson_create_service),
+):
+    """Create a new lesson and redirect to its edit page."""
+    detail = admin_service.get_course_detail(slug)
+    if detail is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    try:
+        result = create_service.create_lesson(slug)
+    except AdminLessonCreateError as exc:
+        return _render_admin_course_detail_page(
+            request,
+            detail,
+            error_message=exc.message,
+        )
+
+    return RedirectResponse(url=result.edit_url, status_code=303)
 
 
 @router.get("/courses", response_class=HTMLResponse, include_in_schema=False)

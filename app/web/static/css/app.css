@@ -1783,6 +1783,23 @@ a:focus-visible,
     margin-top: 1.5rem;
 }
 
+.admin-course-detail-section-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.admin-course-detail-section-header .section-title {
+    margin: 0;
+}
+
+.admin-lesson-create-form {
+    margin: 0;
+}
+
 .admin-course-detail-empty {
     margin: 0;
     color: #6b7280;
