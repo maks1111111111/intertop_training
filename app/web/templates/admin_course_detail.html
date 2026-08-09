@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}{{ detail.title }} — Управление — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/admin">Админ</a>
+    <span aria-hidden="true">/</span>
+    <span>{{ detail.title }}</span>
+</nav>
+
+<section class="page-header admin-page-header admin-course-detail-header">
+    <div class="admin-page-header-body">
+        <div class="admin-course-detail-title-row">
+            <h1 class="page-title">{{ detail.title }}</h1>
+            <span class="admin-status-badge admin-status-badge--{{ detail.status }}">
+                {{ detail.status_label }}
+            </span>
+        </div>
+        {% if detail.description %}
+        <p class="page-lead">{{ detail.description }}</p>
+        {% endif %}
+        <div class="admin-course-meta admin-course-detail-meta">
+            {% if detail.language %}
+            <span class="admin-meta-item">Язык: {{ detail.language }}</span>
+            {% endif %}
+            <span class="admin-meta-item">
+                {% if detail.lessons_count == 1 %}
+                1 урок
+                {% else %}
+                {{ detail.lessons_count }} уроков
+                {% endif %}
+            </span>
+            <span class="admin-meta-item">
+                {% if detail.quiz.exists %}
+                Тест: {{ detail.quiz.questions_count }} вопросов
+                {% else %}
+                Тест не создан
+                {% endif %}
+            </span>
+        </div>
+    </div>
+    <div class="admin-page-header-actions admin-course-detail-actions">
+        <a class="button button-primary" href="{{ detail.preview_url }}">Предпросмотр курса</a>
+        <a class="button button-secondary" href="{{ detail.admin_url }}">К курсам</a>
+    </div>
+</section>
+
+<section class="section admin-course-detail-section">
+    <h2 class="section-title">Структура курса</h2>
+    {% if detail.lessons %}
+    <ul class="admin-lesson-list">
+        {% for lesson in detail.lessons %}
+        <li class="admin-lesson-item">
+            <div class="admin-lesson-number" aria-hidden="true">{{ lesson.order }}</div>
+            <div class="admin-lesson-body">
+                <div class="admin-lesson-header">
+                    <h3 class="admin-lesson-title">{{ lesson.title }}</h3>
+                    <span class="admin-lesson-order">Урок {{ lesson.order }}</span>
+                </div>
+                {% if lesson.description %}
+                <p class="admin-lesson-description">{{ lesson.description }}</p>
+                {% endif %}
+                {% if lesson.has_practical_task or lesson.has_checklist or lesson.has_key_takeaways or lesson.has_application_tips %}
+                <ul class="admin-lesson-indicators" aria-label="Материалы урока">
+                    {% if lesson.has_practical_task %}
+                    <li class="admin-lesson-indicator">Практическое задание</li>
+                    {% endif %}
+                    {% if lesson.has_checklist %}
+                    <li class="admin-lesson-indicator">Чеклист</li>
+                    {% endif %}
+                    {% if lesson.has_key_takeaways %}
+                    <li class="admin-lesson-indicator">Ключевые выводы</li>
+                    {% endif %}
+                    {% if lesson.has_application_tips %}
+                    <li class="admin-lesson-indicator">Советы по применению</li>
+                    {% endif %}
+                </ul>
+                {% endif %}
+            </div>
+            <div class="admin-lesson-actions">
+                <a class="button button-secondary button-small" href="{{ lesson.preview_url }}">Предпросмотр</a>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="admin-course-detail-empty">В курсе пока нет уроков.</p>
+    {% endif %}
+</section>
+
+<section class="section admin-course-detail-section">
+    <h2 class="section-title">Итоговый тест</h2>
+    {% if detail.quiz.exists %}
+    <div class="admin-quiz-summary">
+        <dl class="admin-upload-confirm-details">
+            <div class="admin-upload-confirm-row">
+                <dt>Статус</dt>
+                <dd>Создан</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Вопросов</dt>
+                <dd>{{ detail.quiz.questions_count }}</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Проходной балл</dt>
+                <dd>{{ detail.quiz.passing_score }}%</dd>
+            </div>
+        </dl>
+    </div>
+    {% else %}
+    <p class="admin-course-detail-empty">Для этого курса итоговый тест не создан.</p>
+    {% endif %}
+</section>
+{% endblock %}

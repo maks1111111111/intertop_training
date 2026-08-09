@@ -394,6 +394,39 @@ def admin_course_created_page(
     )
 
 
+@router.get(
+    "/admin/courses/{slug}",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_course_detail_page(
+    slug: str,
+    request: Request,
+    admin_service: AdminService = Depends(get_admin_service),
+) -> HTMLResponse:
+    """Render the read-only admin overview for one published course."""
+    detail = admin_service.get_course_detail(slug)
+    if detail is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "admin_course_detail.html",
+        {
+            "active_nav": "admin",
+            "detail": detail,
+        },
+    )
+
+
 @router.get("/courses", response_class=HTMLResponse, include_in_schema=False)
 def courses_page(
     request: Request,

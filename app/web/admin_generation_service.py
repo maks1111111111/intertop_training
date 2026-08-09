@@ -65,6 +65,7 @@ class AdminGenerationSuccess:
     has_quiz: bool
     course_url: str
     admin_url: str
+    manage_url: str
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,7 @@ class AdminCourseCreatedView:
     has_quiz: bool
     course_url: str
     admin_url: str
+    manage_url: str
 
 
 def _default_text_generation_service_factory() -> ImportedTextGenerationService:
@@ -201,6 +203,7 @@ class AdminGenerationService:
             has_quiz=course.quiz is not None,
             course_url=f"/courses/{course.slug}",
             admin_url="/admin",
+            manage_url=f"/admin/courses/{course.slug}",
         )
 
     def _generate_course(self, request: AdminGenerationRequest) -> AdminGenerationSuccess:
@@ -245,6 +248,7 @@ class AdminGenerationService:
             has_quiz=workflow_result.quiz_path is not None,
             course_url=f"/courses/{slug}",
             admin_url="/admin",
+            manage_url=f"/admin/courses/{slug}",
         )
 
     def _resolve_text_generation_service(self) -> ImportedTextGenerationService:

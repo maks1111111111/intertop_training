@@ -171,6 +171,7 @@ class AdminCourseGenerationHttpTests(unittest.TestCase):
                 has_quiz=True,
                 course_url="/courses/generated-course",
                 admin_url="/admin",
+                manage_url="/admin/courses/generated-course",
             )
         )
 
@@ -205,6 +206,7 @@ class AdminCourseGenerationHttpTests(unittest.TestCase):
                 has_quiz=False,
                 course_url="/courses/generated-course",
                 admin_url="/admin",
+                manage_url="/admin/courses/generated-course",
             )
         )
 
@@ -278,6 +280,8 @@ class AdminCourseGenerationHttpTests(unittest.TestCase):
         self.assertIn("Итоговый тест", html)
         self.assertIn('href="/courses/generated-course"', html)
         self.assertIn('href="/admin"', html)
+        self.assertIn("Управлять курсом", html)
+        self.assertIn('href="/admin/courses/generated-course"', html)
         upload_tmp.cleanup()
         db_tmp.cleanup()
 
@@ -339,6 +343,7 @@ class AdminCourseGenerationHttpTests(unittest.TestCase):
             has_quiz=False,
             course_url="/courses/generated-course",
             admin_url="/admin",
+            manage_url="/admin/courses/generated-course",
         )
         app.state.admin_generation_service = mock_instance
         client = TestClient(app)

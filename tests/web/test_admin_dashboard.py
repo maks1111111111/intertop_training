@@ -70,7 +70,9 @@ class AdminDashboardPageTests(unittest.TestCase):
 
         response = self.client.get("/admin")
         self.assertIn('href="/courses/alpha"', response.text)
+        self.assertIn('href="/admin/courses/alpha"', response.text)
         self.assertIn("Открыть курс", response.text)
+        self.assertIn("Управление", response.text)
 
     def test_admin_renders_create_course_button(self) -> None:
         response = self.client.get("/admin")
