@@ -105,8 +105,12 @@
         </div>
     </fieldset>
 
-    <div class="admin-form-actions">
+    <div class="admin-form-actions admin-lesson-edit-actions">
         <a class="button button-secondary" href="{{ edit.cancel_url }}">Отмена</a>
+        <a
+            class="button button-secondary"
+            href="/admin/courses/{{ edit.slug }}/lessons/{{ edit.lesson_id }}/generate-questions"
+        >🤖 Сгенерировать вопросы AI</a>
         <button class="button button-primary" type="submit">Сохранить изменения</button>
     </div>
 </form>

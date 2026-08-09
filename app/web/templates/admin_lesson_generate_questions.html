@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}AI-предпросмотр вопросов — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/admin">Админ</a>
+    <span aria-hidden="true">/</span>
+    <a href="{{ preview.cancel_url }}">{{ preview.course_title or preview.slug }}</a>
+    <span aria-hidden="true">/</span>
+    <a href="{{ preview.edit_url }}">Урок {{ preview.lesson_order }}</a>
+    <span aria-hidden="true">/</span>
+    <span>AI-вопросы</span>
+</nav>
+
+<section class="page-header admin-create-page-header">
+    <h1 class="page-title">Генерация вопросов AI</h1>
+    <p class="page-lead">
+        Курс «{{ preview.course_title }}» — урок {{ preview.lesson_order }}:
+        «{{ preview.lesson_title }}».
+    </p>
+</section>
+
+<div class="admin-preview-notice" role="note">
+    <p>
+        Вопросы будут только сгенерированы для предварительного просмотра.
+        Курс изменен не будет.
+    </p>
+</div>
+
+{% if error_message %}
+<div class="admin-form-error" role="alert">{{ error_message }}</div>
+{% endif %}
+
+{% if not preview.generated %}
+<form
+    class="admin-create-form admin-preview-form"
+    action="{{ preview.generate_url }}"
+    method="post"
+    aria-label="Форма генерации вопросов AI"
+>
+    <div class="admin-form-actions">
+        <a class="button button-secondary" href="{{ preview.edit_url }}">Назад к уроку</a>
+        <button class="button button-primary" type="submit">Сгенерировать</button>
+    </div>
+</form>
+{% else %}
+<section class="admin-quiz-readonly-section" aria-labelledby="preview-questions-heading">
+    <h2 class="admin-form-section-title" id="preview-questions-heading">Предпросмотр вопросов</h2>
+    <p class="admin-quiz-readonly-count">Всего вопросов: {{ preview.questions|length }}</p>
+
+    <ol class="admin-quiz-question-list">
+        {% for question in preview.questions %}
+        <li class="admin-quiz-question-card">
+            <div class="admin-quiz-question-header">
+                <span class="admin-quiz-question-number">{{ loop.index }}</span>
+                <p class="admin-quiz-question-text">{{ question.text }}</p>
+            </div>
+
+            {% if question.difficulty %}
+            <p class="admin-quiz-question-meta">Сложность: {{ question.difficulty }}</p>
+            {% endif %}
+
+            {% if question.tags %}
+            <p class="admin-quiz-question-meta">Теги: {{ question.tags | join(", ") }}</p>
+            {% endif %}
+
+            {% if question.explanation %}
+            <p class="admin-quiz-question-explanation">{{ question.explanation }}</p>
+            {% endif %}
+
+            <ul class="admin-quiz-question-options">
+                {% for option in question.options %}
+                <li class="admin-quiz-option{% if option.is_correct %} admin-quiz-option--correct{% endif %}">
+                    <span class="admin-quiz-option-text">{{ option.text }}</span>
+                    {% if option.is_correct %}
+                    <span class="admin-quiz-option-badge">Правильный ответ</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </li>
+        {% endfor %}
+    </ol>
+</section>
+
+<div class="admin-form-actions">
+    <a class="button button-secondary" href="{{ preview.edit_url }}">Назад к уроку</a>
+    <form
+        class="admin-preview-regenerate-form"
+        action="{{ preview.generate_url }}"
+        method="post"
+        aria-label="Повторная генерация вопросов AI"
+    >
+        <button class="button button-secondary" type="submit">Сгенерировать снова</button>
+    </form>
+</div>
+{% endif %}
+{% endblock %}

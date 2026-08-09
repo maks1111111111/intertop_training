@@ -28,6 +28,10 @@ from app.web.admin_lesson_edit_service import (
     AdminLessonEditService,
     _parse_multiline_list,
 )
+from app.web.admin_lesson_question_preview_service import (
+    AdminLessonQuestionPreviewError,
+    AdminLessonQuestionPreviewService,
+)
 from app.web.admin_quiz_edit_service import (
     AdminQuizEditError,
     AdminQuizEditRequest,
@@ -155,6 +159,21 @@ def get_admin_lesson_create_service(
 ) -> AdminLessonCreateService:
     """Return the admin lesson create service for the current application."""
     return AdminLessonCreateService(runtime.base_dir, runtime)
+
+
+def get_admin_lesson_question_preview_service(
+    request: Request,
+    runtime: ContentRuntime = Depends(get_content_runtime),
+) -> AdminLessonQuestionPreviewService:
+    """Return the admin lesson question preview service for the current application."""
+    override = getattr(
+        request.app.state,
+        "admin_lesson_question_preview_service",
+        None,
+    )
+    if override is not None:
+        return override
+    return AdminLessonQuestionPreviewService(runtime)
 
 
 def get_admin_quiz_edit_service(
@@ -759,6 +778,109 @@ async def admin_lesson_edit_submit(
         url=f"/admin/courses/{result.slug}",
         status_code=303,
     )
+
+
+def _render_admin_lesson_generate_questions_not_found(
+    request: Request,
+    *,
+    resource: str,
+) -> HTMLResponse:
+    if resource == "course":
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+    return templates.TemplateResponse(
+        request,
+        "not_found.html",
+        {
+            "title": "Урок не найден",
+            "message": "Запрошенный урок недоступен или не существует.",
+        },
+        status_code=404,
+    )
+
+
+def _render_admin_lesson_generate_questions_page(
+    request: Request,
+    preview_view,
+    *,
+    error_message: str = "",
+) -> HTMLResponse:
+    """Render the admin lesson AI question preview page."""
+    return templates.TemplateResponse(
+        request,
+        "admin_lesson_generate_questions.html",
+        {
+            "active_nav": "admin",
+            "preview": preview_view,
+            "error_message": error_message,
+        },
+    )
+
+
+@router.get(
+    "/admin/courses/{slug}/lessons/{lesson_id}/generate-questions",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_lesson_generate_questions_page(
+    slug: str,
+    lesson_id: str,
+    request: Request,
+    preview_service: AdminLessonQuestionPreviewService = Depends(
+        get_admin_lesson_question_preview_service
+    ),
+) -> HTMLResponse:
+    """Render the AI question preview page for one lesson."""
+    preview_view = preview_service.get_preview_page(slug, lesson_id)
+    if preview_view is None:
+        not_found = preview_service.get_not_found_reason(slug, lesson_id)
+        return _render_admin_lesson_generate_questions_not_found(
+            request,
+            resource=not_found or "lesson",
+        )
+
+    return _render_admin_lesson_generate_questions_page(request, preview_view)
+
+
+@router.post(
+    "/admin/courses/{slug}/lessons/{lesson_id}/generate-questions",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_lesson_generate_questions_submit(
+    slug: str,
+    lesson_id: str,
+    request: Request,
+    preview_service: AdminLessonQuestionPreviewService = Depends(
+        get_admin_lesson_question_preview_service
+    ),
+) -> HTMLResponse:
+    """Generate AI quiz questions for preview without persisting changes."""
+    preview_page = preview_service.get_preview_page(slug, lesson_id)
+    if preview_page is None:
+        not_found = preview_service.get_not_found_reason(slug, lesson_id)
+        return _render_admin_lesson_generate_questions_not_found(
+            request,
+            resource=not_found or "lesson",
+        )
+
+    try:
+        preview_view = preview_service.generate_preview(slug, lesson_id)
+    except AdminLessonQuestionPreviewError as exc:
+        return _render_admin_lesson_generate_questions_page(
+            request,
+            preview_page,
+            error_message=exc.message,
+        )
+
+    return _render_admin_lesson_generate_questions_page(request, preview_view)
 
 
 @router.post(

@@ -2115,6 +2115,31 @@ a:focus-visible,
     font-size: 0.8125rem;
 }
 
+.admin-preview-notice {
+    margin: 0 0 1.5rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid #fcd34d;
+    border-radius: 0.5rem;
+    background: #fffbeb;
+    color: #92400e;
+}
+
+.admin-preview-notice p {
+    margin: 0;
+}
+
+.admin-preview-form {
+    margin-top: 0;
+}
+
+.admin-preview-regenerate-form {
+    display: inline;
+}
+
+.admin-lesson-edit-actions {
+    flex-wrap: wrap;
+}
+
 @media (max-width: 768px) {
     .layout {
         grid-template-columns: 1fr;
