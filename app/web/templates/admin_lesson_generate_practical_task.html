@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}AI-предпросмотр практического задания — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/admin">Админ</a>
+    <span aria-hidden="true">/</span>
+    <a href="{{ preview.cancel_url }}">{{ preview.course_title or preview.slug }}</a>
+    <span aria-hidden="true">/</span>
+    <a href="{{ preview.edit_url }}">Урок {{ preview.lesson_order }}</a>
+    <span aria-hidden="true">/</span>
+    <span>AI-практическое задание</span>
+</nav>
+
+<section class="page-header admin-create-page-header">
+    <h1 class="page-title">Генерация практического задания AI</h1>
+    <p class="page-lead">
+        Курс «{{ preview.course_title }}» — урок {{ preview.lesson_order }}:
+        «{{ preview.lesson_title }}».
+    </p>
+</section>
+
+<div class="admin-preview-notice" role="note">
+    <p>
+        Практическое задание будет только сгенерировано для предварительного просмотра.
+        Курс изменен не будет.
+    </p>
+</div>
+
+{% if error_message %}
+<div class="admin-form-error" role="alert">{{ error_message }}</div>
+{% endif %}
+
+{% if not preview.generated %}
+<form
+    class="admin-create-form admin-preview-form"
+    action="{{ preview.generate_url }}"
+    method="post"
+    aria-label="Форма генерации практического задания AI"
+>
+    <div class="admin-form-actions">
+        <a class="button button-secondary" href="{{ preview.edit_url }}">Назад к уроку</a>
+        <button class="button button-primary" type="submit">🤖 Сгенерировать практическое задание</button>
+    </div>
+</form>
+{% else %}
+<section class="admin-practical-task-preview" aria-labelledby="preview-task-heading">
+    <h2 class="admin-form-section-title" id="preview-task-heading">Предпросмотр практического задания</h2>
+
+    <div class="admin-practical-task-preview-card">
+        <h3 class="admin-practical-task-preview-title">{{ preview.title }}</h3>
+
+        <div class="admin-practical-task-preview-field">
+            <h4 class="admin-practical-task-preview-label">Описание</h4>
+            <p class="admin-practical-task-preview-text">{{ preview.description }}</p>
+        </div>
+
+        <div class="admin-practical-task-preview-field">
+            <h4 class="admin-practical-task-preview-label">Критерии приёмки</h4>
+            <p class="admin-practical-task-preview-text">{{ preview.expected_result }}</p>
+        </div>
+
+        {% if preview.estimated_minutes %}
+        <p class="admin-practical-task-preview-meta">
+            Оценка времени: {{ preview.estimated_minutes }} мин.
+        </p>
+        {% endif %}
+    </div>
+</section>
+
+<form
+    class="admin-create-form admin-preview-apply-form"
+    action="{{ preview.apply_url }}"
+    method="post"
+    aria-label="Форма применения практического задания"
+>
+    <input type="hidden" name="preview_id" value="{{ preview.preview_id }}">
+
+    <div class="admin-form-actions admin-preview-actions">
+        <a class="button button-secondary" href="{{ preview.edit_url }}">Назад к уроку</a>
+        <button class="button button-primary" type="submit">Применить</button>
+    </div>
+</form>
+
+<div class="admin-form-actions admin-preview-regenerate-actions">
+    <form
+        class="admin-preview-regenerate-form"
+        action="{{ preview.generate_url }}"
+        method="post"
+        aria-label="Повторная генерация практического задания AI"
+    >
+        <button class="button button-secondary" type="submit">Сгенерировать снова</button>
+    </form>
+</div>
+{% endif %}
+{% endblock %}

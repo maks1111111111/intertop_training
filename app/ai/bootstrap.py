@@ -14,6 +14,7 @@ from app.ai.openai_client import OpenAIClient
 from app.ai.openai_provider import OpenAICourseGenerationAI
 from app.ai.openai_review_provider import OpenAIPracticalTaskReviewer
 from app.ai.review_service import PracticalTaskReviewService
+from app.ai.practical_task_generation_service import PracticalTaskGenerationService
 from app.ai.quiz_service import QuizGenerationService
 from app.ai.service import CourseGenerationService
 from app.services.course_generation_flow_service import (
@@ -65,6 +66,13 @@ def create_quiz_generation_service() -> QuizGenerationService:
     config = OpenAIConfig.from_environment()
     client = OpenAIClient(config)
     return QuizGenerationService(client)
+
+
+def create_practical_task_generation_service() -> PracticalTaskGenerationService:
+    """Build a :class:`PracticalTaskGenerationService` from environment config."""
+    config = OpenAIConfig.from_environment()
+    client = OpenAIClient(config)
+    return PracticalTaskGenerationService(client)
 
 
 def create_course_with_quiz_generation_service() -> CourseWithQuizGenerationService:

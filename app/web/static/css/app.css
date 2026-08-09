@@ -2171,6 +2171,53 @@ a:focus-visible,
     flex-wrap: wrap;
 }
 
+.admin-practical-task-preview {
+    margin-top: 1.5rem;
+}
+
+.admin-practical-task-preview-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    background: #f9fafb;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.admin-practical-task-preview-title {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #111827;
+}
+
+.admin-practical-task-preview-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+.admin-practical-task-preview-label {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #374151;
+}
+
+.admin-practical-task-preview-text {
+    margin: 0;
+    color: #1f2937;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.admin-practical-task-preview-meta {
+    margin: 0;
+    font-size: 0.875rem;
+    color: #6b7280;
+}
+
 @media (max-width: 768px) {
     .layout {
         grid-template-columns: 1fr;

@@ -28,6 +28,18 @@ from app.web.admin_lesson_edit_service import (
     AdminLessonEditService,
     _parse_multiline_list,
 )
+from app.web.admin_lesson_practical_task_apply_service import (
+    AdminLessonPracticalTaskApplyError,
+    AdminLessonPracticalTaskApplyRequest,
+    AdminLessonPracticalTaskApplyService,
+)
+from app.web.admin_lesson_practical_task_preview_service import (
+    AdminLessonPracticalTaskPreviewError,
+    AdminLessonPracticalTaskPreviewService,
+)
+from app.web.admin_lesson_practical_task_preview_store import (
+    AdminLessonPracticalTaskPreviewStore,
+)
 from app.web.admin_lesson_question_apply_service import (
     AdminLessonQuestionApplyError,
     AdminLessonQuestionApplyRequest,
@@ -215,6 +227,64 @@ def get_admin_lesson_question_apply_service(
     if override is not None:
         return override
     return AdminLessonQuestionApplyService(runtime.base_dir, runtime, preview_store)
+
+
+def get_admin_lesson_practical_task_preview_store(
+    request: Request,
+) -> AdminLessonPracticalTaskPreviewStore:
+    """Return the in-memory preview store for AI lesson practical-task previews."""
+    store = getattr(
+        request.app.state,
+        "admin_lesson_practical_task_preview_store",
+        None,
+    )
+    if store is None:
+        store = AdminLessonPracticalTaskPreviewStore()
+        request.app.state.admin_lesson_practical_task_preview_store = store
+    return store
+
+
+def get_admin_lesson_practical_task_preview_service(
+    request: Request,
+    runtime: ContentRuntime = Depends(get_content_runtime),
+    preview_store: AdminLessonPracticalTaskPreviewStore = Depends(
+        get_admin_lesson_practical_task_preview_store
+    ),
+) -> AdminLessonPracticalTaskPreviewService:
+    """Return the admin lesson practical-task preview service."""
+    override = getattr(
+        request.app.state,
+        "admin_lesson_practical_task_preview_service",
+        None,
+    )
+    if override is not None:
+        return override
+    return AdminLessonPracticalTaskPreviewService(
+        runtime,
+        preview_store=preview_store,
+    )
+
+
+def get_admin_lesson_practical_task_apply_service(
+    request: Request,
+    runtime: ContentRuntime = Depends(get_content_runtime),
+    preview_store: AdminLessonPracticalTaskPreviewStore = Depends(
+        get_admin_lesson_practical_task_preview_store
+    ),
+) -> AdminLessonPracticalTaskApplyService:
+    """Return the admin lesson practical-task apply service."""
+    override = getattr(
+        request.app.state,
+        "admin_lesson_practical_task_apply_service",
+        None,
+    )
+    if override is not None:
+        return override
+    return AdminLessonPracticalTaskApplyService(
+        runtime.base_dir,
+        runtime,
+        preview_store,
+    )
 
 
 def get_admin_quiz_edit_service(
@@ -986,6 +1056,171 @@ async def admin_lesson_generate_questions_apply(
 
     return RedirectResponse(
         url=f"/admin/courses/{result.slug}/quiz/edit",
+        status_code=303,
+    )
+
+
+def _render_admin_lesson_generate_practical_task_not_found(
+    request: Request,
+    *,
+    resource: str,
+) -> HTMLResponse:
+    if resource == "course":
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+    return templates.TemplateResponse(
+        request,
+        "not_found.html",
+        {
+            "title": "Урок не найден",
+            "message": "Запрошенный урок недоступен или не существует.",
+        },
+        status_code=404,
+    )
+
+
+def _render_admin_lesson_generate_practical_task_page(
+    request: Request,
+    preview_view,
+    *,
+    error_message: str = "",
+) -> HTMLResponse:
+    """Render the admin lesson AI practical-task preview page."""
+    return templates.TemplateResponse(
+        request,
+        "admin_lesson_generate_practical_task.html",
+        {
+            "active_nav": "admin",
+            "preview": preview_view,
+            "error_message": error_message,
+        },
+    )
+
+
+@router.get(
+    "/admin/courses/{slug}/lessons/{lesson_id}/generate-practical-task",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_lesson_generate_practical_task_page(
+    slug: str,
+    lesson_id: str,
+    request: Request,
+    preview_service: AdminLessonPracticalTaskPreviewService = Depends(
+        get_admin_lesson_practical_task_preview_service
+    ),
+) -> HTMLResponse:
+    """Render the AI practical-task preview page for one lesson."""
+    preview_view = preview_service.get_preview_page(slug, lesson_id)
+    if preview_view is None:
+        not_found = preview_service.get_not_found_reason(slug, lesson_id)
+        return _render_admin_lesson_generate_practical_task_not_found(
+            request,
+            resource=not_found or "lesson",
+        )
+
+    return _render_admin_lesson_generate_practical_task_page(request, preview_view)
+
+
+@router.post(
+    "/admin/courses/{slug}/lessons/{lesson_id}/generate-practical-task",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_lesson_generate_practical_task_submit(
+    slug: str,
+    lesson_id: str,
+    request: Request,
+    preview_service: AdminLessonPracticalTaskPreviewService = Depends(
+        get_admin_lesson_practical_task_preview_service
+    ),
+) -> HTMLResponse:
+    """Generate an AI practical task for preview without persisting changes."""
+    preview_page = preview_service.get_preview_page(slug, lesson_id)
+    if preview_page is None:
+        not_found = preview_service.get_not_found_reason(slug, lesson_id)
+        return _render_admin_lesson_generate_practical_task_not_found(
+            request,
+            resource=not_found or "lesson",
+        )
+
+    try:
+        preview_view = preview_service.generate_preview(slug, lesson_id)
+    except AdminLessonPracticalTaskPreviewError as exc:
+        return _render_admin_lesson_generate_practical_task_page(
+            request,
+            preview_page,
+            error_message=exc.message,
+        )
+
+    return _render_admin_lesson_generate_practical_task_page(request, preview_view)
+
+
+@router.post(
+    "/admin/courses/{slug}/lessons/{lesson_id}/generate-practical-task/apply",
+    include_in_schema=False,
+)
+async def admin_lesson_generate_practical_task_apply(
+    slug: str,
+    lesson_id: str,
+    request: Request,
+    preview_service: AdminLessonPracticalTaskPreviewService = Depends(
+        get_admin_lesson_practical_task_preview_service
+    ),
+    apply_service: AdminLessonPracticalTaskApplyService = Depends(
+        get_admin_lesson_practical_task_apply_service
+    ),
+):
+    """Apply an AI preview practical task to the lesson."""
+    form = await request.form()
+    preview_id = str(form.get("preview_id") or "")
+
+    try:
+        result = apply_service.apply_preview(
+            AdminLessonPracticalTaskApplyRequest(
+                slug=slug,
+                lesson_id=lesson_id,
+                preview_id=preview_id,
+            )
+        )
+    except AdminLessonPracticalTaskApplyError as exc:
+        preview_view = preview_service.get_generated_preview_page(
+            slug,
+            lesson_id,
+            preview_id,
+        )
+        if preview_view is None:
+            preview_view = preview_service.get_generated_preview_page_by_id(
+                preview_id
+            )
+        if preview_view is None:
+            preview_page = preview_service.get_preview_page(slug, lesson_id)
+            if preview_page is None:
+                not_found = preview_service.get_not_found_reason(slug, lesson_id)
+                return _render_admin_lesson_generate_practical_task_not_found(
+                    request,
+                    resource=not_found or "lesson",
+                )
+            return _render_admin_lesson_generate_practical_task_page(
+                request,
+                preview_page,
+                error_message=exc.message,
+            )
+        return _render_admin_lesson_generate_practical_task_page(
+            request,
+            preview_view,
+            error_message=exc.message,
+        )
+
+    return RedirectResponse(
+        url=f"/admin/courses/{result.slug}/lessons/{result.lesson_id}/edit",
         status_code=303,
     )
 
