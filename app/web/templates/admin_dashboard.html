@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Управление курсами — Intertop Training{% endblock %}
+
+{% block content %}
+<section class="page-header admin-page-header">
+    <div class="admin-page-header-body">
+        <h1 class="page-title">Управление курсами</h1>
+        <p class="page-lead">Просмотр опубликованных курсов и переход к материалам для обучения.</p>
+    </div>
+    <div class="admin-page-header-actions">
+        <a class="button button-primary admin-create-btn" href="#">Создать курс</a>
+    </div>
+</section>
+
+{% if courses %}
+<section class="section">
+    <ul class="course-list admin-course-list">
+        {% for course in courses %}
+        <li class="course-card admin-course-card">
+            <div class="admin-course-body">
+                <header class="admin-course-header">
+                    <h2 class="course-card-title">{{ course.title }}</h2>
+                    <span class="admin-status-badge admin-status-badge--{{ course.status }}">
+                        {% if course.status == "published" %}
+                        Опубликован
+                        {% elif course.status == "draft" %}
+                        Черновик
+                        {% elif course.status == "archived" %}
+                        Архив
+                        {% else %}
+                        {{ course.status }}
+                        {% endif %}
+                    </span>
+                </header>
+
+                {% if course.description %}
+                <p class="course-card-description">{{ course.description }}</p>
+                {% endif %}
+
+                <div class="admin-course-meta">
+                    {% if course.language %}
+                    <span class="admin-meta-item">Язык: {{ course.language }}</span>
+                    {% endif %}
+                    <span class="admin-meta-item">
+                        {% if course.lessons_count == 1 %}
+                        1 урок
+                        {% else %}
+                        {{ course.lessons_count }} уроков
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <div class="admin-course-actions">
+                <a class="button button-secondary" href="{{ course.view_url }}">Открыть курс</a>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% else %}
+<div class="empty-state admin-empty-state">
+    <p class="admin-empty-state-message">Курсов пока нет</p>
+</div>
+{% endif %}
+{% endblock %}

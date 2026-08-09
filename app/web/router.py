@@ -12,6 +12,7 @@ from app.api.mappers import course_mapper
 from app.content.runtime import ContentRuntime
 from app.repositories import quiz_repository
 from app.repositories.progress_repository import ProgressRepository
+from app.web.admin_service import AdminService
 from app.web.dashboard_service import DashboardService
 from app.web.progress_service import WebProgressService
 from app.web.quiz_scoring import (
@@ -55,6 +56,13 @@ def get_dashboard_service(
     )
 
 
+def get_admin_service(
+    runtime: ContentRuntime = Depends(get_content_runtime),
+) -> AdminService:
+    """Return the admin service wired to the application runtime."""
+    return AdminService(runtime)
+
+
 # TODO: Replace with authenticated web user identity when auth is implemented.
 _WEB_DASHBOARD_TELEGRAM_ID = 1
 
@@ -87,6 +95,24 @@ def dashboard_page(
         "dashboard.html",
         {
             "active_nav": "dashboard",
+            "courses": courses,
+            "courses_count": len(courses),
+        },
+    )
+
+
+@router.get("/admin", response_class=HTMLResponse, include_in_schema=False)
+def admin_dashboard_page(
+    request: Request,
+    admin_service: AdminService = Depends(get_admin_service),
+) -> HTMLResponse:
+    """Render the admin course management dashboard."""
+    courses = admin_service.get_courses()
+    return templates.TemplateResponse(
+        request,
+        "admin_dashboard.html",
+        {
+            "active_nav": "admin",
             "courses": courses,
             "courses_count": len(courses),
         },
