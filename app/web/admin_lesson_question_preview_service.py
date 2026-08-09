@@ -11,9 +11,13 @@ from app.ai.quiz_coverage import create_quiz_generation_request
 from app.ai.quiz_interfaces import QuizGenerationResult
 from app.ai.quiz_service import QuizGenerationService
 from app.content.lesson_builder import LessonCandidate
-from app.content.quiz_writer import QuizWriter
+from app.content.quiz_writer import QuizDraft, QuizWriter
 from app.content.runtime import ContentRuntime
 from app.content.runtime_loader import Lesson
+from app.web.admin_lesson_question_preview_store import (
+    AdminLessonQuestionPreviewStore,
+    StoredPreviewQuestion,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -55,6 +59,8 @@ class AdminLessonQuestionPreviewView:
     edit_url: str
     cancel_url: str
     generate_url: str
+    apply_url: str
+    preview_id: str
     questions: Tuple[AdminLessonQuestionPreviewQuestionView, ...]
     generated: bool
 
@@ -117,6 +123,28 @@ def _build_preview_questions(
     return tuple(preview_questions)
 
 
+def _draft_to_stored_questions(
+    draft: QuizDraft,
+) -> Tuple[StoredPreviewQuestion, ...]:
+    stored: list[StoredPreviewQuestion] = []
+    for question in draft.questions:
+        stored.append(
+            StoredPreviewQuestion(
+                text=question.text,
+                question_type=question.question_type,
+                options=tuple(
+                    (option.id, option.text) for option in question.options
+                ),
+                correct_option_ids=question.correct_option_ids,
+                explanation=question.explanation,
+                difficulty=question.difficulty,
+                tags=question.tags,
+                ai_context=question.ai_context,
+            )
+        )
+    return tuple(stored)
+
+
 class AdminLessonQuestionPreviewService:
     """Generate read-only AI quiz question previews for one lesson."""
 
@@ -124,12 +152,14 @@ class AdminLessonQuestionPreviewService:
         self,
         runtime: ContentRuntime,
         *,
+        preview_store: Optional[AdminLessonQuestionPreviewStore] = None,
         quiz_generation_service: Optional[QuizGenerationService] = None,
         quiz_generation_service_factory: Callable[
             [], QuizGenerationService
         ] = create_quiz_generation_service,
     ) -> None:
         self._runtime = runtime
+        self._preview_store = preview_store
         self._quiz_generation_service = quiz_generation_service
         self._quiz_generation_service_factory = quiz_generation_service_factory
 
@@ -180,6 +210,7 @@ class AdminLessonQuestionPreviewService:
             lesson,
             questions=(),
             generated=False,
+            preview_id="",
         )
 
     def generate_preview(
@@ -198,7 +229,13 @@ class AdminLessonQuestionPreviewService:
             quiz_request = create_quiz_generation_request((lesson_candidate,))
             quiz_service = self._resolve_quiz_generation_service()
             result = quiz_service.generate_quiz(quiz_request)
+            draft = QuizWriter().write(result, course.slug)
             questions = _build_preview_questions(result, course.slug)
+            preview_id = self._store_generated_preview(
+                course.slug,
+                lesson.path.name,
+                draft,
+            )
         except AdminLessonQuestionPreviewError:
             raise
         except Exception as exc:
@@ -214,6 +251,7 @@ class AdminLessonQuestionPreviewService:
             lesson,
             questions=questions,
             generated=True,
+            preview_id=preview_id,
         )
 
     def _resolve_lesson_context(
@@ -243,6 +281,93 @@ class AdminLessonQuestionPreviewService:
 
         return course, lesson
 
+    def get_generated_preview_page(
+        self,
+        slug: str,
+        lesson_id: str,
+        preview_id: str,
+    ) -> Optional[AdminLessonQuestionPreviewView]:
+        """Rebuild a generated preview page from server-side preview storage."""
+        if self._preview_store is None:
+            return None
+
+        context = self._resolve_lesson_context(slug, lesson_id)
+        if context is None:
+            return None
+
+        record = self._preview_store.get(preview_id)
+        if record is None:
+            return None
+        if record.slug != slug or record.lesson_id != lesson_id:
+            return None
+
+        _, lesson = context
+        questions = self._stored_questions_to_view(record.questions)
+        return self._build_view(
+            slug,
+            lesson,
+            questions=questions,
+            generated=True,
+            preview_id=record.preview_id,
+        )
+
+    def get_generated_preview_page_by_id(
+        self,
+        preview_id: str,
+    ) -> Optional[AdminLessonQuestionPreviewView]:
+        """Rebuild a generated preview page using only the preview identifier."""
+        if self._preview_store is None:
+            return None
+
+        record = self._preview_store.get(preview_id)
+        if record is None:
+            return None
+
+        return self.get_generated_preview_page(
+            record.slug,
+            record.lesson_id,
+            preview_id,
+        )
+
+    def _store_generated_preview(
+        self,
+        slug: str,
+        lesson_id: str,
+        draft: QuizDraft,
+    ) -> str:
+        if self._preview_store is None:
+            raise AdminLessonQuestionPreviewError(_GENERATION_ERROR_MESSAGE)
+
+        stored_questions = _draft_to_stored_questions(draft)
+        return self._preview_store.save(slug, lesson_id, stored_questions)
+
+    def _stored_questions_to_view(
+        self,
+        questions: Tuple[StoredPreviewQuestion, ...],
+    ) -> Tuple[AdminLessonQuestionPreviewQuestionView, ...]:
+        preview_questions: list[AdminLessonQuestionPreviewQuestionView] = []
+        for index, question in enumerate(questions, start=1):
+            correct_ids = set(question.correct_option_ids)
+            options = tuple(
+                AdminLessonQuestionPreviewOptionView(
+                    id=option_id,
+                    text=option_text,
+                    is_correct=option_id in correct_ids,
+                )
+                for option_id, option_text in question.options
+            )
+            preview_questions.append(
+                AdminLessonQuestionPreviewQuestionView(
+                    id=f"preview-{index}",
+                    text=question.text,
+                    options=options,
+                    explanation=question.explanation,
+                    difficulty=question.difficulty,
+                    tags=question.tags,
+                )
+            )
+        return tuple(preview_questions)
+
     def _build_view(
         self,
         slug: str,
@@ -250,6 +375,7 @@ class AdminLessonQuestionPreviewService:
         *,
         questions: Tuple[AdminLessonQuestionPreviewQuestionView, ...],
         generated: bool,
+        preview_id: str,
     ) -> AdminLessonQuestionPreviewView:
         course = self._runtime.get_course(slug)
         course_title = course.title if course is not None else slug
@@ -265,6 +391,10 @@ class AdminLessonQuestionPreviewService:
             generate_url=(
                 f"/admin/courses/{slug}/lessons/{lesson_id}/generate-questions"
             ),
+            apply_url=(
+                f"/admin/courses/{slug}/lessons/{lesson_id}/generate-questions/apply"
+            ),
+            preview_id=preview_id,
             questions=questions,
             generated=generated,
         )

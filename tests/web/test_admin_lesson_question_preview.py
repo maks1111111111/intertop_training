@@ -22,6 +22,7 @@ from app.web.admin_lesson_question_preview_service import (
     AdminLessonQuestionPreviewError,
     AdminLessonQuestionPreviewService,
 )
+from app.web.admin_lesson_question_preview_store import AdminLessonQuestionPreviewStore
 from tests.web.test_web_ui import (
     _create_test_app,
     _write_course,
@@ -107,8 +108,11 @@ def _create_client_with_mock(
     app, db_tmp, db_path, upload_tmp = _create_test_app(courses_dir)
     mock_quiz_service = MagicMock(spec=QuizGenerationService)
     mock_quiz_service.generate_quiz.return_value = _mock_quiz_result()
+    preview_store = AdminLessonQuestionPreviewStore()
+    app.state.admin_lesson_question_preview_store = preview_store
     app.state.admin_lesson_question_preview_service = AdminLessonQuestionPreviewService(
         app.state.content_runtime,
+        preview_store=preview_store,
         quiz_generation_service=mock_quiz_service,
     )
     client = TestClient(app)
@@ -207,6 +211,7 @@ class AdminLessonQuestionPreviewPostTests(unittest.TestCase):
         mock_quiz_service.generate_quiz.return_value = _mock_quiz_result()
         service = AdminLessonQuestionPreviewService(
             runtime,
+            preview_store=AdminLessonQuestionPreviewStore(),
             quiz_generation_service=mock_quiz_service,
         )
         service.generate_preview("multi", "lesson_02")
@@ -286,6 +291,7 @@ class AdminLessonQuestionPreviewServiceTests(unittest.TestCase):
         self.mock_quiz_service.generate_quiz.return_value = _mock_quiz_result()
         self.service = AdminLessonQuestionPreviewService(
             self.runtime,
+            preview_store=AdminLessonQuestionPreviewStore(),
             quiz_generation_service=self.mock_quiz_service,
         )
 
@@ -298,6 +304,7 @@ class AdminLessonQuestionPreviewServiceTests(unittest.TestCase):
         runtime = ContentRuntime(self.courses_dir)
         service = AdminLessonQuestionPreviewService(
             runtime,
+            preview_store=AdminLessonQuestionPreviewStore(),
             quiz_generation_service=self.mock_quiz_service,
         )
         self.assertIsNone(service.get_preview_page("alpha", "lesson_01"))

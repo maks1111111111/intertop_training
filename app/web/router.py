@@ -28,9 +28,18 @@ from app.web.admin_lesson_edit_service import (
     AdminLessonEditService,
     _parse_multiline_list,
 )
+from app.web.admin_lesson_question_apply_service import (
+    AdminLessonQuestionApplyError,
+    AdminLessonQuestionApplyRequest,
+    AdminLessonQuestionApplyService,
+    parse_selected_question_indexes,
+)
 from app.web.admin_lesson_question_preview_service import (
     AdminLessonQuestionPreviewError,
     AdminLessonQuestionPreviewService,
+)
+from app.web.admin_lesson_question_preview_store import (
+    AdminLessonQuestionPreviewStore,
 )
 from app.web.admin_quiz_edit_service import (
     AdminQuizEditError,
@@ -161,9 +170,23 @@ def get_admin_lesson_create_service(
     return AdminLessonCreateService(runtime.base_dir, runtime)
 
 
+def get_admin_lesson_question_preview_store(
+    request: Request,
+) -> AdminLessonQuestionPreviewStore:
+    """Return the in-memory preview store for AI lesson question previews."""
+    store = getattr(request.app.state, "admin_lesson_question_preview_store", None)
+    if store is None:
+        store = AdminLessonQuestionPreviewStore()
+        request.app.state.admin_lesson_question_preview_store = store
+    return store
+
+
 def get_admin_lesson_question_preview_service(
     request: Request,
     runtime: ContentRuntime = Depends(get_content_runtime),
+    preview_store: AdminLessonQuestionPreviewStore = Depends(
+        get_admin_lesson_question_preview_store
+    ),
 ) -> AdminLessonQuestionPreviewService:
     """Return the admin lesson question preview service for the current application."""
     override = getattr(
@@ -173,7 +196,25 @@ def get_admin_lesson_question_preview_service(
     )
     if override is not None:
         return override
-    return AdminLessonQuestionPreviewService(runtime)
+    return AdminLessonQuestionPreviewService(runtime, preview_store=preview_store)
+
+
+def get_admin_lesson_question_apply_service(
+    request: Request,
+    runtime: ContentRuntime = Depends(get_content_runtime),
+    preview_store: AdminLessonQuestionPreviewStore = Depends(
+        get_admin_lesson_question_preview_store
+    ),
+) -> AdminLessonQuestionApplyService:
+    """Return the admin lesson question apply service for the current application."""
+    override = getattr(
+        request.app.state,
+        "admin_lesson_question_apply_service",
+        None,
+    )
+    if override is not None:
+        return override
+    return AdminLessonQuestionApplyService(runtime.base_dir, runtime, preview_store)
 
 
 def get_admin_quiz_edit_service(
@@ -881,6 +922,72 @@ def admin_lesson_generate_questions_submit(
         )
 
     return _render_admin_lesson_generate_questions_page(request, preview_view)
+
+
+@router.post(
+    "/admin/courses/{slug}/lessons/{lesson_id}/generate-questions/apply",
+    include_in_schema=False,
+)
+async def admin_lesson_generate_questions_apply(
+    slug: str,
+    lesson_id: str,
+    request: Request,
+    preview_service: AdminLessonQuestionPreviewService = Depends(
+        get_admin_lesson_question_preview_service
+    ),
+    apply_service: AdminLessonQuestionApplyService = Depends(
+        get_admin_lesson_question_apply_service
+    ),
+):
+    """Append selected AI preview questions to the course quiz."""
+    form = await request.form()
+    preview_id = str(form.get("preview_id") or "")
+
+    try:
+        selected_indexes = parse_selected_question_indexes(
+            form.getlist("selected_questions")
+        )
+        result = apply_service.apply_selected_questions(
+            AdminLessonQuestionApplyRequest(
+                slug=slug,
+                lesson_id=lesson_id,
+                preview_id=preview_id,
+                selected_indexes=selected_indexes,
+            )
+        )
+    except AdminLessonQuestionApplyError as exc:
+        preview_view = preview_service.get_generated_preview_page(
+            slug,
+            lesson_id,
+            preview_id,
+        )
+        if preview_view is None:
+            preview_view = preview_service.get_generated_preview_page_by_id(
+                preview_id
+            )
+        if preview_view is None:
+            preview_page = preview_service.get_preview_page(slug, lesson_id)
+            if preview_page is None:
+                not_found = preview_service.get_not_found_reason(slug, lesson_id)
+                return _render_admin_lesson_generate_questions_not_found(
+                    request,
+                    resource=not_found or "lesson",
+                )
+            return _render_admin_lesson_generate_questions_page(
+                request,
+                preview_page,
+                error_message=exc.message,
+            )
+        return _render_admin_lesson_generate_questions_page(
+            request,
+            preview_view,
+            error_message=exc.message,
+        )
+
+    return RedirectResponse(
+        url=f"/admin/courses/{result.slug}/quiz/edit",
+        status_code=303,
+    )
 
 
 @router.post(
