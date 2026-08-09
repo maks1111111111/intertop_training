@@ -117,6 +117,9 @@
                 <dd>{{ detail.quiz.passing_score }}%</dd>
             </div>
         </dl>
+        <div class="admin-quiz-summary-actions">
+            <a class="button button-secondary button-small" href="/admin/courses/{{ detail.slug }}/quiz/edit">Управлять тестом</a>
+        </div>
     </div>
     {% else %}
     <p class="admin-course-detail-empty">Для этого курса итоговый тест не создан.</p>

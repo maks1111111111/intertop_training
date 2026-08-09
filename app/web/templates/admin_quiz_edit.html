@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Настройка итогового теста — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/admin">Админ</a>
+    <span aria-hidden="true">/</span>
+    <a href="{{ edit.detail_url }}">{{ edit.course_title or edit.slug }}</a>
+    <span aria-hidden="true">/</span>
+    <span>Итоговый тест</span>
+    <span aria-hidden="true">/</span>
+    <span>Редактирование</span>
+</nav>
+
+<section class="page-header admin-create-page-header">
+    <h1 class="page-title">Настройка итогового теста</h1>
+    <p class="page-lead">
+        Измените основные параметры теста. Вопросы и правильные ответы на этом шаге не изменяются.
+    </p>
+</section>
+
+{% if error_message %}
+<div class="admin-form-error" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<form
+    class="admin-create-form"
+    action="/admin/courses/{{ edit.slug }}/quiz/edit"
+    method="post"
+    aria-label="Форма настройки итогового теста"
+>
+    <fieldset class="admin-form-section">
+        <legend class="admin-form-section-title">Параметры теста</legend>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="quiz-title">Название теста</label>
+            <input
+                class="admin-form-input"
+                type="text"
+                id="quiz-title"
+                name="title"
+                value="{{ form_title }}"
+                required
+                autocomplete="off"
+            >
+        </div>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="quiz-passing-score">Проходной балл (%)</label>
+            <input
+                class="admin-form-input"
+                type="number"
+                id="quiz-passing-score"
+                name="passing_score"
+                value="{{ form_passing_score }}"
+                min="1"
+                max="100"
+                required
+            >
+        </div>
+
+        <div class="admin-form-checkboxes">
+            <div class="admin-form-checkbox">
+                <input
+                    type="checkbox"
+                    id="quiz-randomize-questions"
+                    name="randomize_questions"
+                    value="1"
+                    {% if form_randomize_questions %}checked{% endif %}
+                >
+                <label for="quiz-randomize-questions">Перемешивать вопросы</label>
+            </div>
+            <div class="admin-form-checkbox">
+                <input
+                    type="checkbox"
+                    id="quiz-randomize-options"
+                    name="randomize_options"
+                    value="1"
+                    {% if form_randomize_options %}checked{% endif %}
+                >
+                <label for="quiz-randomize-options">Перемешивать варианты ответов</label>
+            </div>
+        </div>
+    </fieldset>
+
+    <div class="admin-form-actions">
+        <a class="button button-secondary" href="{{ edit.cancel_url }}">Отмена</a>
+        <button class="button button-primary" type="submit">Сохранить изменения</button>
+    </div>
+</form>
+
+<section class="section admin-quiz-readonly-section">
+    <h2 class="section-title">Вопросы теста</h2>
+    <p class="admin-quiz-readonly-count">Всего вопросов: {{ edit.questions_count }}</p>
+
+    {% if edit.questions %}
+    <ol class="admin-quiz-question-list">
+        {% for question in edit.questions %}
+        <li class="admin-quiz-question-card">
+            <div class="admin-quiz-question-header">
+                <span class="admin-quiz-question-number">{{ loop.index }}</span>
+                <p class="admin-quiz-question-text">{{ question.text }}</p>
+            </div>
+
+            {% if question.lesson or question.difficulty or question.tags %}
+            <ul class="admin-quiz-question-meta">
+                {% if question.lesson %}
+                <li>Урок: {{ question.lesson }}</li>
+                {% endif %}
+                {% if question.difficulty %}
+                <li>Сложность: {{ question.difficulty }}</li>
+                {% endif %}
+                {% if question.tags %}
+                <li>Теги: {{ question.tags | join(", ") }}</li>
+                {% endif %}
+            </ul>
+            {% endif %}
+
+            {% if question.explanation %}
+            <p class="admin-quiz-question-explanation">{{ question.explanation }}</p>
+            {% endif %}
+
+            <ul class="admin-quiz-question-options">
+                {% for option in question.options %}
+                <li class="admin-quiz-option{% if option.is_correct %} admin-quiz-option--correct{% endif %}">
+                    {{ option.text }}
+                    {% if option.is_correct %}
+                    <span class="admin-quiz-option-badge">Правильный ответ</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </li>
+        {% endfor %}
+    </ol>
+    {% endif %}
+</section>
+{% endblock %}

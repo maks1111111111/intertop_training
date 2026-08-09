@@ -28,6 +28,11 @@ from app.web.admin_lesson_edit_service import (
     AdminLessonEditService,
     _parse_multiline_list,
 )
+from app.web.admin_quiz_edit_service import (
+    AdminQuizEditError,
+    AdminQuizEditRequest,
+    AdminQuizEditService,
+)
 from app.web.admin_service import AdminService
 from app.web.admin_generation_service import (
     AdminGenerationError,
@@ -133,6 +138,13 @@ def get_admin_lesson_create_service(
 ) -> AdminLessonCreateService:
     """Return the admin lesson create service for the current application."""
     return AdminLessonCreateService(runtime.base_dir, runtime)
+
+
+def get_admin_quiz_edit_service(
+    runtime: ContentRuntime = Depends(get_content_runtime),
+) -> AdminQuizEditService:
+    """Return the admin quiz edit service for the current application."""
+    return AdminQuizEditService(runtime.base_dir, runtime)
 
 
 # TODO: Replace with authenticated web user identity when auth is implemented.
@@ -744,6 +756,149 @@ def admin_lesson_create(
         )
 
     return RedirectResponse(url=result.edit_url, status_code=303)
+
+
+def _render_admin_quiz_edit_page(
+    request: Request,
+    edit_view,
+    *,
+    error_message: str = "",
+    form_title: Optional[str] = None,
+    form_passing_score: Optional[str] = None,
+    form_randomize_questions: Optional[bool] = None,
+    form_randomize_options: Optional[bool] = None,
+) -> HTMLResponse:
+    """Render the admin quiz settings edit form."""
+    return templates.TemplateResponse(
+        request,
+        "admin_quiz_edit.html",
+        {
+            "active_nav": "admin",
+            "edit": edit_view,
+            "error_message": error_message,
+            "form_title": edit_view.title if form_title is None else form_title,
+            "form_passing_score": (
+                str(edit_view.passing_score)
+                if form_passing_score is None
+                else form_passing_score
+            ),
+            "form_randomize_questions": (
+                edit_view.randomize_questions
+                if form_randomize_questions is None
+                else form_randomize_questions
+            ),
+            "form_randomize_options": (
+                edit_view.randomize_options
+                if form_randomize_options is None
+                else form_randomize_options
+            ),
+        },
+    )
+
+
+@router.get(
+    "/admin/courses/{slug}/quiz/edit",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_quiz_edit_page(
+    slug: str,
+    request: Request,
+    runtime: ContentRuntime = Depends(get_content_runtime),
+    edit_service: AdminQuizEditService = Depends(get_admin_quiz_edit_service),
+) -> HTMLResponse:
+    """Render the quiz settings edit form for one published course."""
+    if runtime.get_course(slug) is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    edit_view = edit_service.get_edit_view(slug)
+    if edit_view is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Тест не найден",
+                "message": "Для этого курса итоговый тест не создан.",
+            },
+            status_code=404,
+        )
+
+    return _render_admin_quiz_edit_page(request, edit_view)
+
+
+@router.post(
+    "/admin/courses/{slug}/quiz/edit",
+    include_in_schema=False,
+)
+async def admin_quiz_edit_submit(
+    slug: str,
+    request: Request,
+    runtime: ContentRuntime = Depends(get_content_runtime),
+    edit_service: AdminQuizEditService = Depends(get_admin_quiz_edit_service),
+):
+    """Validate and persist updated quiz settings, then redirect to course detail."""
+    if runtime.get_course(slug) is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    edit_view = edit_service.get_edit_view(slug)
+    if edit_view is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Тест не найден",
+                "message": "Для этого курса итоговый тест не создан.",
+            },
+            status_code=404,
+        )
+
+    form = await request.form()
+    title = str(form.get("title") or "")
+    passing_score = str(form.get("passing_score") or "")
+    randomize_questions = form.get("randomize_questions") == "1"
+    randomize_options = form.get("randomize_options") == "1"
+
+    try:
+        result = edit_service.update_quiz(
+            AdminQuizEditRequest(
+                slug=slug,
+                title=title,
+                passing_score=passing_score,
+                randomize_questions=randomize_questions,
+                randomize_options=randomize_options,
+            )
+        )
+    except AdminQuizEditError as exc:
+        return _render_admin_quiz_edit_page(
+            request,
+            edit_view,
+            error_message=exc.message,
+            form_title=title,
+            form_passing_score=passing_score,
+            form_randomize_questions=randomize_questions,
+            form_randomize_options=randomize_options,
+        )
+
+    return RedirectResponse(
+        url=f"/admin/courses/{result.slug}",
+        status_code=303,
+    )
 
 
 @router.get("/courses", response_class=HTMLResponse, include_in_schema=False)
