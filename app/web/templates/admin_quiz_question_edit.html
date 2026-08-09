@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Редактирование вопроса — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/admin">Админ</a>
+    <span aria-hidden="true">/</span>
+    <a href="/admin/courses/{{ edit.slug }}">{{ edit.course_title or edit.slug }}</a>
+    <span aria-hidden="true">/</span>
+    <a href="{{ edit.quiz_edit_url }}">Итоговый тест</a>
+    <span aria-hidden="true">/</span>
+    <span>Редактирование вопроса</span>
+</nav>
+
+<section class="page-header admin-create-page-header">
+    <h1 class="page-title">Редактирование вопроса</h1>
+    <p class="page-lead">
+        Курс «{{ edit.course_title }}». Измените текст вопроса, варианты ответов и метаданные.
+    </p>
+</section>
+
+{% if error_message %}
+<div class="admin-form-error" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<form
+    class="admin-create-form"
+    action="/admin/courses/{{ edit.slug }}/quiz/questions/{{ edit.question_id }}/edit"
+    method="post"
+    aria-label="Форма редактирования вопроса теста"
+>
+    <fieldset class="admin-form-section">
+        <legend class="admin-form-section-title">Вопрос</legend>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="question-text">Текст вопроса</label>
+            <textarea
+                class="admin-form-textarea admin-form-textarea--tall"
+                id="question-text"
+                name="text"
+                rows="4"
+                required
+            >{{ form_text }}</textarea>
+        </div>
+    </fieldset>
+
+    <fieldset class="admin-form-section">
+        <legend class="admin-form-section-title">Варианты ответа</legend>
+        <p class="admin-form-hint">Выберите один правильный вариант. ID вариантов изменить нельзя.</p>
+
+        <div class="admin-quiz-option-edit-list">
+            {% for option in edit.options %}
+            <div class="admin-quiz-option-edit-row">
+                <div class="admin-quiz-option-edit-radio">
+                    <input
+                        type="radio"
+                        id="correct-{{ option.id }}"
+                        name="correct_option_id"
+                        value="{{ option.id }}"
+                        {% if form_correct_option_id == option.id %}checked{% endif %}
+                        required
+                    >
+                    <label for="correct-{{ option.id }}">Правильный</label>
+                </div>
+                <div class="admin-quiz-option-edit-input">
+                    <label class="admin-form-label" for="option-text-{{ loop.index0 }}">
+                        Вариант {{ option.id }}
+                    </label>
+                    <input
+                        class="admin-form-input"
+                        type="text"
+                        id="option-text-{{ loop.index0 }}"
+                        name="option_text_{{ loop.index0 }}"
+                        value="{{ form_option_texts[loop.index0] }}"
+                        required
+                        autocomplete="off"
+                    >
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </fieldset>
+
+    <fieldset class="admin-form-section">
+        <legend class="admin-form-section-title">Дополнительно</legend>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="question-explanation">Пояснение</label>
+            <textarea
+                class="admin-form-textarea"
+                id="question-explanation"
+                name="explanation"
+                rows="3"
+            >{{ form_explanation }}</textarea>
+        </div>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="question-lesson">Урок</label>
+            <select class="admin-form-input" id="question-lesson" name="lesson">
+                <option value=""{% if not form_lesson %} selected{% endif %}>— Не привязан —</option>
+                {% for lesson in edit.course_lessons %}
+                <option value="{{ lesson.id }}"{% if form_lesson == lesson.id %} selected{% endif %}>
+                    {{ lesson.id }} — {{ lesson.title }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="question-difficulty">Сложность</label>
+            <input
+                class="admin-form-input"
+                type="number"
+                id="question-difficulty"
+                name="difficulty"
+                value="{{ form_difficulty }}"
+                min="0"
+                max="5"
+                required
+            >
+        </div>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="question-tags">Теги</label>
+            <span class="admin-form-hint">Каждый тег — с новой строки</span>
+            <textarea
+                class="admin-form-textarea"
+                id="question-tags"
+                name="tags"
+                rows="3"
+            >{{ form_tags }}</textarea>
+        </div>
+    </fieldset>
+
+    <div class="admin-form-actions">
+        <a class="button button-secondary" href="{{ edit.cancel_url }}">Отмена</a>
+        <button class="button button-primary" type="submit">Сохранить изменения</button>
+    </div>
+</form>
+{% endblock %}

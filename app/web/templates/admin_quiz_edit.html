@@ -101,6 +101,10 @@
             <div class="admin-quiz-question-header">
                 <span class="admin-quiz-question-number">{{ loop.index }}</span>
                 <p class="admin-quiz-question-text">{{ question.text }}</p>
+                <a
+                    class="button button-secondary button-small admin-quiz-question-edit-link"
+                    href="/admin/courses/{{ edit.slug }}/quiz/questions/{{ question.id }}/edit"
+                >Редактировать</a>
             </div>
 
             {% if question.lesson or question.difficulty or question.tags %}
