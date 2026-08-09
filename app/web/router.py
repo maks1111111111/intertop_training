@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -44,6 +44,11 @@ from app.web.admin_quiz_question_edit_service import (
     AdminQuizQuestionEditRequest,
     AdminQuizQuestionEditService,
     parse_question_tags,
+)
+from app.web.admin_quiz_question_reorder_service import (
+    AdminQuizQuestionReorderError,
+    AdminQuizQuestionReorderRequest,
+    AdminQuizQuestionReorderService,
 )
 from app.web.admin_service import AdminService
 from app.web.admin_generation_service import (
@@ -171,6 +176,13 @@ def get_admin_quiz_question_create_service(
 ) -> AdminQuizQuestionCreateService:
     """Return the admin quiz question create/delete service for the current application."""
     return AdminQuizQuestionCreateService(runtime.base_dir, runtime)
+
+
+def get_admin_quiz_question_reorder_service(
+    runtime: ContentRuntime = Depends(get_content_runtime),
+) -> AdminQuizQuestionReorderService:
+    """Return the admin quiz question reorder service for the current application."""
+    return AdminQuizQuestionReorderService(runtime.base_dir, runtime)
 
 
 # TODO: Replace with authenticated web user identity when auth is implemented.
@@ -1338,6 +1350,130 @@ async def admin_quiz_question_delete_submit(
     return RedirectResponse(
         url=f"/admin/courses/{result.slug}/quiz/edit",
         status_code=303,
+    )
+
+
+def _handle_admin_quiz_question_reorder(
+    slug: str,
+    question_id: str,
+    request: Request,
+    runtime: ContentRuntime,
+    edit_service: AdminQuizEditService,
+    reorder_service: AdminQuizQuestionReorderService,
+    *,
+    direction: str,
+) -> Union[RedirectResponse, HTMLResponse]:
+    """Shared handler for quiz question move-up/move-down POST requests."""
+    edit_view = edit_service.get_edit_view(slug)
+
+    reorder_request = AdminQuizQuestionReorderRequest(
+        slug=slug,
+        question_id=question_id,
+    )
+    try:
+        if direction == "up":
+            result = reorder_service.move_up(reorder_request)
+        else:
+            result = reorder_service.move_down(reorder_request)
+    except AdminQuizQuestionReorderError as exc:
+        if edit_view is not None:
+            return _render_admin_quiz_edit_page(
+                request,
+                edit_view,
+                error_message=exc.message,
+            )
+
+        course = runtime.get_course(slug)
+        if course is None or exc.message in {
+            "Курс не найден.",
+            "Некорректный идентификатор курса.",
+        }:
+            return templates.TemplateResponse(
+                request,
+                "not_found.html",
+                {
+                    "title": "Курс не найден",
+                    "message": "Запрошенный курс недоступен или не существует.",
+                },
+                status_code=404,
+            )
+
+        if exc.message == "Тест не найден.":
+            return templates.TemplateResponse(
+                request,
+                "not_found.html",
+                {
+                    "title": "Тест не найден",
+                    "message": "Для этого курса итоговый тест не создан.",
+                },
+                status_code=404,
+            )
+
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Ошибка",
+                "message": exc.message,
+            },
+            status_code=200,
+        )
+
+    return RedirectResponse(
+        url=f"/admin/courses/{result.slug}/quiz/edit",
+        status_code=303,
+    )
+
+
+@router.post(
+    "/admin/courses/{slug}/quiz/questions/{question_id}/move-up",
+    include_in_schema=False,
+)
+async def admin_quiz_question_move_up(
+    slug: str,
+    question_id: str,
+    request: Request,
+    runtime: ContentRuntime = Depends(get_content_runtime),
+    edit_service: AdminQuizEditService = Depends(get_admin_quiz_edit_service),
+    reorder_service: AdminQuizQuestionReorderService = Depends(
+        get_admin_quiz_question_reorder_service
+    ),
+):
+    """Move one quiz question up in the questions list."""
+    return _handle_admin_quiz_question_reorder(
+        slug,
+        question_id,
+        request,
+        runtime,
+        edit_service,
+        reorder_service,
+        direction="up",
+    )
+
+
+@router.post(
+    "/admin/courses/{slug}/quiz/questions/{question_id}/move-down",
+    include_in_schema=False,
+)
+async def admin_quiz_question_move_down(
+    slug: str,
+    question_id: str,
+    request: Request,
+    runtime: ContentRuntime = Depends(get_content_runtime),
+    edit_service: AdminQuizEditService = Depends(get_admin_quiz_edit_service),
+    reorder_service: AdminQuizQuestionReorderService = Depends(
+        get_admin_quiz_question_reorder_service
+    ),
+):
+    """Move one quiz question down in the questions list."""
+    return _handle_admin_quiz_question_reorder(
+        slug,
+        question_id,
+        request,
+        runtime,
+        edit_service,
+        reorder_service,
+        direction="down",
     )
 
 

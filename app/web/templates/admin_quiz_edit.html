@@ -108,6 +108,32 @@
                 <span class="admin-quiz-question-number">{{ loop.index }}</span>
                 <p class="admin-quiz-question-text">{{ question.text }}</p>
                 <div class="admin-quiz-question-actions">
+                    <div class="admin-quiz-question-reorder-actions" aria-label="Изменение порядка вопроса">
+                        <form
+                            class="admin-quiz-question-reorder-form"
+                            action="/admin/courses/{{ edit.slug }}/quiz/questions/{{ question.id }}/move-up"
+                            method="post"
+                        >
+                            <button
+                                class="button button-secondary button-small admin-quiz-question-reorder-button"
+                                type="submit"
+                                aria-label="Переместить вопрос вверх"
+                                {% if loop.first %}disabled{% endif %}
+                            >↑</button>
+                        </form>
+                        <form
+                            class="admin-quiz-question-reorder-form"
+                            action="/admin/courses/{{ edit.slug }}/quiz/questions/{{ question.id }}/move-down"
+                            method="post"
+                        >
+                            <button
+                                class="button button-secondary button-small admin-quiz-question-reorder-button"
+                                type="submit"
+                                aria-label="Переместить вопрос вниз"
+                                {% if loop.last %}disabled{% endif %}
+                            >↓</button>
+                        </form>
+                    </div>
                     <a
                         class="button button-secondary button-small admin-quiz-question-edit-link"
                         href="/admin/courses/{{ edit.slug }}/quiz/questions/{{ question.id }}/edit"
