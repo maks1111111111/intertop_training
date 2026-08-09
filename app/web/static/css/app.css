@@ -568,46 +568,190 @@ a:focus-visible,
     border: 0;
 }
 
+.dashboard-course-list {
+    gap: 1.25rem;
+}
+
 .dashboard-course-card {
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1.25rem;
+    padding: 1.5rem;
+}
+
+.dashboard-course-card--completed {
+    border-color: #a7f3d0;
+    background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
 }
 
 .dashboard-course-body {
     flex: 1 1 auto;
     min-width: 0;
+    display: grid;
+    gap: 1rem;
 }
 
-.dashboard-course-status {
-    margin: 0.5rem 0 0.75rem;
+.dashboard-course-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.dashboard-course-header .course-card-title {
+    margin: 0;
+    flex: 1 1 12rem;
+}
+
+.dashboard-status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.625rem;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.dashboard-status-badge--not_started {
     color: #6b7280;
-    font-size: 0.9375rem;
+    background: #f3f4f6;
+}
+
+.dashboard-status-badge--in_progress {
+    color: #1d4ed8;
+    background: #dbeafe;
+}
+
+.dashboard-status-badge--completed {
+    color: #065f46;
+    background: #d1fae5;
+}
+
+.dashboard-progress-section {
+    padding: 0.875rem 1rem;
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.625rem;
+}
+
+.dashboard-course-card--completed .dashboard-progress-section {
+    background: #ecfdf5;
+    border-color: #bbf7d0;
+}
+
+.dashboard-progress-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.dashboard-progress-heading {
+    color: #6b7280;
+    font-size: 0.875rem;
+    font-weight: 500;
 }
 
 .dashboard-progress {
     width: 100%;
-    max-width: 20rem;
-    height: 0.5rem;
+    height: 0.625rem;
     background: #e5e7eb;
     border-radius: 9999px;
     overflow: hidden;
+}
+
+.dashboard-progress--completed {
+    background: #bbf7d0;
 }
 
 .dashboard-progress-bar {
     height: 100%;
     background: #2563eb;
     border-radius: 9999px;
+    transition: width 0.2s ease;
+}
+
+.dashboard-progress--completed .dashboard-progress-bar {
+    background: #059669;
 }
 
 .dashboard-progress-label {
-    margin: 0.35rem 0 0;
-    font-weight: 600;
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 700;
     color: #111827;
 }
 
+.dashboard-course-card--completed .dashboard-progress-label {
+    color: #047857;
+}
+
+.dashboard-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: 0.75rem;
+}
+
+.dashboard-metric {
+    padding: 0.75rem 0.875rem;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.625rem;
+}
+
+.dashboard-metric-text {
+    margin: 0;
+    color: #374151;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.dashboard-last-lesson {
+    padding: 0.75rem 0.875rem;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.625rem;
+}
+
 .dashboard-meta {
-    margin: 0.35rem 0 0;
+    margin: 0;
     color: #6b7280;
-    font-size: 0.9375rem;
+    font-size: 0.875rem;
+}
+
+.dashboard-course-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 0.25rem;
+    border-top: 1px solid #e5e7eb;
+}
+
+.dashboard-course-card--completed .dashboard-course-actions {
+    border-top-color: #bbf7d0;
+}
+
+.dashboard-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    max-width: 28rem;
+    margin: 0 auto;
+    padding: 3rem 2rem;
+    text-align: center;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    border: 1px dashed #d1d5db;
+    border-radius: 0.875rem;
+}
+
+.dashboard-empty-state-message {
+    margin: 0;
+    color: #6b7280;
+    font-size: 1.0625rem;
 }
 
 @media (max-width: 768px) {
@@ -623,6 +767,20 @@ a:focus-visible,
     .course-card {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .dashboard-course-actions {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .dashboard-course-actions .button {
+        width: 100%;
+        text-align: center;
+    }
+
+    .dashboard-metrics {
+        grid-template-columns: 1fr;
     }
 
     .lesson-list-item {
