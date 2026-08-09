@@ -145,14 +145,17 @@ def _write_empty_course(courses_dir: Path, slug: str = "empty") -> None:
 
 
 def _create_test_app(courses_dir: Path) -> tuple:
-    """Return app, temp db directory handle, and db path for isolated tests."""
+    """Return app, temp db/upload handles, and db path for isolated tests."""
     db_tmp = tempfile.TemporaryDirectory()
     db_path = Path(db_tmp.name) / "test.db"
     initialize_database(db_path)
+    upload_tmp = tempfile.TemporaryDirectory()
+    upload_dir = Path(upload_tmp.name)
     app = create_app()
     app.state.db_path = db_path
     app.state.content_runtime = ContentRuntime(courses_dir)
-    return app, db_tmp, db_path
+    app.state.upload_dir = upload_dir
+    return app, db_tmp, db_path, upload_tmp
 
 
 class WebUiTests(unittest.TestCase):
@@ -163,10 +166,13 @@ class WebUiTests(unittest.TestCase):
         self.courses_dir = Path(self.tmp.name)
         _write_course(self.courses_dir, "alpha", title="Alpha Course", language="ru")
 
-        self.app, self.db_tmp, self.db_path = _create_test_app(self.courses_dir)
+        self.app, self.db_tmp, self.db_path, self.upload_tmp = _create_test_app(
+            self.courses_dir
+        )
         self.client = TestClient(self.app)
 
     def tearDown(self) -> None:
+        self.upload_tmp.cleanup()
         self.db_tmp.cleanup()
         self.tmp.cleanup()
 
@@ -317,7 +323,7 @@ class WebUiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             courses_dir = Path(tmp)
             _write_multi_lesson_course(courses_dir, "nav-course")
-            app, db_tmp, _db_path = _create_test_app(courses_dir)
+            app, db_tmp, _db_path, upload_tmp = _create_test_app(courses_dir)
             client = TestClient(app)
 
             response = client.get("/courses/nav-course/lessons/lesson_02")
@@ -327,18 +333,20 @@ class WebUiTests(unittest.TestCase):
             self.assertIn("lesson-sidebar-item--current", html)
             self.assertIn("Second lesson", html)
             self.assertIn('href="/courses/nav-course/lessons/lesson_01"', html)
+            upload_tmp.cleanup()
             db_tmp.cleanup()
 
     def test_lesson_navigation_for_multi_lesson_course(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             courses_dir = Path(tmp)
             _write_multi_lesson_course(courses_dir, "nav-course")
-            app, db_tmp, _db_path = _create_test_app(courses_dir)
+            app, db_tmp, _db_path, upload_tmp = _create_test_app(courses_dir)
             client = TestClient(app)
 
             first = client.get("/courses/nav-course/lessons/lesson_01")
             middle = client.get("/courses/nav-course/lessons/lesson_02")
             last = client.get("/courses/nav-course/lessons/lesson_03")
+            upload_tmp.cleanup()
             db_tmp.cleanup()
 
         first_html = first.text
@@ -369,11 +377,14 @@ class WebProgressUiTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.courses_dir = Path(self.tmp.name)
         _write_multi_lesson_course(self.courses_dir, "progress-course")
-        self.app, self.db_tmp, self.db_path = _create_test_app(self.courses_dir)
+        self.app, self.db_tmp, self.db_path, self.upload_tmp = _create_test_app(
+            self.courses_dir
+        )
         self.client = TestClient(self.app)
         self.progress = WebProgressService(self.db_path)
 
     def tearDown(self) -> None:
+        self.upload_tmp.cleanup()
         self.db_tmp.cleanup()
         self.tmp.cleanup()
 
@@ -467,7 +478,7 @@ class WebProgressUiTests(unittest.TestCase):
             courses_dir = Path(tmp)
             _write_multi_lesson_course(courses_dir, "quiz-progress")
             _write_quiz_json(courses_dir / "quiz-progress", "quiz-progress")
-            app, db_tmp, _db_path = _create_test_app(courses_dir)
+            app, db_tmp, _db_path, upload_tmp = _create_test_app(courses_dir)
             client = TestClient(app)
 
             for lesson_id in ("lesson_01", "lesson_02", "lesson_03"):
@@ -478,13 +489,14 @@ class WebProgressUiTests(unittest.TestCase):
 
             self.assertIn("Можно пройти итоговый тест", html)
             self.assertIn("Итоговый тест", html)
+            upload_tmp.cleanup()
             db_tmp.cleanup()
 
     def test_single_lesson_course_progress(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             courses_dir = Path(tmp)
             _write_course(courses_dir, "solo", title="Solo Course")
-            app, db_tmp, db_path = _create_test_app(courses_dir)
+            app, db_tmp, db_path, upload_tmp = _create_test_app(courses_dir)
             client = TestClient(app)
             progress = WebProgressService(db_path)
 
@@ -499,13 +511,14 @@ class WebProgressUiTests(unittest.TestCase):
             self.assertIn("100%", after.text)
             self.assertIn("Курс завершён", after.text)
             self.assertTrue(progress.is_lesson_completed("solo", "lesson_01"))
+            upload_tmp.cleanup()
             db_tmp.cleanup()
 
     def test_course_without_lessons_has_no_progress_section(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             courses_dir = Path(tmp)
             _write_empty_course(courses_dir, "empty")
-            app, db_tmp, _db_path = _create_test_app(courses_dir)
+            app, db_tmp, _db_path, upload_tmp = _create_test_app(courses_dir)
             client = TestClient(app)
 
             response = client.get("/courses/empty")
@@ -514,6 +527,7 @@ class WebProgressUiTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertNotIn("course-detail-progress-percent", html)
             self.assertIn("В этом курсе пока нет уроков", html)
+            upload_tmp.cleanup()
             db_tmp.cleanup()
 
 
@@ -526,10 +540,13 @@ class WebQuizUiTests(unittest.TestCase):
         _write_course(self.courses_dir, "plain", title="Plain Course")
         _write_course_with_quiz(self.courses_dir, "quiz-course")
 
-        self.app, self.db_tmp, self.db_path = _create_test_app(self.courses_dir)
+        self.app, self.db_tmp, self.db_path, self.upload_tmp = _create_test_app(
+            self.courses_dir
+        )
         self.client = TestClient(self.app)
 
     def tearDown(self) -> None:
+        self.upload_tmp.cleanup()
         self.db_tmp.cleanup()
         self.tmp.cleanup()
 

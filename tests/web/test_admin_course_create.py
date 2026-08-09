@@ -17,10 +17,13 @@ class AdminCourseCreatePageTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.courses_dir = Path(self.tmp.name)
-        self.app, self.db_tmp, self.db_path = _create_test_app(self.courses_dir)
+        self.app, self.db_tmp, self.db_path, self.upload_tmp = _create_test_app(
+            self.courses_dir
+        )
         self.client = TestClient(self.app)
 
     def tearDown(self) -> None:
+        self.upload_tmp.cleanup()
         self.db_tmp.cleanup()
         self.tmp.cleanup()
 
@@ -91,6 +94,13 @@ class AdminCourseCreatePageTests(unittest.TestCase):
     def test_create_page_has_continue_button(self) -> None:
         response = self.client.get("/admin/courses/new")
         self.assertIn("Continue →", response.text)
+
+    def test_create_page_has_source_file_input(self) -> None:
+        response = self.client.get("/admin/courses/new")
+        self.assertIn('name="source_file"', response.text)
+        self.assertIn('enctype="multipart/form-data"', response.text)
+        self.assertIn('method="post"', response.text)
+        self.assertIn('action="/admin/courses/new"', response.text)
 
     def test_create_page_back_button_points_to_admin(self) -> None:
         response = self.client.get("/admin/courses/new")

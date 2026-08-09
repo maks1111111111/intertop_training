@@ -14,7 +14,28 @@
     <p class="page-lead">Укажите параметры генерации курса. На следующем шаге можно будет продолжить настройку.</p>
 </section>
 
-<form class="admin-create-form" action="#" method="get" aria-label="Форма создания курса">
+{% if error_message %}
+<div class="admin-form-error" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<form class="admin-create-form" action="/admin/courses/new" method="post" enctype="multipart/form-data" aria-label="Форма создания курса">
+    <fieldset class="admin-form-section">
+        <legend class="admin-form-section-title">Исходный файл</legend>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="source-file">Файл источника</label>
+            <input
+                class="admin-form-file"
+                type="file"
+                id="source-file"
+                name="source_file"
+                accept=".pdf,.docx,.pptx,.mp4,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,video/mp4"
+                required
+            >
+            <p class="admin-form-hint">Поддерживаемые форматы: PDF, DOCX, PPTX, MP4.</p>
+        </div>
+    </fieldset>
+
     <fieldset class="admin-form-section">
         <legend class="admin-form-section-title">Основная информация</legend>
 

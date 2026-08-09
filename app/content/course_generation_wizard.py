@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 _SUPPORTED_SOURCE_EXTENSIONS = frozenset({".pdf", ".docx", ".pptx", ".mp4"})
+SUPPORTED_SOURCE_EXTENSIONS = _SUPPORTED_SOURCE_EXTENSIONS
 
 
 class Language(str, Enum):

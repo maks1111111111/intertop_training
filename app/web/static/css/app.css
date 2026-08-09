@@ -1586,6 +1586,97 @@ a:focus-visible,
     border-top: 1px solid #e5e7eb;
 }
 
+.admin-form-error {
+    margin-bottom: 1rem;
+    padding: 0.875rem 1rem;
+    color: #991b1b;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 0.5rem;
+}
+
+.admin-form-hint {
+    margin: 0;
+    color: #6b7280;
+    font-size: 0.875rem;
+}
+
+.admin-form-file {
+    width: 100%;
+    padding: 0.5rem 0;
+    color: #374151;
+    font: inherit;
+}
+
+.admin-upload-confirm {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    max-width: 42rem;
+}
+
+.admin-upload-confirm-card {
+    padding: 1.25rem 1.5rem;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.admin-upload-confirm-title {
+    margin: 0 0 1rem;
+    color: #111827;
+    font-size: 1.0625rem;
+    font-weight: 600;
+}
+
+.admin-upload-confirm-details {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0;
+}
+
+.admin-upload-confirm-row {
+    display: grid;
+    grid-template-columns: minmax(8rem, 11rem) minmax(0, 1fr);
+    gap: 0.75rem;
+}
+
+.admin-upload-confirm-row dt {
+    margin: 0;
+    color: #6b7280;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.admin-upload-confirm-row dd {
+    margin: 0;
+    color: #111827;
+    font-size: 0.9375rem;
+}
+
+.admin-upload-confirm-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 1rem 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.admin-upload-confirm-options li {
+    padding: 0.25rem 0.625rem;
+    color: #1e40af;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    background: #eff6ff;
+    border-radius: 999px;
+}
+
+.admin-upload-confirm-actions {
+    margin-top: 0.25rem;
+}
+
 @media (max-width: 768px) {
     .layout {
         grid-template-columns: 1fr;
@@ -1729,6 +1820,11 @@ a:focus-visible,
     .admin-form-actions .button {
         width: 100%;
         text-align: center;
+    }
+
+    .admin-upload-confirm-row {
+        grid-template-columns: 1fr;
+        gap: 0.25rem;
     }
 
     .main {

@@ -18,10 +18,13 @@ class AdminDashboardPageTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.courses_dir = Path(self.tmp.name)
-        self.app, self.db_tmp, self.db_path = _create_test_app(self.courses_dir)
+        self.app, self.db_tmp, self.db_path, self.upload_tmp = _create_test_app(
+            self.courses_dir
+        )
         self.client = TestClient(self.app)
 
     def tearDown(self) -> None:
+        self.upload_tmp.cleanup()
         self.db_tmp.cleanup()
         self.tmp.cleanup()
 

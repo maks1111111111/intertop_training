@@ -22,6 +22,7 @@ def create_app() -> FastAPI:
     initialize_database(db_path)
     application.state.db_path = db_path
     application.state.content_runtime = ContentRuntime(project_root / "courses")
+    application.state.upload_dir = project_root / "data" / "uploads"
     application.include_router(router)
     application.include_router(web_router)
     static_dir = project_root / "app" / "web" / "static"

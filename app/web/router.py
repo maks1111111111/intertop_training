@@ -13,6 +13,12 @@ from app.content.runtime import ContentRuntime
 from app.repositories import quiz_repository
 from app.repositories.progress_repository import ProgressRepository
 from app.web.admin_service import AdminService
+from app.web.admin_upload_service import (
+    AdminUploadError,
+    AdminUploadService,
+    build_upload_confirm_view,
+    parse_admin_course_form,
+)
 from app.web.dashboard_service import DashboardService
 from app.web.progress_service import WebProgressService
 from app.web.quiz_scoring import (
@@ -61,6 +67,11 @@ def get_admin_service(
 ) -> AdminService:
     """Return the admin service wired to the application runtime."""
     return AdminService(runtime)
+
+
+def get_upload_service(request: Request) -> AdminUploadService:
+    """Return the admin upload service for the configured upload directory."""
+    return AdminUploadService(request.app.state.upload_dir)
 
 
 # TODO: Replace with authenticated web user identity when auth is implemented.
@@ -119,6 +130,25 @@ def admin_dashboard_page(
     )
 
 
+def _render_admin_course_create_page(
+    request: Request,
+    admin_service: AdminService,
+    *,
+    error_message: str = "",
+) -> HTMLResponse:
+    """Render the course creation wizard form."""
+    create_view = admin_service.get_course_create_view()
+    return templates.TemplateResponse(
+        request,
+        "admin_course_create.html",
+        {
+            "active_nav": "admin",
+            "create_view": create_view,
+            "error_message": error_message,
+        },
+    )
+
+
 @router.get(
     "/admin/courses/new",
     response_class=HTMLResponse,
@@ -129,13 +159,49 @@ def admin_course_create_page(
     admin_service: AdminService = Depends(get_admin_service),
 ) -> HTMLResponse:
     """Render the first step of the course creation wizard."""
-    create_view = admin_service.get_course_create_view()
+    return _render_admin_course_create_page(request, admin_service)
+
+
+@router.post(
+    "/admin/courses/new",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def admin_course_create_submit(
+    request: Request,
+    admin_service: AdminService = Depends(get_admin_service),
+    upload_service: AdminUploadService = Depends(get_upload_service),
+) -> HTMLResponse:
+    """Validate and store an uploaded source file, then show confirmation."""
+    form = await request.form()
+    form_values = parse_admin_course_form(form)
+    upload_file = form.get("source_file")
+
+    filename = getattr(upload_file, "filename", None)
+    if upload_file is None or not filename:
+        return _render_admin_course_create_page(
+            request,
+            admin_service,
+            error_message="Файл не выбран. Загрузите документ или видео.",
+        )
+
+    content = await upload_file.read()
+    try:
+        saved = upload_service.save_upload(filename, content)
+    except AdminUploadError as exc:
+        return _render_admin_course_create_page(
+            request,
+            admin_service,
+            error_message=exc.message,
+        )
+
+    confirm_view = build_upload_confirm_view(saved, form_values)
     return templates.TemplateResponse(
         request,
-        "admin_course_create.html",
+        "admin_course_upload_confirm.html",
         {
             "active_nav": "admin",
-            "create_view": create_view,
+            "confirm": confirm_view,
         },
     )
 

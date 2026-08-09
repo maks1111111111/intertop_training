@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Подтверждение загрузки — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/admin">Админ</a>
+    <span aria-hidden="true">/</span>
+    <a href="/admin/courses/new">Создание курса</a>
+    <span aria-hidden="true">/</span>
+    <span>Подтверждение</span>
+</nav>
+
+<section class="page-header admin-create-page-header">
+    <h1 class="page-title">Файл загружен</h1>
+    <p class="page-lead">Проверьте параметры курса перед продолжением генерации.</p>
+</section>
+
+<section class="admin-upload-confirm">
+    <div class="admin-upload-confirm-card">
+        <h2 class="admin-upload-confirm-title">Исходный файл</h2>
+        <dl class="admin-upload-confirm-details">
+            <div class="admin-upload-confirm-row">
+                <dt>Имя файла</dt>
+                <dd>{{ confirm.original_filename }}</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Формат</dt>
+                <dd>{{ confirm.file_extension }}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <div class="admin-upload-confirm-card">
+        <h2 class="admin-upload-confirm-title">Параметры генерации</h2>
+        <dl class="admin-upload-confirm-details">
+            {% if confirm.course_title %}
+            <div class="admin-upload-confirm-row">
+                <dt>Название курса</dt>
+                <dd>{{ confirm.course_title }}</dd>
+            </div>
+            {% endif %}
+            {% if confirm.description %}
+            <div class="admin-upload-confirm-row">
+                <dt>Описание</dt>
+                <dd>{{ confirm.description }}</dd>
+            </div>
+            {% endif %}
+            <div class="admin-upload-confirm-row">
+                <dt>Source Language</dt>
+                <dd>{{ confirm.source_language_label }}</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Output Language</dt>
+                <dd>{{ confirm.output_language_label }}</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Lesson Count</dt>
+                <dd>{{ confirm.lesson_count }}</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Lesson Size</dt>
+                <dd>{{ confirm.lesson_size_label }}</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Difficulty</dt>
+                <dd>{{ confirm.difficulty_label }}</dd>
+            </div>
+        </dl>
+
+        <ul class="admin-upload-confirm-options">
+            {% if confirm.generate_quiz %}
+            <li>Generate Quiz</li>
+            {% endif %}
+            {% if confirm.include_practical_tasks %}
+            <li>Generate Practical Tasks</li>
+            {% endif %}
+            {% if confirm.include_checklists %}
+            <li>Generate Checklists</li>
+            {% endif %}
+            {% if confirm.include_explanations %}
+            <li>Include Explanations</li>
+            {% endif %}
+        </ul>
+    </div>
+
+    <div class="admin-form-actions admin-upload-confirm-actions">
+        <a class="button button-secondary" href="{{ confirm.edit_url }}">Назад к редактированию</a>
+        <a class="button button-primary" href="#">Продолжить</a>
+    </div>
+</section>
+{% endblock %}
