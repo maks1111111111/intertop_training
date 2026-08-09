@@ -10,6 +10,9 @@ from fastapi.templating import Jinja2Templates
 
 from app.api.mappers import course_mapper
 from app.content.runtime import ContentRuntime
+from app.repositories import quiz_repository
+from app.repositories.progress_repository import ProgressRepository
+from app.web.dashboard_service import DashboardService
 from app.web.progress_service import WebProgressService
 from app.web.quiz_scoring import (
     build_quiz_page_view,
@@ -39,6 +42,21 @@ def get_progress_service(db_path: Path = Depends(get_db_path)) -> WebProgressSer
     return WebProgressService(db_path)
 
 
+def get_dashboard_service(
+    runtime: ContentRuntime = Depends(get_content_runtime),
+) -> DashboardService:
+    """Return the dashboard service wired to the application runtime."""
+    return DashboardService(
+        runtime,
+        ProgressRepository(),
+        quiz_repository,
+    )
+
+
+# TODO: Replace with authenticated web user identity when auth is implemented.
+_WEB_DASHBOARD_TELEGRAM_ID = 1
+
+
 def _parse_quiz_answers(form_data) -> dict[str, str]:
     """Extract question answers from submitted form fields."""
     answers: dict[str, str] = {}
@@ -53,6 +71,24 @@ def _parse_quiz_answers(form_data) -> dict[str, str]:
 def root() -> RedirectResponse:
     """Redirect the site root to the course catalog."""
     return RedirectResponse(url="/courses", status_code=302)
+
+
+@router.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+def dashboard_page(
+    request: Request,
+    dashboard_service: DashboardService = Depends(get_dashboard_service),
+) -> HTMLResponse:
+    """Render the student dashboard with course progress placeholders."""
+    courses = dashboard_service.get_courses_for_user(_WEB_DASHBOARD_TELEGRAM_ID)
+    return templates.TemplateResponse(
+        request,
+        "dashboard.html",
+        {
+            "active_nav": "dashboard",
+            "courses": courses,
+            "courses_count": len(courses),
+        },
+    )
 
 
 @router.get("/courses", response_class=HTMLResponse, include_in_schema=False)

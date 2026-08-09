@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from app.content.runtime import ContentRuntime
-from app.repositories import quiz_repository as QuizRepository
+from app.repositories import quiz_repository
 from app.repositories.progress_repository import ProgressRepository
 from app.web.dashboard_service import CourseDashboardItem, DashboardService
 
@@ -73,7 +73,7 @@ class DashboardServiceTests(unittest.TestCase):
         self.service = DashboardService(
             self.runtime,
             self.progress_repository,
-            QuizRepository,
+            quiz_repository,
         )
 
     def tearDown(self) -> None:

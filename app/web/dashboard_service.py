@@ -9,10 +9,10 @@ keeping repository dependencies wired for future use.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import ModuleType
 from typing import Optional
 
 from app.content.runtime import ContentRuntime
-from app.repositories import quiz_repository as QuizRepository
 from app.repositories.progress_repository import ProgressRepository
 
 DEFAULT_STATUS = "not_started"
@@ -40,7 +40,7 @@ class DashboardService:
         self,
         runtime: ContentRuntime,
         progress_repository: ProgressRepository,
-        quiz_repository: QuizRepository,
+        quiz_repository: ModuleType,
     ) -> None:
         self._runtime = runtime
         self._progress_repository = progress_repository

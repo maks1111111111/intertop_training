@@ -568,6 +568,48 @@ a:focus-visible,
     border: 0;
 }
 
+.dashboard-course-card {
+    align-items: flex-start;
+}
+
+.dashboard-course-body {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.dashboard-course-status {
+    margin: 0.5rem 0 0.75rem;
+    color: #6b7280;
+    font-size: 0.9375rem;
+}
+
+.dashboard-progress {
+    width: 100%;
+    max-width: 20rem;
+    height: 0.5rem;
+    background: #e5e7eb;
+    border-radius: 9999px;
+    overflow: hidden;
+}
+
+.dashboard-progress-bar {
+    height: 100%;
+    background: #2563eb;
+    border-radius: 9999px;
+}
+
+.dashboard-progress-label {
+    margin: 0.35rem 0 0;
+    font-weight: 600;
+    color: #111827;
+}
+
+.dashboard-meta {
+    margin: 0.35rem 0 0;
+    color: #6b7280;
+    font-size: 0.9375rem;
+}
+
 @media (max-width: 768px) {
     .layout {
         grid-template-columns: 1fr;
