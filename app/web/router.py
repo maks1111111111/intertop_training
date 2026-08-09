@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -12,6 +13,11 @@ from app.api.mappers import course_mapper
 from app.content.runtime import ContentRuntime
 from app.repositories import quiz_repository
 from app.repositories.progress_repository import ProgressRepository
+from app.web.admin_course_edit_service import (
+    AdminCourseEditError,
+    AdminCourseEditRequest,
+    AdminCourseEditService,
+)
 from app.web.admin_service import AdminService
 from app.web.admin_generation_service import (
     AdminGenerationError,
@@ -96,6 +102,13 @@ def get_admin_generation_service(
         courses_dir=runtime.base_dir,
         runtime=runtime,
     )
+
+
+def get_admin_course_edit_service(
+    runtime: ContentRuntime = Depends(get_content_runtime),
+) -> AdminCourseEditService:
+    """Return the admin course edit service for the current application."""
+    return AdminCourseEditService(runtime.base_dir, runtime)
 
 
 # TODO: Replace with authenticated web user identity when auth is implemented.
@@ -424,6 +437,110 @@ def admin_course_detail_page(
             "active_nav": "admin",
             "detail": detail,
         },
+    )
+
+
+def _render_admin_course_edit_page(
+    request: Request,
+    edit_view,
+    *,
+    error_message: str = "",
+    form_title: Optional[str] = None,
+    form_description: Optional[str] = None,
+    form_language: Optional[str] = None,
+) -> HTMLResponse:
+    """Render the admin course metadata edit form."""
+    return templates.TemplateResponse(
+        request,
+        "admin_course_edit.html",
+        {
+            "active_nav": "admin",
+            "edit": edit_view,
+            "error_message": error_message,
+            "form_title": edit_view.title if form_title is None else form_title,
+            "form_description": (
+                edit_view.description if form_description is None else form_description
+            ),
+            "form_language": edit_view.language if form_language is None else form_language,
+        },
+    )
+
+
+@router.get(
+    "/admin/courses/{slug}/edit",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_course_edit_page(
+    slug: str,
+    request: Request,
+    edit_service: AdminCourseEditService = Depends(get_admin_course_edit_service),
+) -> HTMLResponse:
+    """Render the course metadata edit form for one published course."""
+    edit_view = edit_service.get_edit_view(slug)
+    if edit_view is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    return _render_admin_course_edit_page(request, edit_view)
+
+
+@router.post(
+    "/admin/courses/{slug}/edit",
+    include_in_schema=False,
+)
+async def admin_course_edit_submit(
+    slug: str,
+    request: Request,
+    edit_service: AdminCourseEditService = Depends(get_admin_course_edit_service),
+):
+    """Validate and persist updated course metadata, then redirect to detail."""
+    edit_view = edit_service.get_edit_view(slug)
+    if edit_view is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    form = await request.form()
+    title = str(form.get("title") or "")
+    description = str(form.get("description") or "")
+    language = str(form.get("language") or "")
+
+    try:
+        result = edit_service.update_metadata(
+            AdminCourseEditRequest(
+                slug=slug,
+                title=title,
+                description=description,
+                language=language,
+            )
+        )
+    except AdminCourseEditError as exc:
+        return _render_admin_course_edit_page(
+            request,
+            edit_view,
+            error_message=exc.message,
+            form_title=title,
+            form_description=description,
+            form_language=language,
+        )
+
+    return RedirectResponse(
+        url=f"/admin/courses/{result.slug}",
+        status_code=303,
     )
 
 
