@@ -1577,6 +1577,10 @@ a:focus-visible,
     min-height: 6rem;
 }
 
+.admin-form-textarea--tall {
+    min-height: 16rem;
+}
+
 .admin-form-actions {
     display: flex;
     flex-wrap: wrap;

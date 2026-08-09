@@ -18,6 +18,12 @@ from app.web.admin_course_edit_service import (
     AdminCourseEditRequest,
     AdminCourseEditService,
 )
+from app.web.admin_lesson_edit_service import (
+    AdminLessonEditError,
+    AdminLessonEditRequest,
+    AdminLessonEditService,
+    _parse_multiline_list,
+)
 from app.web.admin_service import AdminService
 from app.web.admin_generation_service import (
     AdminGenerationError,
@@ -109,6 +115,13 @@ def get_admin_course_edit_service(
 ) -> AdminCourseEditService:
     """Return the admin course edit service for the current application."""
     return AdminCourseEditService(runtime.base_dir, runtime)
+
+
+def get_admin_lesson_edit_service(
+    runtime: ContentRuntime = Depends(get_content_runtime),
+) -> AdminLessonEditService:
+    """Return the admin lesson edit service for the current application."""
+    return AdminLessonEditService(runtime.base_dir, runtime)
 
 
 # TODO: Replace with authenticated web user identity when auth is implemented.
@@ -536,6 +549,142 @@ async def admin_course_edit_submit(
             form_title=title,
             form_description=description,
             form_language=language,
+        )
+
+    return RedirectResponse(
+        url=f"/admin/courses/{result.slug}",
+        status_code=303,
+    )
+
+
+def _render_admin_lesson_edit_page(
+    request: Request,
+    edit_view,
+    *,
+    error_message: str = "",
+    form_title: Optional[str] = None,
+    form_description: Optional[str] = None,
+    form_practical_task: Optional[str] = None,
+    form_checklist: Optional[str] = None,
+    form_key_takeaways: Optional[str] = None,
+    form_application_tips: Optional[str] = None,
+) -> HTMLResponse:
+    """Render the admin lesson edit form."""
+    return templates.TemplateResponse(
+        request,
+        "admin_lesson_edit.html",
+        {
+            "active_nav": "admin",
+            "edit": edit_view,
+            "error_message": error_message,
+            "form_title": edit_view.title if form_title is None else form_title,
+            "form_description": (
+                edit_view.description if form_description is None else form_description
+            ),
+            "form_practical_task": (
+                edit_view.practical_task
+                if form_practical_task is None
+                else form_practical_task
+            ),
+            "form_checklist": (
+                edit_view.checklist_text if form_checklist is None else form_checklist
+            ),
+            "form_key_takeaways": (
+                edit_view.key_takeaways_text
+                if form_key_takeaways is None
+                else form_key_takeaways
+            ),
+            "form_application_tips": (
+                edit_view.application_tips_text
+                if form_application_tips is None
+                else form_application_tips
+            ),
+        },
+    )
+
+
+@router.get(
+    "/admin/courses/{slug}/lessons/{lesson_id}/edit",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_lesson_edit_page(
+    slug: str,
+    lesson_id: str,
+    request: Request,
+    edit_service: AdminLessonEditService = Depends(get_admin_lesson_edit_service),
+) -> HTMLResponse:
+    """Render the lesson edit form for one published lesson."""
+    edit_view = edit_service.get_edit_view(slug, lesson_id)
+    if edit_view is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Урок не найден",
+                "message": "Запрошенный урок недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    return _render_admin_lesson_edit_page(request, edit_view)
+
+
+@router.post(
+    "/admin/courses/{slug}/lessons/{lesson_id}/edit",
+    include_in_schema=False,
+)
+async def admin_lesson_edit_submit(
+    slug: str,
+    lesson_id: str,
+    request: Request,
+    edit_service: AdminLessonEditService = Depends(get_admin_lesson_edit_service),
+):
+    """Validate and persist updated lesson content, then redirect to course detail."""
+    edit_view = edit_service.get_edit_view(slug, lesson_id)
+    if edit_view is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Урок не найден",
+                "message": "Запрошенный урок недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    form = await request.form()
+    title = str(form.get("title") or "")
+    description = str(form.get("description") or "")
+    practical_task = str(form.get("practical_task") or "")
+    checklist_raw = str(form.get("checklist") or "")
+    key_takeaways_raw = str(form.get("key_takeaways") or "")
+    application_tips_raw = str(form.get("application_tips") or "")
+
+    try:
+        result = edit_service.update_lesson(
+            AdminLessonEditRequest(
+                slug=slug,
+                lesson_id=lesson_id,
+                title=title,
+                description=description,
+                practical_task=practical_task,
+                checklist=_parse_multiline_list(checklist_raw),
+                key_takeaways=_parse_multiline_list(key_takeaways_raw),
+                application_tips=_parse_multiline_list(application_tips_raw),
+            )
+        )
+    except AdminLessonEditError as exc:
+        return _render_admin_lesson_edit_page(
+            request,
+            edit_view,
+            error_message=exc.message,
+            form_title=title,
+            form_description=description,
+            form_practical_task=practical_task,
+            form_checklist=checklist_raw,
+            form_key_takeaways=key_takeaways_raw,
+            form_application_tips=application_tips_raw,
         )
 
     return RedirectResponse(

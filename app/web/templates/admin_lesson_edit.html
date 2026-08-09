@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Редактирование урока — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/admin">Админ</a>
+    <span aria-hidden="true">/</span>
+    <a href="{{ edit.detail_url }}">{{ edit.course_title or edit.slug }}</a>
+    <span aria-hidden="true">/</span>
+    <span>Урок {{ edit.lesson_order }}</span>
+    <span aria-hidden="true">/</span>
+    <span>Редактирование</span>
+</nav>
+
+<section class="page-header admin-create-page-header">
+    <h1 class="page-title">Редактирование урока</h1>
+    <p class="page-lead">
+        Курс «{{ edit.course_title }}» — урок {{ edit.lesson_order }}.
+        Измените содержание и дополнительные материалы урока.
+    </p>
+</section>
+
+{% if error_message %}
+<div class="admin-form-error" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<form
+    class="admin-create-form"
+    action="/admin/courses/{{ edit.slug }}/lessons/{{ edit.lesson_id }}/edit"
+    method="post"
+    aria-label="Форма редактирования урока"
+>
+    <fieldset class="admin-form-section">
+        <legend class="admin-form-section-title">Основная информация</legend>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="lesson-title">Название урока</label>
+            <input
+                class="admin-form-input"
+                type="text"
+                id="lesson-title"
+                name="title"
+                value="{{ form_title }}"
+                required
+                autocomplete="off"
+            >
+        </div>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="lesson-description">Содержание урока</label>
+            <textarea
+                class="admin-form-textarea admin-form-textarea--tall"
+                id="lesson-description"
+                name="description"
+                rows="12"
+            >{{ form_description }}</textarea>
+        </div>
+    </fieldset>
+
+    <fieldset class="admin-form-section">
+        <legend class="admin-form-section-title">Дополнительные материалы</legend>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="lesson-practical-task">Практическое задание</label>
+            <textarea
+                class="admin-form-textarea"
+                id="lesson-practical-task"
+                name="practical_task"
+                rows="4"
+            >{{ form_practical_task }}</textarea>
+        </div>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="lesson-checklist">Чеклист</label>
+            <span class="admin-form-hint">Каждый пункт — с новой строки</span>
+            <textarea
+                class="admin-form-textarea"
+                id="lesson-checklist"
+                name="checklist"
+                rows="4"
+            >{{ form_checklist }}</textarea>
+        </div>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="lesson-key-takeaways">Ключевые выводы</label>
+            <span class="admin-form-hint">Каждый пункт — с новой строки</span>
+            <textarea
+                class="admin-form-textarea"
+                id="lesson-key-takeaways"
+                name="key_takeaways"
+                rows="4"
+            >{{ form_key_takeaways }}</textarea>
+        </div>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="lesson-application-tips">Советы по применению</label>
+            <span class="admin-form-hint">Каждый пункт — с новой строки</span>
+            <textarea
+                class="admin-form-textarea"
+                id="lesson-application-tips"
+                name="application_tips"
+                rows="4"
+            >{{ form_application_tips }}</textarea>
+        </div>
+    </fieldset>
+
+    <div class="admin-form-actions">
+        <a class="button button-secondary" href="{{ edit.cancel_url }}">Отмена</a>
+        <button class="button button-primary" type="submit">Сохранить изменения</button>
+    </div>
+</form>
+{% endblock %}
