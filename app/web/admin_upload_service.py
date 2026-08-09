@@ -9,7 +9,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Optional
 
-from app.content.course_generation_wizard import SUPPORTED_SOURCE_EXTENSIONS
+from app.content.course_generation_wizard import (
+    CourseGenerationOptions,
+    CourseGenerationWizard,
+    DifficultyLevel,
+    Language,
+    LessonSize,
+    SUPPORTED_SOURCE_EXTENSIONS,
+)
 from app.web.admin_service import (
     DIFFICULTY_OPTIONS,
     LESSON_SIZE_OPTIONS,
@@ -19,8 +26,20 @@ from app.web.admin_service import (
 )
 
 
+_UPLOAD_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+_DEFAULT_WEB_QUESTIONS_PER_LESSON = 3
+
+
 class AdminUploadError(Exception):
     """Raised when an uploaded source file fails validation."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
+class AdminReviewError(Exception):
+    """Raised when the generation review step receives invalid state."""
 
     def __init__(self, message: str) -> None:
         self.message = message
@@ -56,8 +75,40 @@ class AdminCourseFormValues:
 
 
 @dataclass(frozen=True)
+class ResolvedUpload:
+    """Server-side reference to a stored upload resolved by upload_id."""
+
+    upload_id: str
+    source_path: Path
+    extension: str
+
+
+@dataclass(frozen=True)
 class AdminUploadConfirmView:
     """View model for the upload confirmation step."""
+
+    upload_id: str
+    original_filename: str
+    file_extension: str
+    form_values: AdminCourseFormValues
+    course_title: str
+    description: str
+    source_language_label: str
+    output_language_label: str
+    lesson_count: str
+    lesson_size_label: str
+    difficulty_label: str
+    generate_quiz: bool
+    include_practical_tasks: bool
+    include_checklists: bool
+    include_explanations: bool
+    edit_url: str
+    review_url: str
+
+
+@dataclass(frozen=True)
+class AdminGenerationReviewView:
+    """View model for the pre-generation review step."""
 
     original_filename: str
     file_extension: str
@@ -72,7 +123,9 @@ class AdminUploadConfirmView:
     include_practical_tasks: bool
     include_checklists: bool
     include_explanations: bool
-    edit_url: str
+    back_url: str
+    status_message: str
+    generation_note: str
 
 
 def _safe_filename(name: str) -> str:
@@ -124,8 +177,10 @@ def build_upload_confirm_view(
 ) -> AdminUploadConfirmView:
     """Build the confirmation page view from upload and form data."""
     return AdminUploadConfirmView(
+        upload_id=saved.upload_id,
         original_filename=saved.original_filename,
         file_extension=_extension_label(saved.extension),
+        form_values=form_values,
         course_title=form_values.course_title,
         description=form_values.description,
         source_language_label=_label_for(
@@ -150,6 +205,136 @@ def build_upload_confirm_view(
         include_checklists=form_values.include_checklists,
         include_explanations=form_values.include_explanations,
         edit_url="/admin/courses/new",
+        review_url="/admin/courses/new/review",
+    )
+
+
+def _parse_lesson_count(raw_value: str) -> int:
+    try:
+        return int(str(raw_value).strip())
+    except (TypeError, ValueError) as exc:
+        raise AdminReviewError(
+            "Некорректное количество уроков. Укажите целое число не меньше 1."
+        ) from exc
+
+
+def _parse_enum_value(enum_cls, raw_value: str, field_label: str):
+    try:
+        return enum_cls(str(raw_value).strip())
+    except ValueError as exc:
+        raise AdminReviewError(
+            f"Некорректное значение поля «{field_label}»."
+        ) from exc
+
+
+def _web_form_to_generation_options(
+    source_path: Path,
+    form_values: AdminCourseFormValues,
+) -> CourseGenerationOptions:
+    """Map submitted wizard form values to generation options."""
+    course_title = form_values.course_title or None
+    lesson_count = _parse_lesson_count(form_values.lesson_count)
+    source_language = _parse_enum_value(
+        Language,
+        form_values.source_language,
+        "Source Language",
+    )
+    output_language = _parse_enum_value(
+        Language,
+        form_values.output_language,
+        "Output Language",
+    )
+    lesson_size = _parse_enum_value(
+        LessonSize,
+        form_values.lesson_size,
+        "Lesson Size",
+    )
+    difficulty = _parse_enum_value(
+        DifficultyLevel,
+        form_values.difficulty,
+        "Difficulty",
+    )
+    questions_per_lesson = (
+        _DEFAULT_WEB_QUESTIONS_PER_LESSON
+        if form_values.generate_quiz
+        else 0
+    )
+    return CourseGenerationOptions(
+        source_path=source_path,
+        source_language=source_language,
+        output_language=output_language,
+        course_title=course_title,
+        difficulty=difficulty,
+        lesson_count=lesson_count,
+        lesson_size=lesson_size,
+        generate_quiz=form_values.generate_quiz,
+        questions_per_lesson=questions_per_lesson,
+        include_explanations=form_values.include_explanations,
+        include_practical_tasks=form_values.include_practical_tasks,
+        include_checklists=form_values.include_checklists,
+    )
+
+
+def _format_wizard_error(exc: ValueError) -> str:
+    message = str(exc)
+    if "lesson_count" in message:
+        return "Некорректное количество уроков. Укажите целое число не меньше 1."
+    if "course_title" in message:
+        return "Некорректное название курса."
+    return "Некорректные параметры генерации. Проверьте форму и попробуйте снова."
+
+
+def build_generation_review_view(
+    upload_service: AdminUploadService,
+    upload_id: str,
+    form_values: AdminCourseFormValues,
+    *,
+    original_filename: str,
+) -> AdminGenerationReviewView:
+    """Validate upload and wizard options, then build the review page view."""
+    resolved = upload_service.resolve_upload(upload_id)
+    options = _web_form_to_generation_options(resolved.source_path, form_values)
+    try:
+        CourseGenerationWizard().prepare(options)
+    except FileNotFoundError as exc:
+        raise AdminReviewError(
+            "Загруженный файл не найден. Загрузите файл заново."
+        ) from exc
+    except (ValueError, IsADirectoryError) as exc:
+        raise AdminReviewError(_format_wizard_error(exc)) from exc
+
+    safe_filename = _safe_filename(original_filename) if original_filename else "upload"
+    return AdminGenerationReviewView(
+        original_filename=safe_filename,
+        file_extension=_extension_label(resolved.extension),
+        course_title=form_values.course_title,
+        description=form_values.description,
+        source_language_label=_label_for(
+            SOURCE_LANGUAGE_OPTIONS,
+            form_values.source_language,
+        ),
+        output_language_label=_label_for(
+            OUTPUT_LANGUAGE_OPTIONS,
+            form_values.output_language,
+        ),
+        lesson_count=form_values.lesson_count,
+        lesson_size_label=_label_for(
+            LESSON_SIZE_OPTIONS,
+            form_values.lesson_size,
+        ),
+        difficulty_label=_label_for(
+            DIFFICULTY_OPTIONS,
+            form_values.difficulty,
+        ),
+        generate_quiz=form_values.generate_quiz,
+        include_practical_tasks=form_values.include_practical_tasks,
+        include_checklists=form_values.include_checklists,
+        include_explanations=form_values.include_explanations,
+        back_url="/admin/courses/new",
+        status_message="Материал готов к созданию курса",
+        generation_note=(
+            "На следующем шаге здесь будет запущено создание курса."
+        ),
     )
 
 
@@ -218,5 +403,48 @@ class AdminUploadService:
             original_filename=safe_name,
             stored_filename=stored_filename,
             stored_path=stored_path,
+            extension=extension,
+        )
+
+    def resolve_upload(self, upload_id: str) -> ResolvedUpload:
+        """Resolve a stored upload by its server-generated identifier.
+
+        Args:
+            upload_id: Server-generated upload identifier from ``save_upload``.
+
+        Returns:
+            Resolved upload metadata including the validated source path.
+
+        Raises:
+            AdminReviewError: If the identifier is invalid or the file is missing.
+        """
+        normalized = str(upload_id or "").strip().lower()
+        if not _UPLOAD_ID_PATTERN.fullmatch(normalized):
+            raise AdminReviewError(
+                "Недействительный идентификатор загрузки."
+            )
+
+        upload_root = self._upload_dir.resolve()
+        matches: list[tuple[str, Path]] = []
+        for extension in SUPPORTED_SOURCE_EXTENSIONS:
+            candidate = (self._upload_dir / f"{normalized}{extension}").resolve()
+            if os.path.commonpath([str(candidate), str(upload_root)]) != str(
+                upload_root
+            ):
+                raise AdminReviewError(
+                    "Недействительный идентификатор загрузки."
+                )
+            if candidate.is_file():
+                matches.append((extension, candidate))
+
+        if not matches:
+            raise AdminReviewError(
+                "Загруженный файл не найден. Загрузите файл заново."
+            )
+
+        extension, source_path = matches[0]
+        return ResolvedUpload(
+            upload_id=normalized,
+            source_path=source_path,
             extension=extension,
         )

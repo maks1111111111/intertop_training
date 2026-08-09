@@ -14,8 +14,10 @@ from app.repositories import quiz_repository
 from app.repositories.progress_repository import ProgressRepository
 from app.web.admin_service import AdminService
 from app.web.admin_upload_service import (
+    AdminReviewError,
     AdminUploadError,
     AdminUploadService,
+    build_generation_review_view,
     build_upload_confirm_view,
     parse_admin_course_form,
 )
@@ -202,6 +204,53 @@ async def admin_course_create_submit(
         {
             "active_nav": "admin",
             "confirm": confirm_view,
+        },
+    )
+
+
+@router.post(
+    "/admin/courses/new/review",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def admin_course_generation_review(
+    request: Request,
+    admin_service: AdminService = Depends(get_admin_service),
+    upload_service: AdminUploadService = Depends(get_upload_service),
+) -> HTMLResponse:
+    """Validate uploaded source and wizard options, then show review page."""
+    form = await request.form()
+    form_values = parse_admin_course_form(form)
+    upload_id = str(form.get("upload_id") or "").strip()
+    original_filename = str(form.get("original_filename") or "").strip()
+
+    if not upload_id:
+        return _render_admin_course_create_page(
+            request,
+            admin_service,
+            error_message="Не указан загруженный файл. Загрузите файл заново.",
+        )
+
+    try:
+        review_view = build_generation_review_view(
+            upload_service,
+            upload_id,
+            form_values,
+            original_filename=original_filename,
+        )
+    except AdminReviewError as exc:
+        return _render_admin_course_create_page(
+            request,
+            admin_service,
+            error_message=exc.message,
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "admin_course_generation_review.html",
+        {
+            "active_nav": "admin",
+            "review": review_view,
         },
     )
 

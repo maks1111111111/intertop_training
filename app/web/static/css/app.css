@@ -1677,6 +1677,64 @@ a:focus-visible,
     margin-top: 0.25rem;
 }
 
+.admin-upload-confirm-form {
+    margin: 0;
+}
+
+.admin-generation-review {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    max-width: 42rem;
+}
+
+.admin-generation-review-status {
+    padding: 0.875rem 1rem;
+    color: #065f46;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    border-radius: 0.75rem;
+}
+
+.admin-generation-review-features {
+    display: grid;
+    gap: 0.625rem;
+    margin: 1rem 0 0;
+    padding: 0.875rem 0 0;
+    border-top: 1px solid #e5e7eb;
+}
+
+.admin-generation-review-feature {
+    display: grid;
+    grid-template-columns: minmax(8rem, 11rem) minmax(0, 1fr);
+    gap: 0.75rem;
+}
+
+.admin-generation-review-feature dt {
+    margin: 0;
+    color: #6b7280;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.admin-generation-review-feature dd {
+    margin: 0;
+    color: #111827;
+    font-size: 0.9375rem;
+}
+
+.admin-generation-review-note {
+    margin: 0;
+    color: #6b7280;
+    font-size: 0.875rem;
+}
+
+.admin-generation-review-actions {
+    margin-top: 0.25rem;
+}
+
 @media (max-width: 768px) {
     .layout {
         grid-template-columns: 1fr;

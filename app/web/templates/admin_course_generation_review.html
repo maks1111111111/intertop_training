@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Проверка перед созданием — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/admin">Админ</a>
+    <span aria-hidden="true">/</span>
+    <a href="/admin/courses/new">Создание курса</a>
+    <span aria-hidden="true">/</span>
+    <span>Проверка</span>
+</nav>
+
+<section class="page-header admin-create-page-header">
+    <h1 class="page-title">Проверка перед созданием</h1>
+    <p class="page-lead">{{ review.status_message }}</p>
+</section>
+
+<section class="admin-generation-review">
+    <div class="admin-generation-review-status" role="status">
+        {{ review.status_message }}
+    </div>
+
+    <div class="admin-upload-confirm-card">
+        <h2 class="admin-upload-confirm-title">Исходный файл</h2>
+        <dl class="admin-upload-confirm-details">
+            <div class="admin-upload-confirm-row">
+                <dt>Имя файла</dt>
+                <dd>{{ review.original_filename }}</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Формат</dt>
+                <dd>{{ review.file_extension }}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <div class="admin-upload-confirm-card">
+        <h2 class="admin-upload-confirm-title">Параметры генерации</h2>
+        <dl class="admin-upload-confirm-details">
+            {% if review.course_title %}
+            <div class="admin-upload-confirm-row">
+                <dt>Название курса</dt>
+                <dd>{{ review.course_title }}</dd>
+            </div>
+            {% endif %}
+            {% if review.description %}
+            <div class="admin-upload-confirm-row">
+                <dt>Описание</dt>
+                <dd>{{ review.description }}</dd>
+            </div>
+            {% endif %}
+            <div class="admin-upload-confirm-row">
+                <dt>Source Language</dt>
+                <dd>{{ review.source_language_label }}</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Output Language</dt>
+                <dd>{{ review.output_language_label }}</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Lesson Count</dt>
+                <dd>{{ review.lesson_count }}</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Lesson Size</dt>
+                <dd>{{ review.lesson_size_label }}</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Difficulty</dt>
+                <dd>{{ review.difficulty_label }}</dd>
+            </div>
+        </dl>
+
+        <dl class="admin-generation-review-features">
+            <div class="admin-generation-review-feature">
+                <dt>Generate Quiz</dt>
+                <dd>{% if review.generate_quiz %}Да{% else %}Нет{% endif %}</dd>
+            </div>
+            <div class="admin-generation-review-feature">
+                <dt>Generate Practical Tasks</dt>
+                <dd>{% if review.include_practical_tasks %}Да{% else %}Нет{% endif %}</dd>
+            </div>
+            <div class="admin-generation-review-feature">
+                <dt>Generate Checklists</dt>
+                <dd>{% if review.include_checklists %}Да{% else %}Нет{% endif %}</dd>
+            </div>
+            <div class="admin-generation-review-feature">
+                <dt>Include Explanations</dt>
+                <dd>{% if review.include_explanations %}Да{% else %}Нет{% endif %}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <p class="admin-generation-review-note">{{ review.generation_note }}</p>
+
+    <div class="admin-form-actions admin-generation-review-actions">
+        <a class="button button-secondary" href="{{ review.back_url }}">Назад</a>
+        <button class="button button-primary" type="button" disabled aria-disabled="true">
+            Создать курс
+        </button>
+    </div>
+</section>
+{% endblock %}

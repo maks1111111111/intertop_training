@@ -158,6 +158,8 @@ class AdminCourseUploadTests(unittest.TestCase):
         self.assertIn('href="/admin/courses/new"', response.text)
         self.assertIn("Назад к редактированию", response.text)
         self.assertIn("Продолжить", response.text)
+        self.assertIn('action="/admin/courses/new/review"', response.text)
+        self.assertIn('name="upload_id"', response.text)
 
     def test_admin_dashboard_still_works(self) -> None:
         response = self.client.get("/admin")

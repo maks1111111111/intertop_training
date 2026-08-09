@@ -84,9 +84,38 @@
         </ul>
     </div>
 
-    <div class="admin-form-actions admin-upload-confirm-actions">
-        <a class="button button-secondary" href="{{ confirm.edit_url }}">Назад к редактированию</a>
-        <a class="button button-primary" href="#">Продолжить</a>
-    </div>
+    <form
+        class="admin-upload-confirm-form"
+        action="{{ confirm.review_url }}"
+        method="post"
+        aria-label="Продолжение создания курса"
+    >
+        <input type="hidden" name="upload_id" value="{{ confirm.upload_id }}">
+        <input type="hidden" name="original_filename" value="{{ confirm.original_filename }}">
+        <input type="hidden" name="course_title" value="{{ confirm.form_values.course_title }}">
+        <input type="hidden" name="description" value="{{ confirm.form_values.description }}">
+        <input type="hidden" name="source_language" value="{{ confirm.form_values.source_language }}">
+        <input type="hidden" name="output_language" value="{{ confirm.form_values.output_language }}">
+        <input type="hidden" name="lesson_count" value="{{ confirm.form_values.lesson_count }}">
+        <input type="hidden" name="lesson_size" value="{{ confirm.form_values.lesson_size }}">
+        <input type="hidden" name="difficulty" value="{{ confirm.form_values.difficulty }}">
+        {% if confirm.form_values.generate_quiz %}
+        <input type="hidden" name="generate_quiz" value="1">
+        {% endif %}
+        {% if confirm.form_values.include_practical_tasks %}
+        <input type="hidden" name="include_practical_tasks" value="1">
+        {% endif %}
+        {% if confirm.form_values.include_checklists %}
+        <input type="hidden" name="include_checklists" value="1">
+        {% endif %}
+        {% if confirm.form_values.include_explanations %}
+        <input type="hidden" name="include_explanations" value="1">
+        {% endif %}
+
+        <div class="admin-form-actions admin-upload-confirm-actions">
+            <a class="button button-secondary" href="{{ confirm.edit_url }}">Назад к редактированию</a>
+            <button class="button button-primary" type="submit">Продолжить</button>
+        </div>
+    </form>
 </section>
 {% endblock %}
