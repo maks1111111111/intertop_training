@@ -1,4 +1,4 @@
-"""Tests for the admin course creation wizard foundation page."""
+"""Tests for the admin course creation wizard generation options page."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from tests.web.test_web_ui import _create_test_app, _write_course
+from tests.web.test_web_ui import _create_test_app
 
 
 class AdminCourseCreatePageTests(unittest.TestCase):
-    """Verify the course creation wizard foundation page."""
+    """Verify the course creation wizard generation options page."""
 
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -32,29 +32,70 @@ class AdminCourseCreatePageTests(unittest.TestCase):
         response = self.client.get("/admin/courses/new")
         self.assertIn("Создание курса", response.text)
 
-    def test_create_page_has_language_selector(self) -> None:
+    def test_create_page_displays_course_title_field(self) -> None:
         response = self.client.get("/admin/courses/new")
-        self.assertIn('id="course-language"', response.text)
+        self.assertIn("Course title", response.text)
+        self.assertIn('id="course-title"', response.text)
+
+    def test_create_page_displays_lesson_count_field(self) -> None:
+        response = self.client.get("/admin/courses/new")
+        self.assertIn("Lesson Count", response.text)
+        self.assertIn('id="lesson-count"', response.text)
+        self.assertIn('type="number"', response.text)
+
+    def test_create_page_has_source_language_selector(self) -> None:
+        response = self.client.get("/admin/courses/new")
+        self.assertIn('id="source-language"', response.text)
+        self.assertIn("Source Language", response.text)
         self.assertIn("Авто", response.text)
         self.assertIn("Русский", response.text)
         self.assertIn("Қазақша", response.text)
         self.assertIn("English", response.text)
 
+    def test_create_page_has_output_language_selector(self) -> None:
+        response = self.client.get("/admin/courses/new")
+        self.assertIn('id="output-language"', response.text)
+        self.assertIn("Output Language", response.text)
+        output_section_start = response.text.index('id="output-language"')
+        output_section = response.text[output_section_start : output_section_start + 500]
+        self.assertNotIn('value="auto"', output_section)
+
+    def test_create_page_has_difficulty_selector(self) -> None:
+        response = self.client.get("/admin/courses/new")
+        self.assertIn('id="difficulty"', response.text)
+        self.assertIn("Difficulty", response.text)
+        self.assertIn("Beginner", response.text)
+        self.assertIn("Basic", response.text)
+        self.assertIn("Advanced", response.text)
+        self.assertIn("Expert", response.text)
+
+    def test_create_page_has_lesson_size_selector(self) -> None:
+        response = self.client.get("/admin/courses/new")
+        self.assertIn('id="lesson-size"', response.text)
+        self.assertIn("Lesson Size", response.text)
+        self.assertIn("Short", response.text)
+        self.assertIn("Medium", response.text)
+        self.assertIn("Long", response.text)
+
+    def test_create_page_has_generation_checkboxes(self) -> None:
+        response = self.client.get("/admin/courses/new")
+        self.assertIn('id="generate-quiz"', response.text)
+        self.assertIn("Generate Quiz", response.text)
+        self.assertIn('id="generate-practical-tasks"', response.text)
+        self.assertIn("Generate Practical Tasks", response.text)
+        self.assertIn('id="generate-checklists"', response.text)
+        self.assertIn("Generate Checklists", response.text)
+        self.assertIn('id="include-explanations"', response.text)
+        self.assertIn("Include Explanations", response.text)
+
     def test_create_page_has_continue_button(self) -> None:
         response = self.client.get("/admin/courses/new")
-        self.assertIn("Продолжить", response.text)
+        self.assertIn("Continue →", response.text)
 
     def test_create_page_back_button_points_to_admin(self) -> None:
         response = self.client.get("/admin/courses/new")
         self.assertIn('href="/admin"', response.text)
         self.assertIn("Назад", response.text)
-
-    def test_create_page_has_form_fields(self) -> None:
-        response = self.client.get("/admin/courses/new")
-        self.assertIn("Название курса", response.text)
-        self.assertIn("Описание курса", response.text)
-        self.assertIn('id="course-title"', response.text)
-        self.assertIn('id="course-description"', response.text)
 
     def test_admin_dashboard_still_works(self) -> None:
         response = self.client.get("/admin")

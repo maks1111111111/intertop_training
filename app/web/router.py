@@ -135,7 +135,7 @@ def admin_course_create_page(
         "admin_course_create.html",
         {
             "active_nav": "admin",
-            "language_options": create_view.language_options,
+            "create_view": create_view,
         },
     )
 
