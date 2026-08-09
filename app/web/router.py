@@ -13,7 +13,13 @@ from app.content.runtime import ContentRuntime
 from app.repositories import quiz_repository
 from app.repositories.progress_repository import ProgressRepository
 from app.web.admin_service import AdminService
+from app.web.admin_generation_service import (
+    AdminGenerationError,
+    AdminGenerationRequest,
+    AdminGenerationService,
+)
 from app.web.admin_upload_service import (
+    AdminCourseFormValues,
     AdminReviewError,
     AdminUploadError,
     AdminUploadService,
@@ -74,6 +80,22 @@ def get_admin_service(
 def get_upload_service(request: Request) -> AdminUploadService:
     """Return the admin upload service for the configured upload directory."""
     return AdminUploadService(request.app.state.upload_dir)
+
+
+def get_admin_generation_service(
+    request: Request,
+    upload_service: AdminUploadService = Depends(get_upload_service),
+    runtime: ContentRuntime = Depends(get_content_runtime),
+) -> AdminGenerationService:
+    """Return the admin generation service for the current application."""
+    override = getattr(request.app.state, "admin_generation_service", None)
+    if override is not None:
+        return override
+    return AdminGenerationService(
+        upload_service=upload_service,
+        courses_dir=runtime.base_dir,
+        runtime=runtime,
+    )
 
 
 # TODO: Replace with authenticated web user identity when auth is implemented.
@@ -251,6 +273,123 @@ async def admin_course_generation_review(
         {
             "active_nav": "admin",
             "review": review_view,
+        },
+    )
+
+
+def _render_admin_generation_review_error(
+    request: Request,
+    admin_service: AdminService,
+    upload_service: AdminUploadService,
+    *,
+    form_values: AdminCourseFormValues,
+    upload_id: str,
+    original_filename: str,
+    error_message: str,
+) -> HTMLResponse:
+    """Return review page with a safe generation error message."""
+    try:
+        review_view = build_generation_review_view(
+            upload_service,
+            upload_id,
+            form_values,
+            original_filename=original_filename,
+            error_message=error_message,
+        )
+    except AdminReviewError:
+        return _render_admin_course_create_page(
+            request,
+            admin_service,
+            error_message=error_message,
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "admin_course_generation_review.html",
+        {
+            "active_nav": "admin",
+            "review": review_view,
+        },
+    )
+
+
+@router.post(
+    "/admin/courses/new/generate",
+    include_in_schema=False,
+)
+async def admin_course_generate(
+    request: Request,
+    admin_service: AdminService = Depends(get_admin_service),
+    upload_service: AdminUploadService = Depends(get_upload_service),
+    generation_service: AdminGenerationService = Depends(get_admin_generation_service),
+):
+    """Generate a course from validated upload and wizard options."""
+    form = await request.form()
+    form_values = parse_admin_course_form(form)
+    upload_id = str(form.get("upload_id") or "").strip()
+    original_filename = str(form.get("original_filename") or "").strip()
+
+    if not upload_id:
+        return _render_admin_course_create_page(
+            request,
+            admin_service,
+            error_message="Не указан загруженный файл. Загрузите файл заново.",
+        )
+
+    try:
+        result = generation_service.generate_course(
+            AdminGenerationRequest(
+                upload_id=upload_id,
+                form_values=form_values,
+                original_filename=original_filename,
+            )
+        )
+    except AdminGenerationError as exc:
+        return _render_admin_generation_review_error(
+            request,
+            admin_service,
+            upload_service,
+            form_values=form_values,
+            upload_id=upload_id,
+            original_filename=original_filename,
+            error_message=exc.message,
+        )
+
+    return RedirectResponse(
+        url=f"/admin/courses/{result.slug}/created",
+        status_code=303,
+    )
+
+
+@router.get(
+    "/admin/courses/{slug}/created",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_course_created_page(
+    slug: str,
+    request: Request,
+    generation_service: AdminGenerationService = Depends(get_admin_generation_service),
+) -> HTMLResponse:
+    """Render the post-generation success page for one course."""
+    created = generation_service.build_created_view(slug)
+    if created is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Созданный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "admin_course_created.html",
+        {
+            "active_nav": "admin",
+            "created": created,
         },
     )
 

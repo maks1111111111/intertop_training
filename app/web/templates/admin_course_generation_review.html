@@ -16,6 +16,10 @@
     <p class="page-lead">{{ review.status_message }}</p>
 </section>
 
+{% if review.error_message %}
+<div class="admin-form-error" role="alert">{{ review.error_message }}</div>
+{% endif %}
+
 <section class="admin-generation-review">
     <div class="admin-generation-review-status" role="status">
         {{ review.status_message }}
@@ -94,11 +98,59 @@
 
     <p class="admin-generation-review-note">{{ review.generation_note }}</p>
 
-    <div class="admin-form-actions admin-generation-review-actions">
-        <a class="button button-secondary" href="{{ review.back_url }}">Назад</a>
-        <button class="button button-primary" type="button" disabled aria-disabled="true">
-            Создать курс
-        </button>
-    </div>
+    <form
+        class="admin-generation-form"
+        method="post"
+        action="{{ review.generate_url }}"
+        id="admin-generation-form"
+    >
+        <input type="hidden" name="upload_id" value="{{ review.upload_id }}">
+        <input type="hidden" name="original_filename" value="{{ review.original_filename }}">
+        <input type="hidden" name="course_title" value="{{ review.form_values.course_title }}">
+        <input type="hidden" name="description" value="{{ review.form_values.description }}">
+        <input type="hidden" name="source_language" value="{{ review.form_values.source_language }}">
+        <input type="hidden" name="output_language" value="{{ review.form_values.output_language }}">
+        <input type="hidden" name="lesson_count" value="{{ review.form_values.lesson_count }}">
+        <input type="hidden" name="lesson_size" value="{{ review.form_values.lesson_size }}">
+        <input type="hidden" name="difficulty" value="{{ review.form_values.difficulty }}">
+        {% if review.form_values.generate_quiz %}
+        <input type="hidden" name="generate_quiz" value="1">
+        {% endif %}
+        {% if review.form_values.include_practical_tasks %}
+        <input type="hidden" name="include_practical_tasks" value="1">
+        {% endif %}
+        {% if review.form_values.include_checklists %}
+        <input type="hidden" name="include_checklists" value="1">
+        {% endif %}
+        {% if review.form_values.include_explanations %}
+        <input type="hidden" name="include_explanations" value="1">
+        {% endif %}
+
+        <div class="admin-form-actions admin-generation-review-actions">
+            <a class="button button-secondary" href="{{ review.back_url }}">Назад</a>
+            <button
+                class="button button-primary"
+                type="submit"
+                id="admin-generate-submit"
+            >
+                Создать курс
+            </button>
+        </div>
+    </form>
 </section>
+
+<script>
+(function () {
+    var form = document.getElementById("admin-generation-form");
+    var submit = document.getElementById("admin-generate-submit");
+    if (!form || !submit) {
+        return;
+    }
+    form.addEventListener("submit", function () {
+        submit.disabled = true;
+        submit.setAttribute("aria-disabled", "true");
+        submit.textContent = "Создание курса…";
+    });
+})();
+</script>
 {% endblock %}

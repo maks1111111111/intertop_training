@@ -170,9 +170,9 @@ def _validate_questions_per_lesson(generate_quiz: bool, questions_per_lesson: in
         raise ValueError("Field 'questions_per_lesson' must be an integer.")
 
     if generate_quiz:
-        if questions_per_lesson < 1:
+        if questions_per_lesson < 0:
             raise ValueError(
-                "Field 'questions_per_lesson' must be at least 1 when "
+                "Field 'questions_per_lesson' must be 0 or greater when "
                 "generate_quiz is enabled."
             )
         return questions_per_lesson

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Курс создан — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/admin">Админ</a>
+    <span aria-hidden="true">/</span>
+    <span>Курс создан</span>
+</nav>
+
+<section class="page-header admin-create-page-header">
+    <h1 class="page-title">Курс создан</h1>
+    <p class="page-lead">Курс успешно сгенерирован и доступен для просмотра.</p>
+</section>
+
+<section class="admin-generation-success">
+    <div class="admin-generation-success-status" role="status">
+        Курс «{{ created.title }}» готов к использованию.
+    </div>
+
+    <div class="admin-upload-confirm-card">
+        <h2 class="admin-upload-confirm-title">Сведения о курсе</h2>
+        <dl class="admin-upload-confirm-details">
+            <div class="admin-upload-confirm-row">
+                <dt>Название</dt>
+                <dd>{{ created.title }}</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Идентификатор</dt>
+                <dd><code>{{ created.slug }}</code></dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Уроков</dt>
+                <dd>{{ created.lessons_count }}</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Итоговый тест</dt>
+                <dd>{% if created.has_quiz %}Создан{% else %}Не создан{% endif %}</dd>
+            </div>
+        </dl>
+    </div>
+
+    <div class="admin-form-actions admin-generation-success-actions">
+        <a class="button button-secondary" href="{{ created.admin_url }}">К управлению курсами</a>
+        <a class="button button-primary" href="{{ created.course_url }}">Открыть курс</a>
+    </div>
+</section>
+{% endblock %}

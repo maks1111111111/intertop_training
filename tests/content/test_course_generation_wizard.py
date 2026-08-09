@@ -156,8 +156,16 @@ class CourseGenerationWizardTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.wizard.prepare(options)
 
-    def test_generate_quiz_enabled_requires_positive_questions(self) -> None:
-        options = self._options(generate_quiz=True, questions_per_lesson=0)
+    def test_generate_quiz_enabled_allows_adaptive_zero_questions(self) -> None:
+        prepared = self.wizard.prepare(
+            self._options(generate_quiz=True, questions_per_lesson=0)
+        )
+
+        self.assertTrue(prepared.generate_quiz)
+        self.assertEqual(prepared.questions_per_lesson, 0)
+
+    def test_generate_quiz_enabled_rejects_negative_questions(self) -> None:
+        options = self._options(generate_quiz=True, questions_per_lesson=-1)
 
         with self.assertRaises(ValueError):
             self.wizard.prepare(options)

@@ -27,7 +27,9 @@ from app.web.admin_service import (
 
 
 _UPLOAD_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
-_DEFAULT_WEB_QUESTIONS_PER_LESSON = 3
+# Web generation uses adaptive quiz sizing (questions_per_lesson=0) when quiz
+# is enabled. Actual per-lesson counts are computed by quiz_coverage policy.
+_ADAPTIVE_QUESTIONS_PER_LESSON = 0
 
 
 class AdminUploadError(Exception):
@@ -110,8 +112,10 @@ class AdminUploadConfirmView:
 class AdminGenerationReviewView:
     """View model for the pre-generation review step."""
 
+    upload_id: str
     original_filename: str
     file_extension: str
+    form_values: AdminCourseFormValues
     course_title: str
     description: str
     source_language_label: str
@@ -124,8 +128,10 @@ class AdminGenerationReviewView:
     include_checklists: bool
     include_explanations: bool
     back_url: str
+    generate_url: str
     status_message: str
     generation_note: str
+    error_message: str = ""
 
 
 def _safe_filename(name: str) -> str:
@@ -255,7 +261,7 @@ def _web_form_to_generation_options(
         "Difficulty",
     )
     questions_per_lesson = (
-        _DEFAULT_WEB_QUESTIONS_PER_LESSON
+        _ADAPTIVE_QUESTIONS_PER_LESSON
         if form_values.generate_quiz
         else 0
     )
@@ -290,6 +296,7 @@ def build_generation_review_view(
     form_values: AdminCourseFormValues,
     *,
     original_filename: str,
+    error_message: str = "",
 ) -> AdminGenerationReviewView:
     """Validate upload and wizard options, then build the review page view."""
     resolved = upload_service.resolve_upload(upload_id)
@@ -305,8 +312,10 @@ def build_generation_review_view(
 
     safe_filename = _safe_filename(original_filename) if original_filename else "upload"
     return AdminGenerationReviewView(
+        upload_id=resolved.upload_id,
         original_filename=safe_filename,
         file_extension=_extension_label(resolved.extension),
+        form_values=form_values,
         course_title=form_values.course_title,
         description=form_values.description,
         source_language_label=_label_for(
@@ -331,10 +340,12 @@ def build_generation_review_view(
         include_checklists=form_values.include_checklists,
         include_explanations=form_values.include_explanations,
         back_url="/admin/courses/new",
+        generate_url="/admin/courses/new/generate",
         status_message="Материал готов к созданию курса",
         generation_note=(
-            "На следующем шаге здесь будет запущено создание курса."
+            "Проверьте параметры и нажмите «Создать курс» для запуска генерации."
         ),
+        error_message=error_message,
     )
 
 

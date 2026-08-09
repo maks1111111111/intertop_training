@@ -98,7 +98,8 @@ class AdminCourseGenerationReviewTests(unittest.TestCase):
         self.assertIn("Medium", html)
         self.assertIn("Include Explanations", html)
         self.assertIn("Создать курс", html)
-        self.assertIn("На следующем шаге здесь будет запущено создание курса.", html)
+        self.assertIn("Проверьте параметры и нажмите «Создать курс»", html)
+        self.assertIn('action="/admin/courses/new/generate"', html)
 
     def test_review_resolves_upload_by_upload_id(self) -> None:
         _confirm_html, review_data = self._upload_and_extract_state()
