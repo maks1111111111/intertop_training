@@ -1181,6 +1181,10 @@ async def admin_lesson_generate_practical_task_apply(
     """Apply an AI preview practical task to the lesson."""
     form = await request.form()
     preview_id = str(form.get("preview_id") or "")
+    title = str(form.get("title") or "")
+    description = str(form.get("description") or "")
+    expected_result = str(form.get("expected_result") or "")
+    estimated_minutes = str(form.get("estimated_minutes") or "")
 
     try:
         result = apply_service.apply_preview(
@@ -1188,6 +1192,10 @@ async def admin_lesson_generate_practical_task_apply(
                 slug=slug,
                 lesson_id=lesson_id,
                 preview_id=preview_id,
+                title=title,
+                description=description,
+                expected_result=expected_result,
+                estimated_minutes=estimated_minutes,
             )
         )
     except AdminLessonPracticalTaskApplyError as exc:
@@ -1213,6 +1221,13 @@ async def admin_lesson_generate_practical_task_apply(
                 preview_page,
                 error_message=exc.message,
             )
+        preview_view = preview_service.with_edited_values(
+            preview_view,
+            title=title,
+            description=description,
+            expected_result=expected_result,
+            estimated_minutes=estimated_minutes,
+        )
         return _render_admin_lesson_generate_practical_task_page(
             request,
             preview_view,

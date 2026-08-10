@@ -47,6 +47,7 @@ class AdminLessonPracticalTaskPreviewView:
     description: str
     expected_result: str
     estimated_minutes: Optional[int]
+    estimated_minutes_input: str
     generated: bool
 
 
@@ -273,6 +274,46 @@ class AdminLessonPracticalTaskPreviewService:
             preview_id,
         )
 
+    def with_edited_values(
+        self,
+        view: AdminLessonPracticalTaskPreviewView,
+        *,
+        title: str,
+        description: str,
+        expected_result: str,
+        estimated_minutes: str,
+    ) -> AdminLessonPracticalTaskPreviewView:
+        """Return a generated preview view with admin-edited form values preserved."""
+        minutes_input = str(estimated_minutes or "")
+        parsed_minutes: Optional[int] = None
+        stripped = minutes_input.strip()
+        if stripped:
+            try:
+                parsed = int(stripped)
+                if parsed > 0:
+                    parsed_minutes = parsed
+            except ValueError:
+                parsed_minutes = view.estimated_minutes
+
+        return AdminLessonPracticalTaskPreviewView(
+            slug=view.slug,
+            lesson_id=view.lesson_id,
+            course_title=view.course_title,
+            lesson_title=view.lesson_title,
+            lesson_order=view.lesson_order,
+            edit_url=view.edit_url,
+            cancel_url=view.cancel_url,
+            generate_url=view.generate_url,
+            apply_url=view.apply_url,
+            preview_id=view.preview_id,
+            title=title,
+            description=description,
+            expected_result=expected_result,
+            estimated_minutes=parsed_minutes,
+            estimated_minutes_input=minutes_input,
+            generated=view.generated,
+        )
+
     def _store_generated_preview(
         self,
         slug: str,
@@ -296,6 +337,10 @@ class AdminLessonPracticalTaskPreviewService:
         course = self._runtime.get_course(slug)
         course_title = course.title if course is not None else slug
         lesson_id = lesson.path.name
+        estimated_minutes = task.estimated_minutes if task is not None else None
+        estimated_minutes_input = (
+            str(estimated_minutes) if estimated_minutes is not None else ""
+        )
         return AdminLessonPracticalTaskPreviewView(
             slug=slug,
             lesson_id=lesson_id,
@@ -314,7 +359,8 @@ class AdminLessonPracticalTaskPreviewService:
             title=task.title if task is not None else "",
             description=task.description if task is not None else "",
             expected_result=task.expected_result if task is not None else "",
-            estimated_minutes=task.estimated_minutes if task is not None else None,
+            estimated_minutes=estimated_minutes,
+            estimated_minutes_input=estimated_minutes_input,
             generated=generated,
         )
 

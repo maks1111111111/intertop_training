@@ -169,10 +169,27 @@ class AdminLessonPracticalTaskPreviewPostTests(unittest.TestCase):
 
     def test_preview_displays_generated_task(self) -> None:
         response = self.client.post(_preview_url())
-        self.assertIn("Проверка рабочего места", response.text)
+        self.assertIn('name="title"', response.text)
+        self.assertIn('name="description"', response.text)
+        self.assertIn('name="expected_result"', response.text)
+        self.assertIn('name="estimated_minutes"', response.text)
+        self.assertIn('value="Проверка рабочего места"', response.text)
         self.assertIn("Осмотрите рабочую зону", response.text)
         self.assertIn("Все риски обнаружены", response.text)
-        self.assertIn("15 мин.", response.text)
+        self.assertIn('value="15"', response.text)
+
+    def test_preview_contains_editable_fields(self) -> None:
+        response = self.client.post(_preview_url())
+        self.assertIn('id="task-title"', response.text)
+        self.assertIn('id="task-description"', response.text)
+        self.assertIn('id="task-expected-result"', response.text)
+        self.assertIn('id="task-estimated-minutes"', response.text)
+
+    def test_preview_notice_mentions_editing(self) -> None:
+        response = self.client.post(_preview_url())
+        self.assertIn("черновик", response.text)
+        self.assertIn("отредактировать", response.text)
+        self.assertIn("Применить", response.text)
 
     def test_preview_contains_apply_form(self) -> None:
         response = self.client.post(_preview_url())

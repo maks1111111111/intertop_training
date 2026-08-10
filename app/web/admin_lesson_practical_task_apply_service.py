@@ -41,6 +41,10 @@ class AdminLessonPracticalTaskApplyRequest:
     slug: str
     lesson_id: str
     preview_id: str
+    title: str
+    description: str
+    expected_result: str
+    estimated_minutes: str
 
 
 @dataclass(frozen=True)
@@ -93,6 +97,52 @@ def _serialize_structured_practical_task(task: StoredPreviewPracticalTask) -> di
     return serialized
 
 
+def _validate_edited_task(
+    *,
+    title: str,
+    description: str,
+    expected_result: str,
+    estimated_minutes_raw: str,
+) -> StoredPreviewPracticalTask:
+    normalized_title = str(title or "").strip()
+    if not normalized_title:
+        raise AdminLessonPracticalTaskApplyError(
+            "Укажите название практического задания."
+        )
+
+    normalized_description = str(description or "").strip()
+    if not normalized_description:
+        raise AdminLessonPracticalTaskApplyError(
+            "Добавьте описание практического задания."
+        )
+
+    normalized_expected_result = str(expected_result or "").strip()
+    if not normalized_expected_result:
+        raise AdminLessonPracticalTaskApplyError("Укажите критерии приёмки.")
+
+    minutes_text = str(estimated_minutes_raw or "").strip()
+    estimated_minutes: Optional[int] = None
+    if minutes_text:
+        try:
+            parsed_minutes = int(minutes_text)
+        except ValueError as exc:
+            raise AdminLessonPracticalTaskApplyError(
+                "Оценка времени должна быть положительным целым числом."
+            ) from exc
+        if parsed_minutes <= 0:
+            raise AdminLessonPracticalTaskApplyError(
+                "Оценка времени должна быть положительным целым числом."
+            )
+        estimated_minutes = parsed_minutes
+
+    return StoredPreviewPracticalTask(
+        title=normalized_title,
+        description=normalized_description,
+        expected_result=normalized_expected_result,
+        estimated_minutes=estimated_minutes,
+    )
+
+
 class AdminLessonPracticalTaskApplyService:
     """Apply an AI preview practical task to an existing lesson."""
 
@@ -135,15 +185,12 @@ class AdminLessonPracticalTaskApplyService:
                 "Предпросмотр задания недоступен. Сгенерируйте задание снова."
             )
 
-        task = record.task
-        if not task.title.strip() or not task.description.strip():
-            raise AdminLessonPracticalTaskApplyError(
-                "Не удалось применить практическое задание."
-            )
-        if not task.expected_result.strip():
-            raise AdminLessonPracticalTaskApplyError(
-                "Не удалось применить практическое задание."
-            )
+        task = _validate_edited_task(
+            title=request.title,
+            description=request.description,
+            expected_result=request.expected_result,
+            estimated_minutes_raw=request.estimated_minutes,
+        )
 
         try:
             lesson_json_path = _resolve_lesson_json_path(

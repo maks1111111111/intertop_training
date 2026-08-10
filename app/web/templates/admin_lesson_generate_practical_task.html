@@ -22,10 +22,17 @@
 </section>
 
 <div class="admin-preview-notice" role="note">
+    {% if preview.generated %}
+    <p>
+        AI сгенерировал черновик практического задания. Вы можете отредактировать его
+        перед применением. Урок изменится только после нажатия «Применить».
+    </p>
+    {% else %}
     <p>
         Практическое задание будет только сгенерировано для предварительного просмотра.
         Курс изменен не будет.
     </p>
+    {% endif %}
 </div>
 
 {% if error_message %}
@@ -45,37 +52,65 @@
     </div>
 </form>
 {% else %}
-<section class="admin-practical-task-preview" aria-labelledby="preview-task-heading">
-    <h2 class="admin-form-section-title" id="preview-task-heading">Предпросмотр практического задания</h2>
-
-    <div class="admin-practical-task-preview-card">
-        <h3 class="admin-practical-task-preview-title">{{ preview.title }}</h3>
-
-        <div class="admin-practical-task-preview-field">
-            <h4 class="admin-practical-task-preview-label">Описание</h4>
-            <p class="admin-practical-task-preview-text">{{ preview.description }}</p>
-        </div>
-
-        <div class="admin-practical-task-preview-field">
-            <h4 class="admin-practical-task-preview-label">Критерии приёмки</h4>
-            <p class="admin-practical-task-preview-text">{{ preview.expected_result }}</p>
-        </div>
-
-        {% if preview.estimated_minutes %}
-        <p class="admin-practical-task-preview-meta">
-            Оценка времени: {{ preview.estimated_minutes }} мин.
-        </p>
-        {% endif %}
-    </div>
-</section>
-
 <form
     class="admin-create-form admin-preview-apply-form"
     action="{{ preview.apply_url }}"
     method="post"
-    aria-label="Форма применения практического задания"
+    aria-label="Форма редактирования и применения практического задания"
 >
     <input type="hidden" name="preview_id" value="{{ preview.preview_id }}">
+
+    <section class="admin-practical-task-preview" aria-labelledby="preview-task-heading">
+        <h2 class="admin-form-section-title" id="preview-task-heading">Предпросмотр практического задания</h2>
+
+        <div class="admin-form-section">
+            <div class="admin-form-field">
+                <label class="admin-form-label" for="task-title">Название задания</label>
+                <input
+                    class="admin-form-input"
+                    id="task-title"
+                    name="title"
+                    type="text"
+                    value="{{ preview.title }}"
+                    required
+                >
+            </div>
+
+            <div class="admin-form-field">
+                <label class="admin-form-label" for="task-description">Описание</label>
+                <textarea
+                    class="admin-form-input admin-form-textarea"
+                    id="task-description"
+                    name="description"
+                    rows="6"
+                    required
+                >{{ preview.description }}</textarea>
+            </div>
+
+            <div class="admin-form-field">
+                <label class="admin-form-label" for="task-expected-result">Критерии приёмки</label>
+                <textarea
+                    class="admin-form-input admin-form-textarea"
+                    id="task-expected-result"
+                    name="expected_result"
+                    rows="4"
+                    required
+                >{{ preview.expected_result }}</textarea>
+            </div>
+
+            <div class="admin-form-field">
+                <label class="admin-form-label" for="task-estimated-minutes">Оценка времени, минут</label>
+                <input
+                    class="admin-form-input"
+                    id="task-estimated-minutes"
+                    name="estimated_minutes"
+                    type="number"
+                    min="1"
+                    value="{{ preview.estimated_minutes_input }}"
+                >
+            </div>
+        </div>
+    </section>
 
     <div class="admin-form-actions admin-preview-actions">
         <a class="button button-secondary" href="{{ preview.edit_url }}">Назад к уроку</a>
