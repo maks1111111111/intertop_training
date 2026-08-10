@@ -11,8 +11,10 @@ from app.content.docx_reader import DocxReader
 from app.content.import_readers import ImportReader
 from app.content.pdf_reader import PdfReader
 from app.content.pptx_reader import PptxReader
-from app.knowledge.models import KnowledgeDocument, KnowledgeSourceType
-from app.repositories import knowledge_document_repository
+from app.database.db import get_connection
+from app.knowledge.chunking import KnowledgeTextChunker
+from app.knowledge.models import KnowledgeDocument, KnowledgeDocumentChunk, KnowledgeSourceType
+from app.repositories import knowledge_chunk_repository, knowledge_document_repository
 
 _logger = logging.getLogger(__name__)
 
@@ -42,6 +44,7 @@ class KnowledgeDocumentImportRequest:
 @dataclass(frozen=True)
 class KnowledgeDocumentImportResult:
     document: KnowledgeDocument
+    chunks: tuple[KnowledgeDocumentChunk, ...]
 
 
 def _default_readers() -> dict[KnowledgeSourceType, ImportReader]:
@@ -95,16 +98,49 @@ def _resolve_title(request: KnowledgeDocumentImportRequest, source_path: Path) -
     return stem
 
 
+def _rollback_imported_document(
+    db_path: Path,
+    *,
+    company_id: str,
+    document_id: str,
+) -> None:
+    """Remove a partially imported document after chunk persistence failure."""
+    try:
+        with get_connection(db_path) as connection:
+            connection.execute(
+                """
+                DELETE FROM knowledge_document_chunks
+                WHERE company_id = ?
+                  AND document_id = ?
+                """,
+                (company_id, document_id),
+            )
+            connection.execute(
+                """
+                DELETE FROM knowledge_documents
+                WHERE company_id = ?
+                  AND document_id = ?
+                """,
+                (company_id, document_id),
+            )
+    except Exception:
+        _logger.exception(
+            "Failed to roll back partially imported knowledge document"
+        )
+
+
 class KnowledgeDocumentImportService:
     """Import corporate Knowledge Base documents from local source files."""
 
     def __init__(
         self,
         readers: Optional[Mapping[KnowledgeSourceType, ImportReader]] = None,
+        chunker: Optional[KnowledgeTextChunker] = None,
     ) -> None:
         self._readers = (
             dict(readers) if readers is not None else _default_readers()
         )
+        self._chunker = chunker or KnowledgeTextChunker()
 
     def import_document(
         self,
@@ -169,4 +205,37 @@ class KnowledgeDocumentImportService:
                 "Не удалось сохранить документ."
             )
 
-        return KnowledgeDocumentImportResult(document=document)
+        chunks = self._chunker.chunk(extracted_text)
+
+        try:
+            knowledge_chunk_repository.replace_document_chunks(
+                db_path,
+                company_id=document.company_id,
+                document_id=document.document_id,
+                chunks=chunks,
+            )
+        except Exception:
+            _logger.exception(
+                "Failed to persist knowledge document chunks after import"
+            )
+            _rollback_imported_document(
+                db_path,
+                company_id=document.company_id,
+                document_id=document.document_id,
+            )
+            raise KnowledgeDocumentImportError(
+                "Не удалось сохранить фрагменты документа."
+            )
+
+        stored_chunks = tuple(
+            knowledge_chunk_repository.list_for_document(
+                db_path,
+                company_id=document.company_id,
+                document_id=document.document_id,
+            )
+        )
+
+        return KnowledgeDocumentImportResult(
+            document=document,
+            chunks=stored_chunks,
+        )

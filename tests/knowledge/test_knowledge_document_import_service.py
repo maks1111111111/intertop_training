@@ -4,18 +4,21 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 from typing import Optional
 
 from app.content.import_readers import ImportReader
 from app.database.db import get_connection, initialize_database
+from app.knowledge.chunking import KnowledgeTextChunker
 from app.knowledge.import_service import (
     KnowledgeDocumentImportError,
     KnowledgeDocumentImportRequest,
+    KnowledgeDocumentImportResult,
     KnowledgeDocumentImportService,
 )
 from app.knowledge.models import KnowledgeDocument, KnowledgeDocumentStatus, KnowledgeSourceType
-from app.repositories import knowledge_document_repository
+from app.repositories import knowledge_chunk_repository, knowledge_document_repository
 
 
 class _FakeReader:
@@ -61,13 +64,13 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         title: Optional[str] = None,
         source_language: str = "auto",
         readers: Optional[dict[KnowledgeSourceType, ImportReader]] = None,
-    ) -> KnowledgeDocument:
-        service = (
-            KnowledgeDocumentImportService(readers=readers)
-            if readers is not None
-            else self.service
-        )
-        result = service.import_document(
+        chunker: Optional[KnowledgeTextChunker] = None,
+    ) -> KnowledgeDocumentImportResult:
+        service = KnowledgeDocumentImportService(
+            readers=readers,
+            chunker=chunker,
+        ) if readers is not None or chunker is not None else self.service
+        return service.import_document(
             self.db_path,
             KnowledgeDocumentImportRequest(
                 company_id=company_id,
@@ -76,7 +79,25 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
                 source_language=source_language,
             ),
         )
-        return result.document
+
+    def _import_document(
+        self,
+        source_path: Path,
+        *,
+        company_id: str = "company-a",
+        title: Optional[str] = None,
+        source_language: str = "auto",
+        readers: Optional[dict[KnowledgeSourceType, ImportReader]] = None,
+        chunker: Optional[KnowledgeTextChunker] = None,
+    ) -> KnowledgeDocument:
+        return self._import(
+            source_path,
+            company_id=company_id,
+            title=title,
+            source_language=source_language,
+            readers=readers,
+            chunker=chunker,
+        ).document
 
     def _document_count(self) -> int:
         with get_connection(self.db_path) as connection:
@@ -90,7 +111,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         docx_reader = _FakeReader("DOCX text")
         source_path = self._write_source("manual.pdf")
 
-        document = self._import(
+        document = self._import_document(
             source_path,
             readers={
                 KnowledgeSourceType.PDF: pdf_reader,
@@ -108,7 +129,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         docx_reader = _FakeReader("DOCX text")
         source_path = self._write_source("policy.docx")
 
-        document = self._import(
+        document = self._import_document(
             source_path,
             readers={
                 KnowledgeSourceType.PDF: pdf_reader,
@@ -125,7 +146,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         pptx_reader = _FakeReader("PPTX text")
         source_path = self._write_source("slides.pptx")
 
-        document = self._import(
+        document = self._import_document(
             source_path,
             readers={
                 KnowledgeSourceType.PDF: _FakeReader(),
@@ -145,7 +166,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
             KnowledgeSourceType.PPTX: _FakeReader(),
         }
 
-        document = self._import(source_path, readers=readers)
+        document = self._import_document(source_path, readers=readers)
 
         self.assertEqual(document.extracted_text, "Stored knowledge text")
         stored = knowledge_document_repository.get_by_document_id(
@@ -165,7 +186,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
             KnowledgeSourceType.PPTX: _FakeReader(),
         }
 
-        document = self._import(source_path, readers=readers)
+        document = self._import_document(source_path, readers=readers)
 
         self.assertIsInstance(document, KnowledgeDocument)
 
@@ -177,7 +198,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
             KnowledgeSourceType.PPTX: _FakeReader(),
         }
 
-        document = self._import(
+        document = self._import_document(
             source_path,
             company_id="tenant-x",
             readers=readers,
@@ -193,7 +214,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
             KnowledgeSourceType.PPTX: _FakeReader(),
         }
 
-        document = self._import(source_path, readers=readers)
+        document = self._import_document(source_path, readers=readers)
 
         self.assertEqual(document.original_filename, "return_policy.pdf")
         self.assertNotIn(str(source_path.parent), document.original_filename)
@@ -206,7 +227,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
             KnowledgeSourceType.PPTX: _FakeReader(),
         }
 
-        document = self._import(
+        document = self._import_document(
             source_path,
             title="  Safety Manual  ",
             readers=readers,
@@ -222,7 +243,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
             KnowledgeSourceType.PPTX: _FakeReader(),
         }
 
-        document = self._import(source_path, readers=readers)
+        document = self._import_document(source_path, readers=readers)
 
         self.assertEqual(document.title, "return_policy")
 
@@ -234,7 +255,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
             KnowledgeSourceType.PPTX: _FakeReader(),
         }
 
-        document = self._import(
+        document = self._import_document(
             source_path,
             source_language="ru",
             readers=readers,
@@ -250,7 +271,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
             KnowledgeSourceType.PPTX: _FakeReader(),
         }
 
-        document = self._import(source_path, readers=readers)
+        document = self._import_document(source_path, readers=readers)
 
         self.assertEqual(document.status, KnowledgeDocumentStatus.DRAFT)
 
@@ -262,7 +283,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
             KnowledgeSourceType.PPTX: _FakeReader(),
         }
 
-        document = self._import(source_path, readers=readers)
+        document = self._import_document(source_path, readers=readers)
 
         self.assertEqual(document.version, 1)
 
@@ -274,7 +295,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
             KnowledgeSourceType.PPTX: _FakeReader(),
         }
 
-        document = self._import(source_path, readers=readers)
+        document = self._import_document(source_path, readers=readers)
 
         self.assertEqual(document.extracted_text, "")
 
@@ -282,7 +303,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         source_path = self._write_source("manual.pdf")
 
         with self.assertRaises(KnowledgeDocumentImportError) as ctx:
-            self._import(source_path, company_id="   ")
+            self._import_document(source_path, company_id="   ")
 
         self.assertEqual(ctx.exception.message, "Идентификатор компании обязателен.")
 
@@ -290,7 +311,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         source_path = Path(self._tmpdir.name) / "missing.pdf"
 
         with self.assertRaises(KnowledgeDocumentImportError) as ctx:
-            self._import(source_path)
+            self._import_document(source_path)
 
         self.assertEqual(ctx.exception.message, "Исходный файл не найден.")
 
@@ -298,7 +319,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         source_path = Path(self._tmpdir.name)
 
         with self.assertRaises(KnowledgeDocumentImportError) as ctx:
-            self._import(source_path)
+            self._import_document(source_path)
 
         self.assertEqual(
             ctx.exception.message,
@@ -309,7 +330,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         source_path = self._write_source("video.mp4")
 
         with self.assertRaises(KnowledgeDocumentImportError) as ctx:
-            self._import(source_path)
+            self._import_document(source_path)
 
         self.assertEqual(
             ctx.exception.message,
@@ -320,7 +341,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         source_path = self._write_source("notes.txt")
 
         with self.assertRaises(KnowledgeDocumentImportError) as ctx:
-            self._import(source_path)
+            self._import_document(source_path)
 
         self.assertEqual(ctx.exception.message, "Неподдерживаемый формат документа.")
 
@@ -328,7 +349,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         source_path = self._write_source("manual")
 
         with self.assertRaises(KnowledgeDocumentImportError) as ctx:
-            self._import(source_path)
+            self._import_document(source_path)
 
         self.assertEqual(
             ctx.exception.message,
@@ -344,7 +365,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         }
 
         with self.assertRaises(KnowledgeDocumentImportError) as ctx:
-            self._import(source_path, title="   ", readers=readers)
+            self._import_document(source_path, title="   ", readers=readers)
 
         self.assertEqual(
             ctx.exception.message,
@@ -355,7 +376,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         source_path = self._write_source("manual.pdf")
 
         with self.assertRaises(KnowledgeDocumentImportError) as ctx:
-            self._import(source_path, source_language="   ")
+            self._import_document(source_path, source_language="   ")
 
         self.assertEqual(
             ctx.exception.message,
@@ -371,7 +392,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         }
 
         with self.assertRaises(KnowledgeDocumentImportError) as ctx:
-            self._import(source_path, readers=readers)
+            self._import_document(source_path, readers=readers)
 
         self.assertEqual(
             ctx.exception.message,
@@ -387,7 +408,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         }
 
         with self.assertRaises(KnowledgeDocumentImportError) as ctx:
-            self._import(source_path, readers=readers)
+            self._import_document(source_path, readers=readers)
 
         self.assertNotIn("parser exploded", ctx.exception.message)
         self.assertNotIn("/secret/path", ctx.exception.message)
@@ -401,7 +422,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         }
 
         with self.assertRaises(KnowledgeDocumentImportError) as ctx:
-            self._import(source_path, readers=readers)
+            self._import_document(source_path, readers=readers)
 
         self.assertNotIn(str(source_path), ctx.exception.message)
 
@@ -414,7 +435,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         }
 
         with self.assertRaises(KnowledgeDocumentImportError):
-            self._import(source_path, readers=readers)
+            self._import_document(source_path, readers=readers)
 
         self.assertEqual(self._document_count(), 0)
 
@@ -427,7 +448,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         }
 
         with self.assertRaises(KnowledgeDocumentImportError) as ctx:
-            self._import(source_path, readers=readers)
+            self._import_document(source_path, readers=readers)
 
         self.assertEqual(
             ctx.exception.message,
@@ -439,7 +460,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         custom_reader = _FakeReader("Custom injected text")
         source_path = self._write_source("manual.pdf")
 
-        document = self._import(
+        document = self._import_document(
             source_path,
             readers={
                 KnowledgeSourceType.PDF: custom_reader,
@@ -457,7 +478,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         pptx_reader = _FakeReader()
         source_path = self._write_source("manual.pdf")
 
-        self._import(
+        self._import_document(
             source_path,
             readers={
                 KnowledgeSourceType.PDF: pdf_reader,
@@ -478,7 +499,7 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
             KnowledgeSourceType.PPTX: _FakeReader(),
         }
 
-        self._import(source_path, company_id="company-a", readers=readers)
+        self._import_document(source_path, company_id="company-a", readers=readers)
 
         company_b_documents = knowledge_document_repository.list_for_company(
             self.db_path,
@@ -486,6 +507,285 @@ class KnowledgeDocumentImportServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(company_b_documents, [])
+
+    def _default_readers(self, text: str = "Extracted knowledge text") -> dict:
+        return {
+            KnowledgeSourceType.PDF: _FakeReader(text),
+            KnowledgeSourceType.DOCX: _FakeReader(),
+            KnowledgeSourceType.PPTX: _FakeReader(),
+        }
+
+    def _long_text(self, paragraphs: int = 8, words_per_paragraph: int = 80) -> str:
+        paragraph = " ".join(f"word{i}" for i in range(words_per_paragraph))
+        return "\n\n".join(paragraph for _ in range(paragraphs))
+
+    def _chunk_count(self) -> int:
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS count FROM knowledge_document_chunks"
+            ).fetchone()
+        return int(row["count"])
+
+    def test_pdf_import_persists_chunks(self) -> None:
+        text = self._long_text()
+        source_path = self._write_source("manual.pdf")
+        result = self._import(
+            source_path,
+            readers=self._default_readers(text),
+        )
+
+        self.assertGreater(len(result.chunks), 1)
+        self.assertEqual(
+            knowledge_chunk_repository.count_for_document(
+                self.db_path,
+                company_id=result.document.company_id,
+                document_id=result.document.document_id,
+            ),
+            len(result.chunks),
+        )
+
+    def test_docx_import_persists_chunks(self) -> None:
+        text = self._long_text()
+        source_path = self._write_source("policy.docx")
+        result = self._import(
+            source_path,
+            readers={
+                KnowledgeSourceType.PDF: _FakeReader(),
+                KnowledgeSourceType.DOCX: _FakeReader(text),
+                KnowledgeSourceType.PPTX: _FakeReader(),
+            },
+        )
+
+        self.assertGreater(len(result.chunks), 1)
+
+    def test_pptx_import_persists_chunks(self) -> None:
+        text = self._long_text()
+        source_path = self._write_source("slides.pptx")
+        result = self._import(
+            source_path,
+            readers={
+                KnowledgeSourceType.PDF: _FakeReader(),
+                KnowledgeSourceType.DOCX: _FakeReader(),
+                KnowledgeSourceType.PPTX: _FakeReader(text),
+            },
+        )
+
+        self.assertGreater(len(result.chunks), 1)
+
+    def test_chunk_rows_belong_to_correct_company_id(self) -> None:
+        text = self._long_text()
+        source_path = self._write_source("manual.pdf")
+        result = self._import(
+            source_path,
+            company_id="tenant-a",
+            readers=self._default_readers(text),
+        )
+
+        for chunk in result.chunks:
+            self.assertEqual(chunk.company_id, "tenant-a")
+
+    def test_chunk_rows_belong_to_correct_document_id(self) -> None:
+        text = self._long_text()
+        source_path = self._write_source("manual.pdf")
+        result = self._import(
+            source_path,
+            readers=self._default_readers(text),
+        )
+
+        for chunk in result.chunks:
+            self.assertEqual(chunk.document_id, result.document.document_id)
+
+    def test_chunk_index_saved_sequentially(self) -> None:
+        text = self._long_text()
+        source_path = self._write_source("manual.pdf")
+        result = self._import(
+            source_path,
+            readers=self._default_readers(text),
+        )
+
+        indexes = [chunk.chunk_index for chunk in result.chunks]
+        self.assertEqual(indexes, list(range(len(result.chunks))))
+
+    def test_chunk_text_matches_chunker_output(self) -> None:
+        text = self._long_text()
+        chunker = KnowledgeTextChunker()
+        source_path = self._write_source("manual.pdf")
+        result = self._import(
+            source_path,
+            readers=self._default_readers(text),
+            chunker=chunker,
+        )
+
+        expected = chunker.chunk(text.strip())
+        self.assertEqual(len(result.chunks), len(expected))
+        for stored, generated in zip(result.chunks, expected):
+            self.assertEqual(stored.text, generated.text.strip())
+
+    def test_chunk_offsets_match_chunker_output(self) -> None:
+        text = self._long_text()
+        chunker = KnowledgeTextChunker()
+        source_path = self._write_source("manual.pdf")
+        result = self._import(
+            source_path,
+            readers=self._default_readers(text),
+            chunker=chunker,
+        )
+
+        expected = chunker.chunk(text.strip())
+        for stored, generated in zip(result.chunks, expected):
+            self.assertEqual(stored.start_char, generated.start_char)
+            self.assertEqual(stored.end_char, generated.end_char)
+
+    def test_multiple_chunks_persisted_for_long_text(self) -> None:
+        text = self._long_text(paragraphs=12, words_per_paragraph=100)
+        source_path = self._write_source("manual.pdf")
+        result = self._import(
+            source_path,
+            readers=self._default_readers(text),
+        )
+
+        self.assertGreaterEqual(len(result.chunks), 3)
+
+    def test_empty_extracted_text_creates_document_with_zero_chunks(self) -> None:
+        source_path = self._write_source("scanned.pdf")
+        result = self._import(
+            source_path,
+            readers=self._default_readers("   "),
+        )
+
+        self.assertEqual(result.document.extracted_text, "")
+        self.assertEqual(result.chunks, ())
+        self.assertEqual(self._chunk_count(), 0)
+
+    def test_two_tenants_do_not_mix_chunks(self) -> None:
+        text = self._long_text()
+        source_a = self._write_source("tenant-a.pdf")
+        source_b = self._write_source("tenant-b.pdf")
+        readers = self._default_readers(text)
+
+        result_a = self._import(source_a, company_id="company-a", readers=readers)
+        result_b = self._import(source_b, company_id="company-b", readers=readers)
+
+        company_b_chunks = knowledge_chunk_repository.list_for_document(
+            self.db_path,
+            company_id="company-b",
+            document_id=result_a.document.document_id,
+        )
+        company_a_chunks = knowledge_chunk_repository.list_for_document(
+            self.db_path,
+            company_id="company-a",
+            document_id=result_b.document.document_id,
+        )
+
+        self.assertEqual(company_b_chunks, [])
+        self.assertEqual(company_a_chunks, [])
+        self.assertGreater(len(result_a.chunks), 0)
+        self.assertGreater(len(result_b.chunks), 0)
+
+    def test_import_result_reports_correct_chunk_count(self) -> None:
+        text = self._long_text()
+        source_path = self._write_source("manual.pdf")
+        result = self._import(
+            source_path,
+            readers=self._default_readers(text),
+        )
+
+        self.assertEqual(len(result.chunks), self._chunk_count())
+
+    def test_extraction_error_does_not_create_chunks(self) -> None:
+        source_path = self._write_source("manual.pdf")
+        readers = {
+            KnowledgeSourceType.PDF: _FailingReader(),
+            KnowledgeSourceType.DOCX: _FakeReader(),
+            KnowledgeSourceType.PPTX: _FakeReader(),
+        }
+
+        with self.assertRaises(KnowledgeDocumentImportError):
+            self._import(source_path, readers=readers)
+
+        self.assertEqual(self._chunk_count(), 0)
+
+    def test_error_before_document_creation_does_not_create_chunks(self) -> None:
+        source_path = self._write_source("manual.pdf")
+
+        with self.assertRaises(KnowledgeDocumentImportError):
+            self._import_document(source_path, company_id="   ")
+
+        self.assertEqual(self._chunk_count(), 0)
+
+    def test_chunk_persistence_error_does_not_expose_raw_exception(self) -> None:
+        text = self._long_text()
+        source_path = self._write_source("manual.pdf")
+
+        with unittest.mock.patch(
+            "app.knowledge.import_service.knowledge_chunk_repository.replace_document_chunks",
+            side_effect=RuntimeError("sqlite exploded at /secret/db.sqlite"),
+        ):
+            with self.assertRaises(KnowledgeDocumentImportError) as ctx:
+                self._import(
+                    source_path,
+                    readers=self._default_readers(text),
+                )
+
+        self.assertEqual(
+            ctx.exception.message,
+            "Не удалось сохранить фрагменты документа.",
+        )
+        self.assertNotIn("sqlite exploded", ctx.exception.message)
+        self.assertNotIn("/secret/db.sqlite", ctx.exception.message)
+
+    def test_chunk_persistence_error_rolls_back_document(self) -> None:
+        text = self._long_text()
+        source_path = self._write_source("manual.pdf")
+
+        with unittest.mock.patch(
+            "app.knowledge.import_service.knowledge_chunk_repository.replace_document_chunks",
+            side_effect=RuntimeError("persist failed"),
+        ):
+            with self.assertRaises(KnowledgeDocumentImportError):
+                self._import(
+                    source_path,
+                    readers=self._default_readers(text),
+                )
+
+        self.assertEqual(self._document_count(), 0)
+        self.assertEqual(self._chunk_count(), 0)
+
+    def test_import_does_not_affect_other_documents(self) -> None:
+        existing_path = self._write_source("existing.pdf")
+        existing = self._import_document(
+            existing_path,
+            company_id="company-a",
+            readers=self._default_readers("Existing document text"),
+        )
+        existing_chunks = knowledge_chunk_repository.list_for_document(
+            self.db_path,
+            company_id=existing.company_id,
+            document_id=existing.document_id,
+        )
+
+        new_path = self._write_source("new.pdf")
+        self._import(
+            new_path,
+            company_id="company-a",
+            readers=self._default_readers(self._long_text()),
+        )
+
+        unchanged = knowledge_document_repository.get_by_document_id(
+            self.db_path,
+            company_id=existing.company_id,
+            document_id=existing.document_id,
+        )
+        assert unchanged is not None
+        self.assertEqual(unchanged.extracted_text, "Existing document text")
+        self.assertEqual(
+            knowledge_chunk_repository.list_for_document(
+                self.db_path,
+                company_id=existing.company_id,
+                document_id=existing.document_id,
+            ),
+            existing_chunks,
+        )
 
 
 if __name__ == "__main__":
