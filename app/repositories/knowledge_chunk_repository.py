@@ -139,6 +139,28 @@ def replace_document_chunks(
     return len(validated_chunks)
 
 
+def list_for_company(
+    db_path: Path,
+    *,
+    company_id: str,
+) -> list[KnowledgeDocumentChunk]:
+    """Return all chunks for one company ordered deterministically."""
+    normalized_company_id = _validate_non_empty(company_id, "company_id")
+
+    with get_connection(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT *
+            FROM knowledge_document_chunks
+            WHERE company_id = ?
+            ORDER BY document_id ASC, chunk_index ASC, id ASC
+            """,
+            (normalized_company_id,),
+        ).fetchall()
+
+    return [_row_to_chunk(row) for row in rows]
+
+
 def list_for_document(
     db_path: Path,
     *,
