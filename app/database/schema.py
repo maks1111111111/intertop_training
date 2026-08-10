@@ -176,5 +176,32 @@ def create_tables(connection: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_web_lesson_progress_user_course
             ON web_lesson_progress(user_id, course_slug);
+
+        CREATE TABLE IF NOT EXISTS knowledge_documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id TEXT NOT NULL,
+            document_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            source_language TEXT NOT NULL DEFAULT 'auto',
+            extracted_text TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'draft',
+            version INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CHECK (source_type IN ('pdf', 'docx', 'pptx')),
+            CHECK (status IN ('draft', 'active', 'archived')),
+            CHECK (version >= 1)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_knowledge_documents_company_id
+            ON knowledge_documents(company_id);
+
+        CREATE INDEX IF NOT EXISTS idx_knowledge_documents_company_status
+            ON knowledge_documents(company_id, status);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_documents_company_document
+            ON knowledge_documents(company_id, document_id);
         """
     )
