@@ -44,6 +44,7 @@ from app.web.admin_lesson_question_apply_service import (
     AdminLessonQuestionApplyError,
     AdminLessonQuestionApplyRequest,
     AdminLessonQuestionApplyService,
+    parse_question_edits_from_form,
     parse_selected_question_indexes,
 )
 from app.web.admin_lesson_question_preview_service import (
@@ -52,6 +53,7 @@ from app.web.admin_lesson_question_preview_service import (
 )
 from app.web.admin_lesson_question_preview_store import (
     AdminLessonQuestionPreviewStore,
+    AdminLessonQuestionPreviewStoreError,
 )
 from app.web.admin_quiz_edit_service import (
     AdminQuizEditError,
@@ -1008,12 +1010,33 @@ async def admin_lesson_generate_questions_apply(
     apply_service: AdminLessonQuestionApplyService = Depends(
         get_admin_lesson_question_apply_service
     ),
+    preview_store: AdminLessonQuestionPreviewStore = Depends(
+        get_admin_lesson_question_preview_store
+    ),
 ):
     """Append selected AI preview questions to the course quiz."""
     form = await request.form()
     preview_id = str(form.get("preview_id") or "")
+    edited_questions: tuple[AdminLessonQuestionEditInput, ...] = ()
+    selected_indexes: tuple[int, ...] = ()
+    ownership_verified = False
 
     try:
+        try:
+            record = preview_store.get(preview_id)
+        except AdminLessonQuestionPreviewStoreError as exc:
+            raise AdminLessonQuestionApplyError(exc.message) from exc
+        if record is None:
+            raise AdminLessonQuestionApplyError(
+                "Предпросмотр вопросов недоступен. Сгенерируйте вопросы снова."
+            )
+        if record.slug != slug or record.lesson_id != lesson_id:
+            raise AdminLessonQuestionApplyError(
+                "Предпросмотр вопросов недоступен. Сгенерируйте вопросы снова."
+            )
+
+        ownership_verified = True
+        edited_questions = parse_question_edits_from_form(form, record)
         selected_indexes = parse_selected_question_indexes(
             form.getlist("selected_questions")
         )
@@ -1023,34 +1046,39 @@ async def admin_lesson_generate_questions_apply(
                 lesson_id=lesson_id,
                 preview_id=preview_id,
                 selected_indexes=selected_indexes,
+                edited_questions=edited_questions,
             )
         )
     except AdminLessonQuestionApplyError as exc:
-        preview_view = preview_service.get_generated_preview_page(
-            slug,
-            lesson_id,
-            preview_id,
-        )
-        if preview_view is None:
-            preview_view = preview_service.get_generated_preview_page_by_id(
-                preview_id
+        if ownership_verified:
+            preview_view = preview_service.get_generated_preview_page(
+                slug,
+                lesson_id,
+                preview_id,
             )
-        if preview_view is None:
-            preview_page = preview_service.get_preview_page(slug, lesson_id)
-            if preview_page is None:
-                not_found = preview_service.get_not_found_reason(slug, lesson_id)
-                return _render_admin_lesson_generate_questions_not_found(
+            if preview_view is not None:
+                if edited_questions:
+                    preview_view = preview_service.with_edited_values(
+                        preview_view,
+                        edited_questions=edited_questions,
+                        selected_indexes=selected_indexes,
+                    )
+                return _render_admin_lesson_generate_questions_page(
                     request,
-                    resource=not_found or "lesson",
+                    preview_view,
+                    error_message=exc.message,
                 )
-            return _render_admin_lesson_generate_questions_page(
+
+        preview_page = preview_service.get_preview_page(slug, lesson_id)
+        if preview_page is None:
+            not_found = preview_service.get_not_found_reason(slug, lesson_id)
+            return _render_admin_lesson_generate_questions_not_found(
                 request,
-                preview_page,
-                error_message=exc.message,
+                resource=not_found or "lesson",
             )
         return _render_admin_lesson_generate_questions_page(
             request,
-            preview_view,
+            preview_page,
             error_message=exc.message,
         )
 

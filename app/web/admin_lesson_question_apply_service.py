@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from typing import Mapping, Sequence
 
 from app.content.runtime import ContentRuntime
 from app.content.runtime_manager import ContentRuntimeManager
@@ -13,6 +14,7 @@ from app.web.admin_course_edit_service import _atomic_write_json
 from app.web.admin_lesson_question_preview_store import (
     AdminLessonQuestionPreviewStore,
     AdminLessonQuestionPreviewStoreError,
+    LessonQuestionPreviewRecord,
     StoredPreviewQuestion,
     _validate_preview_id,
 )
@@ -21,6 +23,7 @@ from app.web.admin_quiz_edit_service import (
     _load_quiz_json_payload,
     _resolve_quiz_json_path,
 )
+from app.web.admin_lesson_question_edit_models import AdminLessonQuestionEditInput
 from app.web.admin_quiz_question_create_service import _next_question_id
 
 _logger = logging.getLogger(__name__)
@@ -42,6 +45,7 @@ class AdminLessonQuestionApplyRequest:
     lesson_id: str
     preview_id: str
     selected_indexes: tuple[int, ...]
+    edited_questions: tuple[AdminLessonQuestionEditInput, ...]
 
 
 @dataclass(frozen=True)
@@ -87,36 +91,83 @@ def _parse_selected_indexes(raw_values: list) -> tuple[int, ...]:
     return tuple(indexes)
 
 
-def _validate_preview_question(question: StoredPreviewQuestion) -> None:
-    text = str(question.text or "").strip()
+def parse_question_edits_from_form(
+    form: Mapping[str, object],
+    record: LessonQuestionPreviewRecord,
+) -> tuple[AdminLessonQuestionEditInput, ...]:
+    """Parse admin-edited preview question fields from submitted form data."""
+    edits: list[AdminLessonQuestionEditInput] = []
+    for index, stored in enumerate(record.questions):
+        prefix = f"question_{index}_"
+        text = str(form.get(f"{prefix}text") or "")
+        explanation = str(form.get(f"{prefix}explanation") or "")
+        correct_option_id = str(form.get(f"{prefix}correct_option") or "").strip()
+        option_texts: list[tuple[str, str]] = []
+        for option_id, _ in stored.options:
+            option_text = str(form.get(f"{prefix}option_{option_id}") or "")
+            option_texts.append((option_id, option_text))
+        edits.append(
+            AdminLessonQuestionEditInput(
+                index=index,
+                text=text,
+                option_texts=tuple(option_texts),
+                correct_option_id=correct_option_id,
+                explanation=explanation,
+            )
+        )
+    return tuple(edits)
+
+
+def _validate_edited_question_structure(
+    stored: StoredPreviewQuestion,
+    edit: AdminLessonQuestionEditInput,
+) -> None:
+    stored_option_ids = [option_id for option_id, _ in stored.options]
+    edit_option_ids = [option_id for option_id, _ in edit.option_texts]
+    if stored_option_ids != edit_option_ids:
+        raise AdminLessonQuestionApplyError(
+            "Некорректные данные вопроса. Сгенерируйте вопросы снова."
+        )
+    if stored.question_type != "single_choice":
+        raise AdminLessonQuestionApplyError(
+            "Некорректные данные вопроса. Сгенерируйте вопросы снова."
+        )
+
+
+def _merge_edited_question(
+    stored: StoredPreviewQuestion,
+    edit: AdminLessonQuestionEditInput,
+) -> StoredPreviewQuestion:
+    _validate_edited_question_structure(stored, edit)
+
+    text = str(edit.text or "").strip()
     if not text:
-        raise AdminLessonQuestionApplyError("Не удалось добавить выбранные вопросы.")
+        raise AdminLessonQuestionApplyError("Введите текст вопроса.")
 
-    if len(question.options) < 2:
-        raise AdminLessonQuestionApplyError("Не удалось добавить выбранные вопросы.")
-
-    option_ids: set[str] = set()
-    for option_id, option_text in question.options:
-        normalized_id = str(option_id or "").strip()
+    new_options: list[tuple[str, str]] = []
+    stored_option_ids = {option_id for option_id, _ in stored.options}
+    for option_id, option_text in edit.option_texts:
         normalized_text = str(option_text or "").strip()
-        if not normalized_id or not normalized_text:
-            raise AdminLessonQuestionApplyError("Не удалось добавить выбранные вопросы.")
-        if normalized_id in option_ids:
-            raise AdminLessonQuestionApplyError("Не удалось добавить выбранные вопросы.")
-        option_ids.add(normalized_id)
+        if not normalized_text:
+            raise AdminLessonQuestionApplyError("Заполните все варианты ответа.")
+        new_options.append((option_id, normalized_text))
 
-    correct_ids = tuple(
-        str(item).strip()
-        for item in question.correct_option_ids
-        if str(item or "").strip()
+    correct_option_id = str(edit.correct_option_id or "").strip()
+    if not correct_option_id:
+        raise AdminLessonQuestionApplyError("Выберите правильный ответ.")
+    if correct_option_id not in stored_option_ids:
+        raise AdminLessonQuestionApplyError("Выберите правильный ответ.")
+
+    return StoredPreviewQuestion(
+        text=text,
+        question_type=stored.question_type,
+        options=tuple(new_options),
+        correct_option_ids=(correct_option_id,),
+        explanation=str(edit.explanation or "").strip(),
+        difficulty=stored.difficulty,
+        tags=stored.tags,
+        ai_context=stored.ai_context,
     )
-    if len(correct_ids) != 1:
-        raise AdminLessonQuestionApplyError("Не удалось добавить выбранные вопросы.")
-    if correct_ids[0] not in option_ids:
-        raise AdminLessonQuestionApplyError("Не удалось добавить выбранные вопросы.")
-
-    if question.question_type != "single_choice":
-        raise AdminLessonQuestionApplyError("Не удалось добавить выбранные вопросы.")
 
 
 def _build_question_payload(
@@ -186,11 +237,36 @@ class AdminLessonQuestionApplyService:
         selected_indexes = request.selected_indexes
         for index in selected_indexes:
             if index >= len(record.questions):
-                raise AdminLessonQuestionApplyError("Выберите хотя бы один вопрос.")
+                raise AdminLessonQuestionApplyError(
+                    "Некорректные данные вопроса. Сгенерируйте вопросы снова."
+                )
 
-        selected_questions = tuple(record.questions[index] for index in selected_indexes)
-        for question in selected_questions:
-            _validate_preview_question(question)
+        if len(request.edited_questions) != len(record.questions):
+            raise AdminLessonQuestionApplyError(
+                "Некорректные данные вопроса. Сгенерируйте вопросы снова."
+            )
+
+        edits_by_index = {
+            edit.index: edit for edit in request.edited_questions
+        }
+        if len(edits_by_index) != len(record.questions):
+            raise AdminLessonQuestionApplyError(
+                "Некорректные данные вопроса. Сгенерируйте вопросы снова."
+            )
+        for index in range(len(record.questions)):
+            if index not in edits_by_index:
+                raise AdminLessonQuestionApplyError(
+                    "Некорректные данные вопроса. Сгенерируйте вопросы снова."
+                )
+
+        selected_questions: list[StoredPreviewQuestion] = []
+        for index in selected_indexes:
+            selected_questions.append(
+                _merge_edited_question(
+                    record.questions[index],
+                    edits_by_index[index],
+                )
+            )
 
         try:
             quiz_json_path = _resolve_quiz_json_path(self._courses_dir, slug)
@@ -260,6 +336,6 @@ def _extract_next_question_number(raw_questions: list) -> int:
     return int(match.group(1))
 
 
-def parse_selected_question_indexes(form_values: list) -> tuple[int, ...]:
+def parse_selected_question_indexes(form_values: Sequence[object]) -> tuple[int, ...]:
     """Parse selected preview question indexes from submitted form values."""
-    return _parse_selected_indexes(form_values)
+    return _parse_selected_indexes(list(form_values))

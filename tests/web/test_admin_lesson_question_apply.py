@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,10 +13,12 @@ from fastapi.testclient import TestClient
 
 from app.ai.quiz_service import QuizGenerationService
 from app.content.runtime import ContentRuntime
+from app.web.admin_lesson_question_edit_models import AdminLessonQuestionEditInput
 from app.web.admin_lesson_question_apply_service import (
     AdminLessonQuestionApplyError,
     AdminLessonQuestionApplyRequest,
     AdminLessonQuestionApplyService,
+    parse_question_edits_from_form,
 )
 from app.web.admin_lesson_question_preview_service import AdminLessonQuestionPreviewService
 from app.web.admin_lesson_question_preview_store import AdminLessonQuestionPreviewStore
@@ -49,6 +52,114 @@ def _generate_and_get_preview_id(client: TestClient) -> str:
     return response.text[start:end]
 
 
+def _default_question_edits() -> dict[int, dict[str, object]]:
+    return {
+        0: {
+            "text": "What is the main topic?",
+            "options": {
+                "a": "Wrong answer",
+                "b": "Correct answer",
+                "c": "Another wrong",
+                "d": "Yet another wrong",
+            },
+            "correct": "b",
+            "explanation": "",
+        },
+        1: {
+            "text": "Second preview question?",
+            "options": {
+                "a": "Option A",
+                "b": "Option B",
+                "c": "Option C",
+                "d": "Option D",
+            },
+            "correct": "a",
+            "explanation": "",
+        },
+    }
+
+
+def _apply_form_data(
+    preview_id: str,
+    selected: list[str] | None = None,
+    *,
+    question_edits: dict[int, dict[str, object]] | None = None,
+) -> dict[str, object]:
+    if selected is None:
+        selected = ["0", "1"]
+    edits = _default_question_edits()
+    if question_edits:
+        for index, override in question_edits.items():
+            merged = dict(edits.get(index, {}))
+            options_override = override.get("options")
+            if options_override is not None:
+                merged_options = dict(merged.get("options", {}))
+                merged_options.update(options_override)
+                merged["options"] = merged_options
+            for key, value in override.items():
+                if key != "options":
+                    merged[key] = value
+            edits[index] = merged
+
+    data: dict[str, object] = {
+        "preview_id": preview_id,
+        "selected_questions": selected,
+    }
+    for index, question in edits.items():
+        data[f"question_{index}_text"] = str(question["text"])
+        data[f"question_{index}_explanation"] = str(question.get("explanation", ""))
+        data[f"question_{index}_correct_option"] = str(question["correct"])
+        for option_id, option_text in question["options"].items():
+            data[f"question_{index}_option_{option_id}"] = str(option_text)
+    return data
+
+
+def _default_edited_questions() -> tuple[AdminLessonQuestionEditInput, ...]:
+    return (
+        AdminLessonQuestionEditInput(
+            index=0,
+            text="What is the main topic?",
+            option_texts=(
+                ("a", "Wrong answer"),
+                ("b", "Correct answer"),
+                ("c", "Another wrong"),
+                ("d", "Yet another wrong"),
+            ),
+            correct_option_id="b",
+            explanation="",
+        ),
+        AdminLessonQuestionEditInput(
+            index=1,
+            text="Second preview question?",
+            option_texts=(
+                ("a", "Option A"),
+                ("b", "Option B"),
+                ("c", "Option C"),
+                ("d", "Option D"),
+            ),
+            correct_option_id="a",
+            explanation="",
+        ),
+    )
+
+
+def _apply_request(
+    preview_id: str,
+    *,
+    slug: str = "alpha",
+    lesson_id: str = "lesson_01",
+    selected_indexes: tuple[int, ...] = (0,),
+    edited_questions: tuple[AdminLessonQuestionEditInput, ...] | None = None,
+) -> AdminLessonQuestionApplyRequest:
+    return AdminLessonQuestionApplyRequest(
+        slug=slug,
+        lesson_id=lesson_id,
+        preview_id=preview_id,
+        selected_indexes=selected_indexes,
+        edited_questions=edited_questions or _default_edited_questions(),
+    )
+
+
 class AdminLessonQuestionApplyUiTests(unittest.TestCase):
     """Verify preview UI exposes apply workflow."""
 
@@ -74,7 +185,11 @@ class AdminLessonQuestionApplyUiTests(unittest.TestCase):
         self.assertEqual(response.text.count('name="selected_questions"'), 2)
         self.assertEqual(response.text.count('value="0"'), 1)
         self.assertEqual(response.text.count('value="1"'), 1)
-        self.assertEqual(response.text.count("checked"), 2)
+        checked_boxes = re.findall(
+            r'name="selected_questions"[^>]*checked',
+            response.text,
+        )
+        self.assertEqual(len(checked_boxes), 2)
 
     def test_apply_form_exists(self) -> None:
         response = self.client.post(_preview_url())
@@ -98,6 +213,30 @@ class AdminLessonQuestionApplyUiTests(unittest.TestCase):
     def test_regenerate_remains_available(self) -> None:
         response = self.client.post(_preview_url())
         self.assertIn("Сгенерировать снова", response.text)
+
+    def test_generated_preview_contains_editable_question_text(self) -> None:
+        response = self.client.post(_preview_url())
+        self.assertIn('name="question_0_text"', response.text)
+        self.assertIn('name="question_1_text"', response.text)
+
+    def test_generated_preview_contains_editable_option_controls(self) -> None:
+        response = self.client.post(_preview_url())
+        self.assertIn('name="question_0_option_a"', response.text)
+        self.assertIn('name="question_0_option_b"', response.text)
+
+    def test_generated_preview_contains_correct_answer_radios(self) -> None:
+        response = self.client.post(_preview_url())
+        self.assertIn('name="question_0_correct_option"', response.text)
+        self.assertIn('value="b"', response.text)
+
+    def test_generated_preview_contains_editable_explanation(self) -> None:
+        response = self.client.post(_preview_url())
+        self.assertIn('name="question_0_explanation"', response.text)
+
+    def test_ai_generated_values_appear_in_editable_controls(self) -> None:
+        response = self.client.post(_preview_url())
+        self.assertIn("What is the main topic?", response.text)
+        self.assertIn("Correct answer", response.text)
 
 
 class AdminLessonQuestionApplySuccessTests(unittest.TestCase):
@@ -137,10 +276,7 @@ class AdminLessonQuestionApplySuccessTests(unittest.TestCase):
         ) as mock_refresh:
             response = self.client.post(
                 _apply_url(),
-                data={
-                    "preview_id": preview_id,
-                    "selected_questions": ["0"],
-                },
+                data=_apply_form_data(preview_id, selected=["0"]),
                 follow_redirects=False,
             )
         self.assertEqual(response.status_code, 303)
@@ -154,10 +290,7 @@ class AdminLessonQuestionApplySuccessTests(unittest.TestCase):
         preview_id = _generate_and_get_preview_id(self.client)
         self.client.post(
             _apply_url(),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["1"],
-            },
+            data=_apply_form_data(preview_id, selected=["1"]),
             follow_redirects=False,
         )
         payload = json.loads(self.quiz_path.read_text(encoding="utf-8"))
@@ -169,10 +302,7 @@ class AdminLessonQuestionApplySuccessTests(unittest.TestCase):
         preview_id = _generate_and_get_preview_id(self.client)
         self.client.post(
             _apply_url(),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["0"],
-            },
+            data=_apply_form_data(preview_id, selected=["0"]),
             follow_redirects=False,
         )
         payload = json.loads(self.quiz_path.read_text(encoding="utf-8"))
@@ -183,10 +313,7 @@ class AdminLessonQuestionApplySuccessTests(unittest.TestCase):
         preview_id = _generate_and_get_preview_id(self.client)
         self.client.post(
             _apply_url(),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["0", "1"],
-            },
+            data=_apply_form_data(preview_id, selected=["0", "1"]),
             follow_redirects=False,
         )
         payload = json.loads(self.quiz_path.read_text(encoding="utf-8"))
@@ -197,10 +324,7 @@ class AdminLessonQuestionApplySuccessTests(unittest.TestCase):
         preview_id = _generate_and_get_preview_id(self.client)
         self.client.post(
             _apply_url(),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["0"],
-            },
+            data=_apply_form_data(preview_id, selected=["0"]),
             follow_redirects=False,
         )
         payload = json.loads(self.quiz_path.read_text(encoding="utf-8"))
@@ -210,10 +334,7 @@ class AdminLessonQuestionApplySuccessTests(unittest.TestCase):
         preview_id = _generate_and_get_preview_id(self.client)
         self.client.post(
             _apply_url(),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["0"],
-            },
+            data=_apply_form_data(preview_id, selected=["0"]),
             follow_redirects=False,
         )
         added = json.loads(self.quiz_path.read_text(encoding="utf-8"))["questions"][-1]
@@ -226,10 +347,7 @@ class AdminLessonQuestionApplySuccessTests(unittest.TestCase):
         preview_id = _generate_and_get_preview_id(self.client)
         self.client.post(
             _apply_url(),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["0"],
-            },
+            data=_apply_form_data(preview_id, selected=["0"]),
             follow_redirects=False,
         )
         payload = json.loads(self.quiz_path.read_text(encoding="utf-8"))
@@ -254,10 +372,7 @@ class AdminLessonQuestionApplySuccessTests(unittest.TestCase):
         preview_id = _generate_and_get_preview_id(self.client)
         self.client.post(
             _apply_url(),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["0"],
-            },
+            data=_apply_form_data(preview_id, selected=["0"]),
             follow_redirects=False,
         )
         updated = json.loads(self.quiz_path.read_text(encoding="utf-8"))
@@ -269,10 +384,7 @@ class AdminLessonQuestionApplySuccessTests(unittest.TestCase):
         preview_id = _generate_and_get_preview_id(self.client)
         self.client.post(
             _apply_url(),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["0"],
-            },
+            data=_apply_form_data(preview_id, selected=["0"]),
             follow_redirects=False,
         )
         self.assertEqual(course_path.read_text(encoding="utf-8"), before)
@@ -283,10 +395,7 @@ class AdminLessonQuestionApplySuccessTests(unittest.TestCase):
         preview_id = _generate_and_get_preview_id(self.client)
         self.client.post(
             _apply_url(),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["0"],
-            },
+            data=_apply_form_data(preview_id, selected=["0"]),
             follow_redirects=False,
         )
         self.assertEqual(lesson_path.read_text(encoding="utf-8"), before)
@@ -295,10 +404,7 @@ class AdminLessonQuestionApplySuccessTests(unittest.TestCase):
         preview_id = _generate_and_get_preview_id(self.client)
         response = self.client.post(
             _apply_url(),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["0"],
-            },
+            data=_apply_form_data(preview_id, selected=["0"]),
             follow_redirects=False,
         )
         self.assertEqual(response.status_code, 303)
@@ -308,10 +414,7 @@ class AdminLessonQuestionApplySuccessTests(unittest.TestCase):
         preview_id = _generate_and_get_preview_id(self.client)
         self.client.post(
             _apply_url(),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["0"],
-            },
+            data=_apply_form_data(preview_id, selected=["0"]),
             follow_redirects=False,
         )
         self.app.state.content_runtime.refresh()
@@ -322,10 +425,7 @@ class AdminLessonQuestionApplySuccessTests(unittest.TestCase):
         preview_id = _generate_and_get_preview_id(self.client)
         self.client.post(
             _apply_url(),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["0"],
-            },
+            data=_apply_form_data(preview_id, selected=["0"]),
             follow_redirects=False,
         )
         self.app.state.content_runtime.refresh()
@@ -384,10 +484,7 @@ class AdminLessonQuestionApplyValidationTests(unittest.TestCase):
     def test_unknown_preview_id_rejected(self) -> None:
         response = self.client.post(
             _apply_url(),
-            data={
-                "preview_id": "0" * 32,
-                "selected_questions": ["0"],
-            },
+            data=_apply_form_data("0" * 32, selected=["0"]),
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn("Предпросмотр вопросов недоступен.", response.text)
@@ -396,18 +493,12 @@ class AdminLessonQuestionApplyValidationTests(unittest.TestCase):
         preview_id = self._preview_id()
         self.client.post(
             _apply_url(),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["0"],
-            },
+            data=_apply_form_data(preview_id, selected=["0"]),
             follow_redirects=False,
         )
         response = self.client.post(
             _apply_url(),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["0"],
-            },
+            data=_apply_form_data(preview_id, selected=["0"]),
         )
         self.assertIn("Предпросмотр вопросов недоступен.", response.text)
 
@@ -428,10 +519,7 @@ class AdminLessonQuestionApplyValidationTests(unittest.TestCase):
         preview_id = self._preview_id()
         response = self.client.post(
             _apply_url("beta"),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["0"],
-            },
+            data=_apply_form_data(preview_id, selected=["0"]),
         )
         self.assertIn("Предпросмотр вопросов недоступен.", response.text)
 
@@ -446,10 +534,7 @@ class AdminLessonQuestionApplyValidationTests(unittest.TestCase):
         preview_id = self._preview_id()
         response = self.client.post(
             _apply_url(lesson_id="lesson_02"),
-            data={
-                "preview_id": preview_id,
-                "selected_questions": ["0"],
-            },
+            data=_apply_form_data(preview_id, selected=["0"]),
         )
         self.assertIn("Предпросмотр вопросов недоступен.", response.text)
 
@@ -479,11 +564,10 @@ class AdminLessonQuestionApplyValidationTests(unittest.TestCase):
                 runtime,
                 self.preview_store,
             ).apply_selected_questions(
-                AdminLessonQuestionApplyRequest(
+                _apply_request(
+                    preview.preview_id,
                     slug="no-quiz",
                     lesson_id="lesson_01",
-                    preview_id=preview.preview_id,
-                    selected_indexes=(0,),
                 )
             )
         self.assertIn("Итоговый тест для курса не найден.", str(ctx.exception.message))
@@ -493,12 +577,7 @@ class AdminLessonQuestionApplyValidationTests(unittest.TestCase):
         preview_id = self._preview_id()
         with self.assertRaises(AdminLessonQuestionApplyError) as ctx:
             self.apply_service.apply_selected_questions(
-                AdminLessonQuestionApplyRequest(
-                    slug="alpha",
-                    lesson_id="lesson_01",
-                    preview_id=preview_id,
-                    selected_indexes=(0,),
-                )
+                _apply_request(preview_id)
             )
         self.assertIn("Не удалось загрузить данные теста.", str(ctx.exception.message))
 
@@ -510,12 +589,7 @@ class AdminLessonQuestionApplyValidationTests(unittest.TestCase):
         ):
             with self.assertRaises(AdminLessonQuestionApplyError) as ctx:
                 self.apply_service.apply_selected_questions(
-                    AdminLessonQuestionApplyRequest(
-                        slug="alpha",
-                        lesson_id="lesson_01",
-                        preview_id=preview_id,
-                        selected_indexes=(0,),
-                    )
+                    _apply_request(preview_id)
                 )
         self.assertIn("Не удалось сохранить изменения.", str(ctx.exception.message))
 
@@ -529,12 +603,7 @@ class AdminLessonQuestionApplyValidationTests(unittest.TestCase):
         ) as mock_refresh:
             with self.assertRaises(AdminLessonQuestionApplyError):
                 self.apply_service.apply_selected_questions(
-                    AdminLessonQuestionApplyRequest(
-                        slug="alpha",
-                        lesson_id="lesson_01",
-                        preview_id=preview_id,
-                        selected_indexes=(0,),
-                    )
+                    _apply_request(preview_id)
                 )
         mock_refresh.assert_not_called()
 
@@ -549,11 +618,9 @@ class AdminLessonQuestionApplyValidationTests(unittest.TestCase):
     def test_traversal_like_slug_rejected(self) -> None:
         with self.assertRaises(AdminLessonQuestionApplyError):
             self.apply_service.apply_selected_questions(
-                AdminLessonQuestionApplyRequest(
+                _apply_request(
+                    "a" * 32,
                     slug="../alpha",
-                    lesson_id="lesson_01",
-                    preview_id="a" * 32,
-                    selected_indexes=(0,),
                 )
             )
 
@@ -565,6 +632,454 @@ class AdminLessonQuestionApplyValidationTests(unittest.TestCase):
             data={"preview_id": preview_id},
         )
         self.assertEqual(self.quiz_path.read_text(encoding="utf-8"), before)
+
+
+class AdminLessonQuestionApplyHardeningTests(unittest.TestCase):
+    """Verify hardening for empty selection and preview ownership."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.courses_dir = Path(self.tmp.name)
+        _write_alpha_course_with_quiz(self.courses_dir)
+        self.preview_store = AdminLessonQuestionPreviewStore()
+        self.runtime = ContentRuntime(self.courses_dir)
+        self.mock_quiz_service = MagicMock(spec=QuizGenerationService)
+        self.mock_quiz_service.generate_quiz.return_value = _mock_quiz_result()
+        self.preview_service = AdminLessonQuestionPreviewService(
+            self.runtime,
+            preview_store=self.preview_store,
+            quiz_generation_service=self.mock_quiz_service,
+        )
+        self.app, self.db_tmp, self.db_path, self.upload_tmp = _create_test_app(
+            self.courses_dir
+        )
+        self.app.state.admin_lesson_question_preview_store = self.preview_store
+        self.app.state.admin_lesson_question_preview_service = self.preview_service
+        self.client = TestClient(self.app)
+        self.quiz_path = self.courses_dir / "alpha" / "quiz.json"
+
+    def tearDown(self) -> None:
+        self.upload_tmp.cleanup()
+        self.db_tmp.cleanup()
+        self.tmp.cleanup()
+
+    def _preview_id(self) -> str:
+        return self.preview_service.generate_preview("alpha", "lesson_01").preview_id
+
+    def test_empty_selection_preserves_edited_question_text(self) -> None:
+        preview_id = self._preview_id()
+        response = self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=[],
+                question_edits={0: {"text": "Preserved empty-selection text"}},
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Выберите хотя бы один вопрос.", response.text)
+        self.assertIn("Preserved empty-selection text", response.text)
+
+    def test_empty_selection_preserves_edited_option_text(self) -> None:
+        preview_id = self._preview_id()
+        response = self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=[],
+                question_edits={
+                    0: {
+                        "options": {
+                            "a": "Preserved option A",
+                            "b": "Preserved option B",
+                        }
+                    }
+                },
+            ),
+        )
+        self.assertIn("Preserved option A", response.text)
+        self.assertIn("Preserved option B", response.text)
+
+    def test_empty_selection_preserves_chosen_correct_answer(self) -> None:
+        preview_id = self._preview_id()
+        response = self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=[],
+                question_edits={0: {"correct": "c"}},
+            ),
+        )
+        self.assertIn('name="question_0_correct_option"', response.text)
+        checked_c = re.search(
+            r'name="question_0_correct_option"[^>]*value="c"[^>]*checked',
+            response.text,
+        )
+        self.assertIsNotNone(checked_c)
+
+    def test_empty_selection_leaves_all_checkboxes_unchecked(self) -> None:
+        preview_id = self._preview_id()
+        response = self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=[],
+                question_edits={0: {"text": "Still visible"}},
+            ),
+        )
+        checked_boxes = re.findall(
+            r'name="selected_questions"[^>]*checked',
+            response.text,
+        )
+        self.assertEqual(checked_boxes, [])
+
+    def test_mismatched_slug_preview_content_not_rendered(self) -> None:
+        other_dir = self.courses_dir / "beta"
+        other_dir.mkdir()
+        (other_dir / "course.json").write_text(
+            json.dumps({"title": "Beta", "status": "published", "language": "ru"}),
+            encoding="utf-8",
+        )
+        lesson_dir = other_dir / "lesson_01"
+        lesson_dir.mkdir()
+        (lesson_dir / "lesson.json").write_text(
+            json.dumps({"title": "Beta lesson", "order": 1, "description": "Body"}),
+            encoding="utf-8",
+        )
+        _write_quiz_json(other_dir, "beta")
+        self.app.state.content_runtime.refresh()
+        preview_id = self._preview_id()
+        response = self.client.post(
+            _apply_url("beta"),
+            data=_apply_form_data(preview_id, selected=["0"]),
+        )
+        self.assertIn("Предпросмотр вопросов недоступен.", response.text)
+        self.assertNotIn("What is the main topic?", response.text)
+        self.assertNotIn("Second preview question?", response.text)
+
+    def test_mismatched_lesson_preview_content_not_rendered(self) -> None:
+        lesson_dir = self.courses_dir / "alpha" / "lesson_02"
+        lesson_dir.mkdir()
+        (lesson_dir / "lesson.json").write_text(
+            json.dumps({"title": "Second", "order": 2, "description": "Body"}),
+            encoding="utf-8",
+        )
+        self.app.state.content_runtime.refresh()
+        preview_id = self._preview_id()
+        response = self.client.post(
+            _apply_url(lesson_id="lesson_02"),
+            data=_apply_form_data(preview_id, selected=["0"]),
+        )
+        self.assertIn("Предпросмотр вопросов недоступен.", response.text)
+        self.assertNotIn("What is the main topic?", response.text)
+
+    def test_mismatched_preview_remains_unconsumed(self) -> None:
+        preview_id = self._preview_id()
+        self.client.post(
+            _apply_url("beta"),
+            data=_apply_form_data(preview_id, selected=["0"]),
+        )
+        self.assertIsNotNone(self.preview_store.get(preview_id))
+
+    def test_write_failure_leaves_preview_unconsumed(self) -> None:
+        preview_id = self._preview_id()
+        with patch(
+            "app.web.admin_lesson_question_apply_service._atomic_write_json",
+            side_effect=OSError("disk full"),
+        ), patch(
+            "app.services.runtime_refresh_service.RuntimeRefreshService.refresh"
+        ) as mock_refresh:
+            response = self.client.post(
+                _apply_url(),
+                data=_apply_form_data(preview_id, selected=["0"]),
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Не удалось сохранить изменения.", response.text)
+        self.assertIsNotNone(self.preview_store.get(preview_id))
+        mock_refresh.assert_not_called()
+
+
+class AdminLessonQuestionApplyEditedTests(unittest.TestCase):
+    """Verify applying admin-edited preview question values."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.courses_dir = Path(self.tmp.name)
+        _write_alpha_course_with_quiz(self.courses_dir)
+        self.app, self.db_tmp, self.db_path, self.upload_tmp = _create_test_app(
+            self.courses_dir
+        )
+        self.preview_store = AdminLessonQuestionPreviewStore()
+        mock_quiz_service = MagicMock(spec=QuizGenerationService)
+        mock_quiz_service.generate_quiz.return_value = _mock_quiz_result()
+        self.app.state.admin_lesson_question_preview_store = self.preview_store
+        self.app.state.admin_lesson_question_preview_service = (
+            AdminLessonQuestionPreviewService(
+                self.app.state.content_runtime,
+                preview_store=self.preview_store,
+                quiz_generation_service=mock_quiz_service,
+            )
+        )
+        self.client = TestClient(self.app)
+        self.quiz_path = self.courses_dir / "alpha" / "quiz.json"
+
+    def tearDown(self) -> None:
+        self.upload_tmp.cleanup()
+        self.db_tmp.cleanup()
+        self.tmp.cleanup()
+
+    def test_edited_question_text_persists(self) -> None:
+        preview_id = _generate_and_get_preview_id(self.client)
+        self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=["0"],
+                question_edits={0: {"text": "Edited preview question?"}},
+            ),
+            follow_redirects=False,
+        )
+        payload = json.loads(self.quiz_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["questions"][-1]["text"], "Edited preview question?")
+
+    def test_edited_option_texts_persist(self) -> None:
+        preview_id = _generate_and_get_preview_id(self.client)
+        self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=["0"],
+                question_edits={
+                    0: {
+                        "options": {
+                            "a": "Edited A",
+                            "b": "Edited B",
+                            "c": "Edited C",
+                            "d": "Edited D",
+                        }
+                    }
+                },
+            ),
+            follow_redirects=False,
+        )
+        added = json.loads(self.quiz_path.read_text(encoding="utf-8"))["questions"][-1]
+        self.assertEqual(added["options"][0]["text"], "Edited A")
+        self.assertEqual(added["options"][1]["text"], "Edited B")
+
+    def test_edited_correct_answer_persists(self) -> None:
+        preview_id = _generate_and_get_preview_id(self.client)
+        self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=["0"],
+                question_edits={0: {"correct": "c"}},
+            ),
+            follow_redirects=False,
+        )
+        added = json.loads(self.quiz_path.read_text(encoding="utf-8"))["questions"][-1]
+        self.assertEqual(added["correct_option_ids"], ["c"])
+
+    def test_edited_explanation_persists(self) -> None:
+        preview_id = _generate_and_get_preview_id(self.client)
+        self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=["0"],
+                question_edits={0: {"explanation": "Edited explanation text."}},
+            ),
+            follow_redirects=False,
+        )
+        added = json.loads(self.quiz_path.read_text(encoding="utf-8"))["questions"][-1]
+        self.assertEqual(added["explanation"], "Edited explanation text.")
+
+    def test_unselected_edited_question_not_added(self) -> None:
+        preview_id = _generate_and_get_preview_id(self.client)
+        self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=["0"],
+                question_edits={
+                    1: {"text": "Should not be added"},
+                },
+            ),
+            follow_redirects=False,
+        )
+        payload = json.loads(self.quiz_path.read_text(encoding="utf-8"))
+        texts = [item["text"] for item in payload["questions"]]
+        self.assertNotIn("Should not be added", texts)
+
+    def test_edited_question_visible_to_student_quiz(self) -> None:
+        preview_id = _generate_and_get_preview_id(self.client)
+        self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=["0"],
+                question_edits={0: {"text": "Student-visible edited question?"}},
+            ),
+            follow_redirects=False,
+        )
+        self.app.state.content_runtime.refresh()
+        response = self.client.get("/courses/alpha/quiz")
+        self.assertIn("Student-visible edited question?", response.text)
+
+
+class AdminLessonQuestionApplyEditedValidationTests(unittest.TestCase):
+    """Verify validation for edited preview question apply."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.courses_dir = Path(self.tmp.name)
+        _write_alpha_course_with_quiz(self.courses_dir)
+        self.preview_store = AdminLessonQuestionPreviewStore()
+        self.runtime = ContentRuntime(self.courses_dir)
+        self.mock_quiz_service = MagicMock(spec=QuizGenerationService)
+        self.mock_quiz_service.generate_quiz.return_value = _mock_quiz_result()
+        self.preview_service = AdminLessonQuestionPreviewService(
+            self.runtime,
+            preview_store=self.preview_store,
+            quiz_generation_service=self.mock_quiz_service,
+        )
+        self.app, self.db_tmp, self.db_path, self.upload_tmp = _create_test_app(
+            self.courses_dir
+        )
+        self.app.state.admin_lesson_question_preview_store = self.preview_store
+        self.app.state.admin_lesson_question_preview_service = self.preview_service
+        self.client = TestClient(self.app)
+        self.quiz_path = self.courses_dir / "alpha" / "quiz.json"
+
+    def tearDown(self) -> None:
+        self.upload_tmp.cleanup()
+        self.db_tmp.cleanup()
+        self.tmp.cleanup()
+
+    def _preview_id(self) -> str:
+        return self.preview_service.generate_preview("alpha", "lesson_01").preview_id
+
+    def test_empty_selected_question_text_rejected(self) -> None:
+        preview_id = self._preview_id()
+        response = self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=["0"],
+                question_edits={0: {"text": "   "}},
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Введите текст вопроса.", response.text)
+
+    def test_empty_option_rejected(self) -> None:
+        preview_id = self._preview_id()
+        response = self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=["0"],
+                question_edits={0: {"options": {"b": "   "}}},
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Заполните все варианты ответа.", response.text)
+
+    def test_invalid_correct_option_rejected(self) -> None:
+        preview_id = self._preview_id()
+        response = self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=["0"],
+                question_edits={0: {"correct": "z"}},
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Выберите правильный ответ.", response.text)
+
+    def test_missing_correct_option_rejected(self) -> None:
+        preview_id = self._preview_id()
+        fields = _apply_form_data(preview_id, selected=["0"])
+        del fields["question_0_correct_option"]
+        response = self.client.post(_apply_url(), data=fields)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Выберите правильный ответ.", response.text)
+
+    def test_validation_failure_does_not_modify_quiz(self) -> None:
+        before = self.quiz_path.read_text(encoding="utf-8")
+        preview_id = self._preview_id()
+        self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=["0"],
+                question_edits={0: {"text": ""}},
+            ),
+        )
+        self.assertEqual(self.quiz_path.read_text(encoding="utf-8"), before)
+
+    def test_validation_failure_does_not_consume_preview(self) -> None:
+        preview_id = self._preview_id()
+        self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=["0"],
+                question_edits={0: {"text": ""}},
+            ),
+        )
+        self.assertIsNotNone(self.preview_store.get(preview_id))
+
+    def test_validation_failure_preserves_edited_text(self) -> None:
+        preview_id = self._preview_id()
+        response = self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=["0"],
+                question_edits={
+                    0: {
+                        "text": "Preserved edited text",
+                        "options": {"b": ""},
+                    }
+                },
+            ),
+        )
+        self.assertIn("Preserved edited text", response.text)
+
+    def test_validation_failure_preserves_checkbox_selection(self) -> None:
+        preview_id = self._preview_id()
+        fields = _apply_form_data(
+            preview_id,
+            selected=["1"],
+            question_edits={1: {"text": ""}},
+        )
+        response = self.client.post(_apply_url(), data=fields)
+        self.assertIn('value="1"', response.text)
+        checked_boxes = re.findall(
+            r'name="selected_questions"[^>]*checked',
+            response.text,
+        )
+        self.assertEqual(len(checked_boxes), 1)
+
+    def test_validation_failure_preserves_chosen_correct_answer(self) -> None:
+        preview_id = self._preview_id()
+        response = self.client.post(
+            _apply_url(),
+            data=_apply_form_data(
+                preview_id,
+                selected=["0"],
+                question_edits={
+                    0: {
+                        "correct": "c",
+                        "options": {"c": ""},
+                    }
+                },
+            ),
+        )
+        self.assertIn('name="question_0_correct_option"', response.text)
+        self.assertIn('value="c"', response.text)
 
 
 class AdminLessonQuestionApplyServiceUnitTests(unittest.TestCase):
@@ -588,12 +1103,7 @@ class AdminLessonQuestionApplyServiceUnitTests(unittest.TestCase):
     def test_malformed_preview_id_rejected(self) -> None:
         with self.assertRaises(AdminLessonQuestionApplyError):
             self.service.apply_selected_questions(
-                AdminLessonQuestionApplyRequest(
-                    slug="alpha",
-                    lesson_id="lesson_01",
-                    preview_id="not-valid",
-                    selected_indexes=(0,),
-                )
+                _apply_request("not-valid")
             )
 
 

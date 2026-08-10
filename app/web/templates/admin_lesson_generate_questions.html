@@ -22,10 +22,18 @@
 </section>
 
 <div class="admin-preview-notice" role="note">
+    {% if preview.generated %}
+    <p>
+        AI сгенерировал черновики вопросов. Вы можете отредактировать и снять выбор
+        с ненужных вопросов перед добавлением. Итоговый тест изменится только после
+        нажатия «Добавить выбранные в итоговый тест».
+    </p>
+    {% else %}
     <p>
         Вопросы будут только сгенерированы для предварительного просмотра.
         Курс изменен не будет.
     </p>
+    {% endif %}
 </div>
 
 {% if error_message %}
@@ -49,7 +57,7 @@
     class="admin-create-form admin-preview-apply-form"
     action="{{ preview.apply_url }}"
     method="post"
-    aria-label="Форма добавления выбранных вопросов в итоговый тест"
+    aria-label="Форма редактирования и добавления выбранных вопросов в итоговый тест"
 >
     <input type="hidden" name="preview_id" value="{{ preview.preview_id }}">
 
@@ -59,20 +67,20 @@
 
         <ol class="admin-quiz-question-list">
             {% for question in preview.questions %}
+            {% set qidx = loop.index0 %}
             <li class="admin-quiz-question-card admin-preview-question-card">
                 <label class="admin-preview-question-select">
                     <input
                         type="checkbox"
                         name="selected_questions"
-                        value="{{ loop.index0 }}"
-                        checked
+                        value="{{ qidx }}"
+                        {% if question.selected %}checked{% endif %}
                     >
                     <span class="admin-preview-question-select-label">Выбрать вопрос {{ loop.index }}</span>
                 </label>
 
                 <div class="admin-quiz-question-header">
                     <span class="admin-quiz-question-number">{{ loop.index }}</span>
-                    <p class="admin-quiz-question-text">{{ question.text }}</p>
                 </div>
 
                 {% if question.difficulty %}
@@ -83,20 +91,52 @@
                 <p class="admin-quiz-question-meta">Теги: {{ question.tags | join(", ") }}</p>
                 {% endif %}
 
-                {% if question.explanation %}
-                <p class="admin-quiz-question-explanation">{{ question.explanation }}</p>
-                {% endif %}
+                <div class="admin-form-field">
+                    <label class="admin-form-label" for="question-{{ qidx }}-text">Текст вопроса</label>
+                    <textarea
+                        class="admin-form-input admin-form-textarea"
+                        id="question-{{ qidx }}-text"
+                        name="question_{{ qidx }}_text"
+                        rows="3"
+                        required
+                    >{{ question.text }}</textarea>
+                </div>
 
-                <ul class="admin-quiz-question-options">
+                <fieldset class="admin-form-field admin-quiz-option-edit-list">
+                    <legend class="admin-form-label">Варианты ответа</legend>
                     {% for option in question.options %}
-                    <li class="admin-quiz-option{% if option.is_correct %} admin-quiz-option--correct{% endif %}">
-                        <span class="admin-quiz-option-text">{{ option.text }}</span>
-                        {% if option.is_correct %}
-                        <span class="admin-quiz-option-badge">Правильный ответ</span>
-                        {% endif %}
-                    </li>
+                    <div class="admin-quiz-option-edit-row">
+                        <label class="admin-quiz-option-edit-radio">
+                            <input
+                                type="radio"
+                                name="question_{{ qidx }}_correct_option"
+                                value="{{ option.id }}"
+                                {% if option.is_correct %}checked{% endif %}
+                                required
+                            >
+                            <span class="visually-hidden">Правильный ответ</span>
+                        </label>
+                        <input
+                            class="admin-form-input admin-quiz-option-edit-input"
+                            type="text"
+                            name="question_{{ qidx }}_option_{{ option.id }}"
+                            value="{{ option.text }}"
+                            required
+                            aria-label="Текст варианта {{ option.id }}"
+                        >
+                    </div>
                     {% endfor %}
-                </ul>
+                </fieldset>
+
+                <div class="admin-form-field">
+                    <label class="admin-form-label" for="question-{{ qidx }}-explanation">Объяснение</label>
+                    <textarea
+                        class="admin-form-input admin-form-textarea"
+                        id="question-{{ qidx }}-explanation"
+                        name="question_{{ qidx }}_explanation"
+                        rows="3"
+                    >{{ question.explanation }}</textarea>
+                </div>
             </li>
             {% endfor %}
         </ol>

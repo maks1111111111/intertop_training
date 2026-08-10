@@ -14,8 +14,10 @@ from app.content.lesson_builder import LessonCandidate
 from app.content.quiz_writer import QuizDraft, QuizWriter
 from app.content.runtime import ContentRuntime
 from app.content.runtime_loader import Lesson
+from app.web.admin_lesson_question_edit_models import AdminLessonQuestionEditInput
 from app.web.admin_lesson_question_preview_store import (
     AdminLessonQuestionPreviewStore,
+    AdminLessonQuestionPreviewStoreError,
     StoredPreviewQuestion,
 )
 
@@ -47,6 +49,7 @@ class AdminLessonQuestionPreviewQuestionView:
     explanation: str
     difficulty: int
     tags: Tuple[str, ...]
+    selected: bool = True
 
 
 @dataclass(frozen=True)
@@ -118,6 +121,7 @@ def _build_preview_questions(
                 explanation=question.explanation,
                 difficulty=question.difficulty,
                 tags=question.tags,
+                selected=True,
             )
         )
     return tuple(preview_questions)
@@ -295,7 +299,10 @@ class AdminLessonQuestionPreviewService:
         if context is None:
             return None
 
-        record = self._preview_store.get(preview_id)
+        try:
+            record = self._preview_store.get(preview_id)
+        except AdminLessonQuestionPreviewStoreError:
+            return None
         if record is None:
             return None
         if record.slug != slug or record.lesson_id != lesson_id:
@@ -319,7 +326,10 @@ class AdminLessonQuestionPreviewService:
         if self._preview_store is None:
             return None
 
-        record = self._preview_store.get(preview_id)
+        try:
+            record = self._preview_store.get(preview_id)
+        except AdminLessonQuestionPreviewStoreError:
+            return None
         if record is None:
             return None
 
@@ -327,6 +337,72 @@ class AdminLessonQuestionPreviewService:
             record.slug,
             record.lesson_id,
             preview_id,
+        )
+
+    def with_edited_values(
+        self,
+        view: AdminLessonQuestionPreviewView,
+        *,
+        edited_questions: Tuple[AdminLessonQuestionEditInput, ...],
+        selected_indexes: Tuple[int, ...],
+    ) -> AdminLessonQuestionPreviewView:
+        """Return a generated preview view with admin-edited form values preserved."""
+        selected_set = set(selected_indexes)
+        edits_by_index = {edit.index: edit for edit in edited_questions}
+        updated_questions: list[AdminLessonQuestionPreviewQuestionView] = []
+
+        for index, question in enumerate(view.questions):
+            edit = edits_by_index.get(index)
+            selected = index in selected_set
+            if edit is None:
+                updated_questions.append(
+                    AdminLessonQuestionPreviewQuestionView(
+                        id=question.id,
+                        text=question.text,
+                        options=question.options,
+                        explanation=question.explanation,
+                        difficulty=question.difficulty,
+                        tags=question.tags,
+                        selected=selected,
+                    )
+                )
+                continue
+
+            edit_options_map = dict(edit.option_texts)
+            correct_id = edit.correct_option_id
+            options = tuple(
+                AdminLessonQuestionPreviewOptionView(
+                    id=option.id,
+                    text=edit_options_map.get(option.id, option.text),
+                    is_correct=option.id == correct_id,
+                )
+                for option in question.options
+            )
+            updated_questions.append(
+                AdminLessonQuestionPreviewQuestionView(
+                    id=question.id,
+                    text=edit.text,
+                    options=options,
+                    explanation=edit.explanation,
+                    difficulty=question.difficulty,
+                    tags=question.tags,
+                    selected=selected,
+                )
+            )
+
+        return AdminLessonQuestionPreviewView(
+            slug=view.slug,
+            lesson_id=view.lesson_id,
+            course_title=view.course_title,
+            lesson_title=view.lesson_title,
+            lesson_order=view.lesson_order,
+            edit_url=view.edit_url,
+            cancel_url=view.cancel_url,
+            generate_url=view.generate_url,
+            apply_url=view.apply_url,
+            preview_id=view.preview_id,
+            questions=tuple(updated_questions),
+            generated=view.generated,
         )
 
     def _store_generated_preview(
@@ -364,6 +440,7 @@ class AdminLessonQuestionPreviewService:
                     explanation=question.explanation,
                     difficulty=question.difficulty,
                     tags=question.tags,
+                    selected=True,
                 )
             )
         return tuple(preview_questions)
