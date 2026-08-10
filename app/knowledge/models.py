@@ -42,3 +42,25 @@ class KnowledgeDocumentCreate:
     source_type: KnowledgeSourceType
     source_language: str = "auto"
     extracted_text: str = ""
+
+
+@dataclass(frozen=True)
+class KnowledgeDocumentChunk:
+    id: int
+    company_id: str
+    document_id: str
+    chunk_index: int
+    text: str
+    start_char: int
+    end_char: int
+    created_at: str
+
+
+@dataclass(frozen=True)
+class KnowledgeDocumentChunkInput:
+    """Input for persisting one knowledge document chunk."""
+
+    chunk_index: int
+    text: str
+    start_char: int
+    end_char: int

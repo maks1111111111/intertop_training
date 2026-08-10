@@ -203,5 +203,28 @@ def create_tables(connection: sqlite3.Connection) -> None:
 
         CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_documents_company_document
             ON knowledge_documents(company_id, document_id);
+
+        CREATE TABLE IF NOT EXISTS knowledge_document_chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id TEXT NOT NULL,
+            document_id TEXT NOT NULL,
+            chunk_index INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            start_char INTEGER NOT NULL,
+            end_char INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CHECK (chunk_index >= 0),
+            CHECK (start_char >= 0),
+            CHECK (end_char > start_char)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_knowledge_document_chunks_company_id
+            ON knowledge_document_chunks(company_id);
+
+        CREATE INDEX IF NOT EXISTS idx_knowledge_document_chunks_company_document
+            ON knowledge_document_chunks(company_id, document_id);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_document_chunks_company_document_index
+            ON knowledge_document_chunks(company_id, document_id, chunk_index);
         """
     )
