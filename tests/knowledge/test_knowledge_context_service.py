@@ -153,6 +153,15 @@ class KnowledgeRetrievalContextServiceIntegrationTests(unittest.TestCase):
             chunks=chunks,
         )
 
+    def _activate_document(self, *, company_id: str, document_id: str) -> None:
+        updated = knowledge_document_repository.set_status(
+            self.db_path,
+            company_id=company_id,
+            document_id=document_id,
+            status="active",
+        )
+        self.assertTrue(updated)
+
     def test_one_matching_chunk_produces_context(self) -> None:
         document_id = self._create_document(
             company_id="company-a",
@@ -170,6 +179,7 @@ class KnowledgeRetrievalContextServiceIntegrationTests(unittest.TestCase):
                 ),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         context = self.service.build_context(
             self.db_path,
@@ -210,6 +220,7 @@ class KnowledgeRetrievalContextServiceIntegrationTests(unittest.TestCase):
                 ),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         context = self.service.build_context(
             self.db_path,
@@ -244,6 +255,7 @@ class KnowledgeRetrievalContextServiceIntegrationTests(unittest.TestCase):
                 ),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         context = self.service.build_context(
             self.db_path,
@@ -288,6 +300,8 @@ class KnowledgeRetrievalContextServiceIntegrationTests(unittest.TestCase):
                 ),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=doc_a)
+        self._activate_document(company_id="company-b", document_id=doc_b)
 
         context = self.service.build_context(
             self.db_path,
@@ -317,6 +331,7 @@ class KnowledgeRetrievalContextServiceIntegrationTests(unittest.TestCase):
                 ),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         context = self.service.build_context(
             self.db_path,
@@ -326,6 +341,33 @@ class KnowledgeRetrievalContextServiceIntegrationTests(unittest.TestCase):
 
         self.assertEqual(context.source_count, 1)
         self.assertIn("Политика возврата", context.context_text)
+
+    def test_draft_document_does_not_enter_default_context(self) -> None:
+        document_id = self._create_document(
+            company_id="company-a",
+            title="Draft Policy",
+            filename="draft.pdf",
+        )
+        self._replace_chunks(
+            company_id="company-a",
+            document_id=document_id,
+            chunks=[
+                _chunk_input(
+                    chunk_index=0,
+                    text="Draft return policy for employees.",
+                    end_char=36,
+                ),
+            ],
+        )
+
+        context = self.service.build_context(
+            self.db_path,
+            company_id="company-a",
+            query="return policy",
+        )
+
+        self.assertEqual(context.source_count, 0)
+        self.assertEqual(context.context_text, "")
 
 
 class KnowledgeRetrievalContextServiceDependencyTests(unittest.TestCase):

@@ -87,6 +87,15 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
             chunks=chunks,
         )
 
+    def _activate_document(self, *, company_id: str, document_id: str) -> None:
+        updated = knowledge_document_repository.set_status(
+            self.db_path,
+            company_id=company_id,
+            document_id=document_id,
+            status="active",
+        )
+        self.assertTrue(updated)
+
     def _chunk_input(
         self,
         *,
@@ -124,6 +133,7 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
                 ),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         results = self.service.search(
             self.db_path,
@@ -154,6 +164,7 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
                 ),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         results = self.service.search(
             self.db_path,
@@ -185,6 +196,7 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
                 ),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         results = self.service.search(
             self.db_path,
@@ -207,6 +219,7 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
                 self._chunk_input(chunk_index=0, text="RETURN POLICY details."),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         results = self.service.search(
             self.db_path,
@@ -232,6 +245,7 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
                 ),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         results = self.service.search(
             self.db_path,
@@ -257,6 +271,7 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
                 ),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         results = self.service.search(
             self.db_path,
@@ -283,6 +298,7 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
                 ),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         results = self.service.search(
             self.db_path,
@@ -309,6 +325,7 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
                 ),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         results = self.service.search(
             self.db_path,
@@ -343,6 +360,8 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
                 self._chunk_input(chunk_index=0, text="Return policy for company B."),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_a)
+        self._activate_document(company_id="company-b", document_id=document_b)
 
         results = self.service.search(
             self.db_path,
@@ -358,6 +377,7 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
         self,
     ) -> None:
         shared_document_id = "doc-shared-id"
+        document_ids: dict[str, str] = {}
         for company_id, text in (
             ("company-a", "Alpha secret keyword"),
             ("company-b", "Beta secret keyword"),
@@ -374,11 +394,13 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
                 company_id=company_id,
             )
             document_id = documents[0].document_id
+            document_ids[company_id] = document_id
             self._replace_chunks(
                 company_id=company_id,
                 document_id=document_id,
                 chunks=[self._chunk_input(chunk_index=0, text=text)],
             )
+            self._activate_document(company_id=company_id, document_id=document_id)
 
         results = self.service.search(
             self.db_path,
@@ -409,6 +431,7 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
                 ),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         first = self.service.search(
             self.db_path,
@@ -450,6 +473,7 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
                 ),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         results = self.service.search(
             self.db_path,
@@ -511,6 +535,7 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
                 self._chunk_input(chunk_index=0, text="Unrelated warehouse content."),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         results = self.service.search(
             self.db_path,
@@ -533,6 +558,7 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
                 self._chunk_input(chunk_index=0, text="Return policy details."),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
 
         single = self.service.search(
             self.db_path,
@@ -567,6 +593,7 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
                 ),
             ],
         )
+        self._activate_document(company_id="company-a", document_id=document_id)
         stored = knowledge_chunk_repository.list_for_document(
             self.db_path,
             company_id="company-a",
@@ -610,6 +637,150 @@ class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):
         self.assertEqual(len(chunks), 2)
         self.assertEqual(chunks[0].chunk_index, 0)
         self.assertEqual(chunks[1].chunk_index, 1)
+
+    def test_active_document_is_searchable(self) -> None:
+        document_id = self._create_document(
+            company_id="company-a",
+            title="Policy",
+            filename="policy.pdf",
+        )
+        self._replace_chunks(
+            company_id="company-a",
+            document_id=document_id,
+            chunks=[
+                self._chunk_input(chunk_index=0, text="Active return policy details."),
+            ],
+        )
+        self._activate_document(company_id="company-a", document_id=document_id)
+
+        results = self.service.search(
+            self.db_path,
+            company_id="company-a",
+            query="return policy",
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertIn("Active return policy", results[0].chunk.text)
+
+    def test_draft_document_is_not_searchable(self) -> None:
+        document_id = self._create_document(
+            company_id="company-a",
+            title="Policy",
+            filename="policy.pdf",
+        )
+        self._replace_chunks(
+            company_id="company-a",
+            document_id=document_id,
+            chunks=[
+                self._chunk_input(chunk_index=0, text="Draft return policy details."),
+            ],
+        )
+
+        results = self.service.search(
+            self.db_path,
+            company_id="company-a",
+            query="return policy",
+        )
+
+        self.assertEqual(results, ())
+
+    def test_archived_document_is_not_searchable(self) -> None:
+        document_id = self._create_document(
+            company_id="company-a",
+            title="Policy",
+            filename="policy.pdf",
+        )
+        self._replace_chunks(
+            company_id="company-a",
+            document_id=document_id,
+            chunks=[
+                self._chunk_input(
+                    chunk_index=0,
+                    text="Archived return policy details.",
+                ),
+            ],
+        )
+        knowledge_document_repository.set_status(
+            self.db_path,
+            company_id="company-a",
+            document_id=document_id,
+            status="archived",
+        )
+
+        results = self.service.search(
+            self.db_path,
+            company_id="company-a",
+            query="return policy",
+        )
+
+        self.assertEqual(results, ())
+
+    def test_only_active_document_returned_when_mixed_lifecycle_states(self) -> None:
+        active_document_id = self._create_document(
+            company_id="company-a",
+            title="Active Policy",
+            filename="active.pdf",
+        )
+        draft_document_id = self._create_document(
+            company_id="company-a",
+            title="Draft Policy",
+            filename="draft.pdf",
+        )
+        archived_document_id = self._create_document(
+            company_id="company-a",
+            title="Archived Policy",
+            filename="archived.pdf",
+        )
+        self._replace_chunks(
+            company_id="company-a",
+            document_id=active_document_id,
+            chunks=[
+                self._chunk_input(
+                    chunk_index=0,
+                    text="Active return policy for employees.",
+                ),
+            ],
+        )
+        self._replace_chunks(
+            company_id="company-a",
+            document_id=draft_document_id,
+            chunks=[
+                self._chunk_input(
+                    chunk_index=0,
+                    text="Draft return policy for employees.",
+                ),
+            ],
+        )
+        self._replace_chunks(
+            company_id="company-a",
+            document_id=archived_document_id,
+            chunks=[
+                self._chunk_input(
+                    chunk_index=0,
+                    text="Archived return policy for employees.",
+                ),
+            ],
+        )
+        self._activate_document(
+            company_id="company-a",
+            document_id=active_document_id,
+        )
+        knowledge_document_repository.set_status(
+            self.db_path,
+            company_id="company-a",
+            document_id=archived_document_id,
+            status="archived",
+        )
+
+        results = self.service.search(
+            self.db_path,
+            company_id="company-a",
+            query="return policy",
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].chunk.document_id, active_document_id)
+        self.assertIn("Active return policy", results[0].chunk.text)
 
     def test_rank_chunks_stable_tie_breaker(self) -> None:
         chunks = (

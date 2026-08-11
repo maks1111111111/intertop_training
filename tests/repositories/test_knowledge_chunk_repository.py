@@ -470,6 +470,260 @@ class KnowledgeChunkRepositoryTests(unittest.TestCase):
 
         self.assertIsNotNone(row)
 
+    def test_list_for_company_returns_chunks_regardless_of_document_status(self) -> None:
+        self._replace(
+            chunks=[self._chunk_input(chunk_index=0, text="Draft chunk")],
+        )
+
+        chunks = knowledge_chunk_repository.list_for_company(
+            self.db_path,
+            company_id="company-a",
+        )
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(chunks[0].text, "Draft chunk")
+
+    def test_list_for_company_by_document_status_returns_active_chunks(self) -> None:
+        self._replace(
+            chunks=[self._chunk_input(chunk_index=0, text="Active chunk")],
+        )
+        knowledge_document_repository.set_status(
+            self.db_path,
+            company_id="company-a",
+            document_id=self.document.document_id,
+            status="active",
+        )
+
+        chunks = knowledge_chunk_repository.list_for_company_by_document_status(
+            self.db_path,
+            company_id="company-a",
+            status="active",
+        )
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(chunks[0].text, "Active chunk")
+
+    def test_list_for_company_by_document_status_excludes_draft(self) -> None:
+        self._replace(
+            chunks=[self._chunk_input(chunk_index=0, text="Draft chunk")],
+        )
+
+        chunks = knowledge_chunk_repository.list_for_company_by_document_status(
+            self.db_path,
+            company_id="company-a",
+            status="active",
+        )
+
+        self.assertEqual(chunks, [])
+
+    def test_list_for_company_by_document_status_excludes_archived(self) -> None:
+        self._replace(
+            chunks=[self._chunk_input(chunk_index=0, text="Archived chunk")],
+        )
+        knowledge_document_repository.set_status(
+            self.db_path,
+            company_id="company-a",
+            document_id=self.document.document_id,
+            status="archived",
+        )
+
+        chunks = knowledge_chunk_repository.list_for_company_by_document_status(
+            self.db_path,
+            company_id="company-a",
+            status="active",
+        )
+
+        self.assertEqual(chunks, [])
+
+    def test_list_for_company_by_document_status_returns_draft_chunks(self) -> None:
+        self._replace(
+            chunks=[self._chunk_input(chunk_index=0, text="Draft chunk")],
+        )
+
+        chunks = knowledge_chunk_repository.list_for_company_by_document_status(
+            self.db_path,
+            company_id="company-a",
+            status="draft",
+        )
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(chunks[0].text, "Draft chunk")
+
+    def test_list_for_company_by_document_status_returns_archived_chunks(self) -> None:
+        self._replace(
+            chunks=[self._chunk_input(chunk_index=0, text="Archived chunk")],
+        )
+        knowledge_document_repository.set_status(
+            self.db_path,
+            company_id="company-a",
+            document_id=self.document.document_id,
+            status="archived",
+        )
+
+        chunks = knowledge_chunk_repository.list_for_company_by_document_status(
+            self.db_path,
+            company_id="company-a",
+            status="archived",
+        )
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(chunks[0].text, "Archived chunk")
+
+    def test_list_for_company_by_document_status_tenant_isolation(self) -> None:
+        other_document = knowledge_document_repository.create_document(
+            self.db_path,
+            company_id="company-b",
+            title="Other Manual",
+            original_filename="other.pdf",
+            source_type="pdf",
+        )
+        self._replace(
+            chunks=[self._chunk_input(chunk_index=0, text="Company A chunk")],
+        )
+        knowledge_document_repository.set_status(
+            self.db_path,
+            company_id="company-a",
+            document_id=self.document.document_id,
+            status="active",
+        )
+        knowledge_chunk_repository.replace_document_chunks(
+            self.db_path,
+            company_id="company-b",
+            document_id=other_document.document_id,
+            chunks=[
+                self._chunk_input(chunk_index=0, text="Company B chunk"),
+            ],
+        )
+        knowledge_document_repository.set_status(
+            self.db_path,
+            company_id="company-b",
+            document_id=other_document.document_id,
+            status="active",
+        )
+
+        company_a_chunks = knowledge_chunk_repository.list_for_company_by_document_status(
+            self.db_path,
+            company_id="company-a",
+            status="active",
+        )
+        company_b_chunks = knowledge_chunk_repository.list_for_company_by_document_status(
+            self.db_path,
+            company_id="company-b",
+            status="active",
+        )
+
+        self.assertEqual(len(company_a_chunks), 1)
+        self.assertEqual(company_a_chunks[0].text, "Company A chunk")
+        self.assertEqual(len(company_b_chunks), 1)
+        self.assertEqual(company_b_chunks[0].text, "Company B chunk")
+
+    def test_list_for_company_by_document_status_same_document_id_across_tenants(
+        self,
+    ) -> None:
+        shared_document_id = self.document.document_id
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO knowledge_documents (
+                    company_id,
+                    document_id,
+                    title,
+                    original_filename,
+                    source_type,
+                    source_language,
+                    extracted_text,
+                    status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "company-b",
+                    shared_document_id,
+                    "Shared Manual",
+                    "shared.pdf",
+                    "pdf",
+                    "auto",
+                    "",
+                    "active",
+                ),
+            )
+        self._replace(
+            chunks=[self._chunk_input(chunk_index=0, text="Primary tenant active chunk")],
+        )
+        knowledge_document_repository.set_status(
+            self.db_path,
+            company_id="company-a",
+            document_id=self.document.document_id,
+            status="active",
+        )
+        knowledge_chunk_repository.replace_document_chunks(
+            self.db_path,
+            company_id="company-b",
+            document_id=shared_document_id,
+            chunks=[
+                self._chunk_input(chunk_index=0, text="Other tenant active chunk"),
+            ],
+        )
+
+        primary_chunks = knowledge_chunk_repository.list_for_company_by_document_status(
+            self.db_path,
+            company_id="company-a",
+            status="active",
+        )
+        other_chunks = knowledge_chunk_repository.list_for_company_by_document_status(
+            self.db_path,
+            company_id="company-b",
+            status="active",
+        )
+
+        self.assertEqual(len(primary_chunks), 1)
+        self.assertEqual(primary_chunks[0].text, "Primary tenant active chunk")
+        self.assertEqual(len(other_chunks), 1)
+        self.assertEqual(other_chunks[0].text, "Other tenant active chunk")
+
+    def test_list_for_company_by_document_status_invalid_status_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            knowledge_chunk_repository.list_for_company_by_document_status(
+                self.db_path,
+                company_id="company-a",
+                status="published",
+            )
+
+    def test_list_for_company_by_document_status_empty_company_id_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            knowledge_chunk_repository.list_for_company_by_document_status(
+                self.db_path,
+                company_id="  ",
+                status="active",
+            )
+
+    def test_list_for_company_by_document_status_preserves_deterministic_ordering(
+        self,
+    ) -> None:
+        self._replace(
+            chunks=[
+                self._chunk_input(chunk_index=2, text="Third chunk"),
+                self._chunk_input(chunk_index=0, text="First chunk"),
+                self._chunk_input(chunk_index=1, text="Second chunk"),
+            ],
+        )
+        knowledge_document_repository.set_status(
+            self.db_path,
+            company_id="company-a",
+            document_id=self.document.document_id,
+            status="active",
+        )
+
+        chunks = knowledge_chunk_repository.list_for_company_by_document_status(
+            self.db_path,
+            company_id="company-a",
+            status="active",
+        )
+
+        self.assertEqual(
+            [chunk.text for chunk in chunks],
+            ["First chunk", "Second chunk", "Third chunk"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

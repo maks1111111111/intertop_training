@@ -8,7 +8,11 @@ from typing import Iterable, Sequence, Union
 
 from app.database.db import get_connection
 from app.knowledge.chunking import KnowledgeChunk
-from app.knowledge.models import KnowledgeDocumentChunk, KnowledgeDocumentChunkInput
+from app.knowledge.models import (
+    KnowledgeDocumentChunk,
+    KnowledgeDocumentChunkInput,
+    KnowledgeDocumentStatus,
+)
 
 ChunkInput = Union[KnowledgeDocumentChunkInput, KnowledgeChunk]
 
@@ -30,6 +34,18 @@ def _validate_non_empty(value: str, field_name: str) -> str:
     normalized = value.strip()
     if not normalized:
         raise ValueError(f"{field_name} must not be empty")
+    return normalized
+
+
+def _normalize_document_status(
+    status: Union[KnowledgeDocumentStatus, str],
+) -> str:
+    allowed = frozenset(item.value for item in KnowledgeDocumentStatus)
+    if isinstance(status, KnowledgeDocumentStatus):
+        return status.value
+    normalized = str(status).strip().lower()
+    if normalized not in allowed:
+        raise ValueError(f"Unsupported knowledge document status: {status!r}")
     return normalized
 
 
@@ -156,6 +172,34 @@ def list_for_company(
             ORDER BY document_id ASC, chunk_index ASC, id ASC
             """,
             (normalized_company_id,),
+        ).fetchall()
+
+    return [_row_to_chunk(row) for row in rows]
+
+
+def list_for_company_by_document_status(
+    db_path: Path,
+    *,
+    company_id: str,
+    status: Union[KnowledgeDocumentStatus, str],
+) -> list[KnowledgeDocumentChunk]:
+    """Return company chunks whose parent document has the requested status."""
+    normalized_company_id = _validate_non_empty(company_id, "company_id")
+    normalized_status = _normalize_document_status(status)
+
+    with get_connection(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT chunks.*
+            FROM knowledge_document_chunks AS chunks
+            INNER JOIN knowledge_documents AS documents
+                ON chunks.company_id = documents.company_id
+               AND chunks.document_id = documents.document_id
+            WHERE chunks.company_id = ?
+              AND documents.status = ?
+            ORDER BY chunks.document_id ASC, chunks.chunk_index ASC, chunks.id ASC
+            """,
+            (normalized_company_id, normalized_status),
         ).fetchall()
 
     return [_row_to_chunk(row) for row in rows]

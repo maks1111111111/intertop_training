@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional, Sequence
 
-from app.knowledge.models import KnowledgeDocumentChunk
+from app.knowledge.models import KnowledgeDocumentChunk, KnowledgeDocumentStatus
 from app.repositories import knowledge_chunk_repository
 
 _TOKEN_SPLIT_RE = re.compile(r"[^\w]+", flags=re.UNICODE)
@@ -112,9 +112,10 @@ def _default_chunk_loader(
     db_path: Path,
     company_id: str,
 ) -> Sequence[KnowledgeDocumentChunk]:
-    return knowledge_chunk_repository.list_for_company(
+    return knowledge_chunk_repository.list_for_company_by_document_status(
         db_path,
         company_id=company_id,
+        status=KnowledgeDocumentStatus.ACTIVE,
     )
 
 
