@@ -1526,6 +1526,77 @@ a:focus-visible,
     border-top: 1px solid #e5e7eb;
 }
 
+.admin-knowledge-answer-section {
+    margin-bottom: 1.5rem;
+    padding: 1.25rem;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+}
+
+.admin-knowledge-answer-section--insufficient {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.admin-knowledge-answer-text {
+    margin: 0.75rem 0 0;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.admin-knowledge-answer-text--secondary {
+    color: #4b5563;
+}
+
+.admin-knowledge-insufficient-message {
+    margin: 0.75rem 0 0;
+    font-weight: 600;
+    color: #92400e;
+}
+
+.admin-knowledge-sources-title {
+    margin: 1.25rem 0 0.75rem;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.admin-knowledge-sources-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.admin-knowledge-source-card {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.75rem;
+    padding: 0.75rem 1rem;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+}
+
+.admin-knowledge-source-number {
+    font-weight: 600;
+}
+
+.admin-knowledge-source-title {
+    font-weight: 500;
+}
+
+.admin-knowledge-source-filename {
+    color: #6b7280;
+}
+
+.admin-knowledge-source-meta {
+    color: #6b7280;
+    font-size: 0.875rem;
+}
+
 .admin-knowledge-lifecycle-form {
     margin: 0;
 }

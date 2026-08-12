@@ -92,9 +92,18 @@ from app.web.admin_upload_service import (
     build_upload_confirm_view,
     parse_admin_course_form,
 )
+from app.ai.config import OpenAIConfig
+from app.knowledge.question_answering_bootstrap import (
+    create_knowledge_question_answering_service,
+)
 from app.web.admin_knowledge_lifecycle_service import (
     AdminKnowledgeLifecycleError,
     AdminKnowledgeLifecycleService,
+)
+from app.web.admin_knowledge_question_service import (
+    AdminKnowledgeAnswerView,
+    AdminKnowledgeQuestionError,
+    AdminKnowledgeQuestionService,
 )
 from app.web.admin_knowledge_service import AdminKnowledgeService
 from app.web.admin_knowledge_upload_service import (
@@ -174,6 +183,22 @@ def get_admin_knowledge_lifecycle_service(
 ) -> AdminKnowledgeLifecycleService:
     """Return the admin Knowledge Base lifecycle service."""
     return AdminKnowledgeLifecycleService(db_path)
+
+
+def get_admin_knowledge_question_service(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+) -> AdminKnowledgeQuestionService:
+    """Return the admin Knowledge Base question answering service."""
+    override = getattr(request.app.state, "admin_knowledge_question_service", None)
+    if override is not None:
+        return override
+    config = OpenAIConfig.from_environment()
+    question_answering_service = create_knowledge_question_answering_service(config)
+    return AdminKnowledgeQuestionService(
+        db_path,
+        question_answering_service=question_answering_service,
+    )
 
 
 def get_upload_service(request: Request) -> AdminUploadService:
@@ -489,6 +514,76 @@ def admin_knowledge_archive(
         )
 
     return RedirectResponse(url="/admin/knowledge", status_code=303)
+
+
+def _render_admin_knowledge_ask_page(
+    request: Request,
+    *,
+    question: str = "",
+    language: str = "ru",
+    error_message: str = "",
+    answer_view: Optional[AdminKnowledgeAnswerView] = None,
+) -> HTMLResponse:
+    """Render the Knowledge Base grounded question form and optional answer."""
+    return templates.TemplateResponse(
+        request,
+        "admin_knowledge_ask.html",
+        {
+            "active_nav": "admin",
+            "question": question,
+            "language": language,
+            "error_message": error_message,
+            "answer_view": answer_view,
+        },
+    )
+
+
+@router.get(
+    "/admin/knowledge/ask",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_knowledge_ask_page(request: Request) -> HTMLResponse:
+    """Render the Knowledge Base grounded question form."""
+    return _render_admin_knowledge_ask_page(request)
+
+
+@router.post(
+    "/admin/knowledge/ask",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def admin_knowledge_ask_submit(
+    request: Request,
+    question_service: AdminKnowledgeQuestionService = Depends(
+        get_admin_knowledge_question_service
+    ),
+) -> HTMLResponse:
+    """Answer one grounded Knowledge Base question for the admin UI."""
+    form = await request.form()
+    question = str(form.get("question") or "")
+    language = str(form.get("language") or "ru").strip()
+
+    try:
+        answer_view = question_service.answer_question(
+            _WEB_ADMIN_COMPANY_ID,
+            question,
+            language=language,
+        )
+    except AdminKnowledgeQuestionError as exc:
+        return _render_admin_knowledge_ask_page(
+            request,
+            question=question,
+            language=language,
+            error_message=exc.message,
+        )
+
+    return _render_admin_knowledge_ask_page(
+        request,
+        question=question,
+        language=language,
+        answer_view=answer_view,
+    )
 
 
 def _render_admin_knowledge_upload_page(

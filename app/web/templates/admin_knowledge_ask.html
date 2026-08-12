@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Задать вопрос — База знаний — Intertop Training{% endblock %}
+
+{% block content %}
+<section class="page-header admin-page-header">
+    <div class="admin-page-header-body">
+        <nav class="admin-breadcrumb" aria-label="Навигация администратора">
+            <a href="/admin">Админ</a>
+            <span class="admin-breadcrumb-separator">/</span>
+            <a href="/admin/knowledge">База знаний</a>
+            <span class="admin-breadcrumb-separator">/</span>
+            <span>Задать вопрос</span>
+        </nav>
+        <h1 class="page-title">Задать вопрос</h1>
+        <p class="page-lead">
+            Ответ формируется только на основе опубликованных документов базы знаний.
+            Черновики и архивные материалы не используются.
+        </p>
+    </div>
+</section>
+
+<nav class="admin-subnav" aria-label="Разделы администратора">
+    <a href="/admin" class="admin-subnav-link">Курсы</a>
+    <a href="/admin/knowledge" class="admin-subnav-link is-active">База знаний</a>
+</nav>
+
+{% if error_message %}
+<div class="admin-form-error" role="alert">{{ error_message }}</div>
+{% endif %}
+
+{% if answer_view %}
+<section
+    class="admin-knowledge-answer-section{% if not answer_view.sufficient_context %} admin-knowledge-answer-section--insufficient{% endif %}"
+    aria-labelledby="knowledge-answer-heading"
+>
+    {% if answer_view.sufficient_context %}
+    <h2 class="admin-form-section-title" id="knowledge-answer-heading">Ответ</h2>
+    <div class="admin-knowledge-answer-text">{{ answer_view.answer }}</div>
+
+    {% if answer_view.sources %}
+    <h3 class="admin-knowledge-sources-title" id="knowledge-sources-heading">Источники</h3>
+    <ol class="admin-knowledge-sources-list" aria-labelledby="knowledge-sources-heading">
+        {% for source in answer_view.sources %}
+        <li class="admin-knowledge-source-card">
+            <span class="admin-knowledge-source-number">Источник {{ source.source_number }}</span>
+            {% if source.title %}
+            <span class="admin-knowledge-source-title">{{ source.title }}</span>
+            {% endif %}
+            {% if source.original_filename %}
+            <span class="admin-knowledge-source-filename">{{ source.original_filename }}</span>
+            {% endif %}
+            <span class="admin-knowledge-source-meta">Фрагмент {{ source.chunk_index }}</span>
+        </li>
+        {% endfor %}
+    </ol>
+    {% endif %}
+    {% else %}
+    <h2 class="admin-form-section-title" id="knowledge-answer-heading">Результат</h2>
+    <p class="admin-knowledge-insufficient-message" role="status">
+        Недостаточно информации в опубликованных документах.
+    </p>
+    {% if answer_view.answer %}
+    <div class="admin-knowledge-answer-text admin-knowledge-answer-text--secondary">{{ answer_view.answer }}</div>
+    {% endif %}
+    {% endif %}
+</section>
+{% endif %}
+
+<form
+    class="admin-create-form"
+    action="/admin/knowledge/ask"
+    method="post"
+    aria-label="Форма вопроса к базе знаний"
+>
+    <fieldset class="admin-form-section">
+        <legend class="admin-form-section-title">Вопрос</legend>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="knowledge-question">Ваш вопрос</label>
+            <textarea
+                class="admin-form-input admin-form-textarea admin-form-textarea--tall"
+                id="knowledge-question"
+                name="question"
+                rows="4"
+                required
+            >{{ question }}</textarea>
+        </div>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="answer-language">Язык ответа</label>
+            <select class="admin-form-select" id="answer-language" name="language">
+                <option value="ru"{% if language == "ru" %} selected{% endif %}>Русский</option>
+                <option value="kk"{% if language == "kk" %} selected{% endif %}>Қазақша</option>
+                <option value="en"{% if language == "en" %} selected{% endif %}>English</option>
+            </select>
+        </div>
+    </fieldset>
+
+    <div class="admin-form-actions">
+        <button class="button button-primary" type="submit">Получить ответ</button>
+        <a class="button button-secondary" href="/admin/knowledge">Назад к документам</a>
+    </div>
+</form>
+{% endblock %}
