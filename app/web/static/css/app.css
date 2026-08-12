@@ -1520,8 +1520,14 @@ a:focus-visible,
 .admin-course-actions {
     display: flex;
     justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.5rem;
     padding-top: 0.75rem;
     border-top: 1px solid #e5e7eb;
+}
+
+.admin-knowledge-lifecycle-form {
+    margin: 0;
 }
 
 .admin-empty-state {

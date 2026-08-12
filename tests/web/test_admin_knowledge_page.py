@@ -124,6 +124,32 @@ class AdminKnowledgePageTests(unittest.TestCase):
             'href="/admin/knowledge" class="admin-subnav-link is-active"',
             response.text,
         )
+        self.assertNotIn("admin-subnav-linkis-active", response.text)
+
+    def test_knowledge_page_presentation_regressions_with_documents(self) -> None:
+        """Catch known spacing regressions in document metadata."""
+        self._create_document(
+            title="Return Policy",
+            original_filename="returns.pdf",
+            source_language="ru",
+        )
+
+        response = self.client.get("/admin/knowledge")
+        html = response.text
+
+        self.assertIn("Файл: returns.pdf", html)
+        self.assertIn("Язык: ru", html)
+        self.assertNotIn("Файл:returns.pdf", html)
+        self.assertNotIn("Язык:ru", html)
+        self.assertNotIn("admin-subnav-linkis-active", html)
+
+    def test_knowledge_page_empty_state_presentation_regressions(self) -> None:
+        """Catch known typo regressions in the empty-state message."""
+        response = self.client.get("/admin/knowledge")
+        html = response.text
+
+        self.assertIn("Документы базы знаний пока отсутствуют.", html)
+        self.assertNotIn("Документы базызнаний", html)
 
     def test_knowledge_page_excludes_other_company_documents(self) -> None:
         self._create_document(company_id="intertop", title="Visible Doc")

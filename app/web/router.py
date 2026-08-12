@@ -92,6 +92,10 @@ from app.web.admin_upload_service import (
     build_upload_confirm_view,
     parse_admin_course_form,
 )
+from app.web.admin_knowledge_lifecycle_service import (
+    AdminKnowledgeLifecycleError,
+    AdminKnowledgeLifecycleService,
+)
 from app.web.admin_knowledge_service import AdminKnowledgeService
 from app.web.admin_knowledge_upload_service import (
     AdminKnowledgeUploadError,
@@ -163,6 +167,13 @@ def get_admin_knowledge_upload_service(
     if override is not None:
         return override
     return AdminKnowledgeUploadService(db_path, request.app.state.upload_dir)
+
+
+def get_admin_knowledge_lifecycle_service(
+    db_path: Path = Depends(get_db_path),
+) -> AdminKnowledgeLifecycleService:
+    """Return the admin Knowledge Base lifecycle service."""
+    return AdminKnowledgeLifecycleService(db_path)
 
 
 def get_upload_service(request: Request) -> AdminUploadService:
@@ -399,10 +410,11 @@ def admin_dashboard_page(
     )
 
 
-@router.get("/admin/knowledge", response_class=HTMLResponse, include_in_schema=False)
-def admin_knowledge_page(
+def _render_admin_knowledge_page(
     request: Request,
-    knowledge_service: AdminKnowledgeService = Depends(get_admin_knowledge_service),
+    knowledge_service: AdminKnowledgeService,
+    *,
+    error_message: str = "",
 ) -> HTMLResponse:
     """Render the admin Knowledge Base document list."""
     documents = knowledge_service.get_documents(_WEB_ADMIN_COMPANY_ID)
@@ -413,8 +425,70 @@ def admin_knowledge_page(
             "active_nav": "admin",
             "documents": documents,
             "documents_count": len(documents),
+            "error_message": error_message,
         },
     )
+
+
+@router.get("/admin/knowledge", response_class=HTMLResponse, include_in_schema=False)
+def admin_knowledge_page(
+    request: Request,
+    knowledge_service: AdminKnowledgeService = Depends(get_admin_knowledge_service),
+) -> HTMLResponse:
+    """Render the admin Knowledge Base document list."""
+    return _render_admin_knowledge_page(request, knowledge_service)
+
+
+@router.post(
+    "/admin/knowledge/{document_id}/publish",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_knowledge_publish(
+    request: Request,
+    document_id: str,
+    knowledge_service: AdminKnowledgeService = Depends(get_admin_knowledge_service),
+    lifecycle_service: AdminKnowledgeLifecycleService = Depends(
+        get_admin_knowledge_lifecycle_service
+    ),
+) -> HTMLResponse:
+    """Publish one Knowledge Base document."""
+    try:
+        lifecycle_service.publish(_WEB_ADMIN_COMPANY_ID, document_id)
+    except AdminKnowledgeLifecycleError as exc:
+        return _render_admin_knowledge_page(
+            request,
+            knowledge_service,
+            error_message=exc.message,
+        )
+
+    return RedirectResponse(url="/admin/knowledge", status_code=303)
+
+
+@router.post(
+    "/admin/knowledge/{document_id}/archive",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_knowledge_archive(
+    request: Request,
+    document_id: str,
+    knowledge_service: AdminKnowledgeService = Depends(get_admin_knowledge_service),
+    lifecycle_service: AdminKnowledgeLifecycleService = Depends(
+        get_admin_knowledge_lifecycle_service
+    ),
+) -> HTMLResponse:
+    """Archive one Knowledge Base document."""
+    try:
+        lifecycle_service.archive(_WEB_ADMIN_COMPANY_ID, document_id)
+    except AdminKnowledgeLifecycleError as exc:
+        return _render_admin_knowledge_page(
+            request,
+            knowledge_service,
+            error_message=exc.message,
+        )
+
+    return RedirectResponse(url="/admin/knowledge", status_code=303)
 
 
 def _render_admin_knowledge_upload_page(

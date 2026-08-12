@@ -23,6 +23,10 @@
     <a href="/admin/knowledge" class="admin-subnav-link is-active">База знаний</a>
 </nav>
 
+{% if error_message %}
+<div class="admin-form-error" role="alert">{{ error_message }}</div>
+{% endif %}
+
 {% if documents %}
 <section class="section">
     <ul class="course-list admin-course-list admin-knowledge-list">
@@ -44,6 +48,27 @@
                     <span class="admin-meta-item">Создан: {{ document.created_at }}</span>
                 </div>
             </div>
+
+            {% if document.status == "draft" or document.status == "active" %}
+            <div class="admin-course-actions">
+                {% if document.status == "draft" %}
+                <form
+                    class="admin-knowledge-lifecycle-form"
+                    action="/admin/knowledge/{{ document.document_id }}/publish"
+                    method="post"
+                >
+                    <button class="button button-primary button-small" type="submit">Опубликовать</button>
+                </form>
+                {% endif %}
+                <form
+                    class="admin-knowledge-lifecycle-form"
+                    action="/admin/knowledge/{{ document.document_id }}/archive"
+                    method="post"
+                >
+                    <button class="button button-secondary button-small" type="submit">В архив</button>
+                </form>
+            </div>
+            {% endif %}
         </li>
         {% endfor %}
     </ul>
