@@ -115,6 +115,7 @@ class AdminKnowledgePageTests(unittest.TestCase):
         response = self.client.get("/admin/knowledge")
 
         self.assertIn("Загрузить документ", response.text)
+        self.assertIn('href="/admin/knowledge/upload"', response.text)
 
     def test_knowledge_page_marks_subnav_as_active(self) -> None:
         response = self.client.get("/admin/knowledge")

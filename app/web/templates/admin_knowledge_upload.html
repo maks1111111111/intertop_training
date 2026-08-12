@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Загрузка документа — Intertop Training{% endblock %}
+
+{% block content %}
+<section class="page-header admin-page-header">
+    <div class="admin-page-header-body">
+        <nav class="admin-breadcrumb" aria-label="Навигация администратора">
+            <a href="/admin">Админ</a>
+            <span class="admin-breadcrumb-separator">/</span>
+            <a href="/admin/knowledge">База знаний</a>
+            <span class="admin-breadcrumb-separator">/</span>
+            <span>Загрузка документа</span>
+        </nav>
+        <h1 class="page-title">Загрузить документ</h1>
+        <p class="page-lead">Импортируйте корпоративный документ в базу знаний. Поддерживаются форматы PDF, DOCX и PPTX.</p>
+    </div>
+</section>
+
+<nav class="admin-subnav" aria-label="Разделы администратора">
+    <a href="/admin" class="admin-subnav-link">Курсы</a>
+    <a href="/admin/knowledge" class="admin-subnav-link is-active">База знаний</a>
+</nav>
+
+{% if error_message %}
+<div class="admin-form-error" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<form
+    class="admin-create-form"
+    action="/admin/knowledge/upload"
+    method="post"
+    enctype="multipart/form-data"
+    aria-label="Форма загрузки документа базы знаний"
+>
+    <fieldset class="admin-form-section">
+        <legend class="admin-form-section-title">Исходный файл</legend>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="source-file">Файл документа</label>
+            <input
+                class="admin-form-file"
+                type="file"
+                id="source-file"
+                name="source_file"
+                accept=".pdf,.docx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                required
+            >
+            <p class="admin-form-hint">Поддерживаемые форматы: PDF, DOCX, PPTX.</p>
+        </div>
+    </fieldset>
+
+    <fieldset class="admin-form-section">
+        <legend class="admin-form-section-title">Метаданные</legend>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="document-title">Название документа</label>
+            <input
+                class="admin-form-input"
+                type="text"
+                id="document-title"
+                name="title"
+                value="{{ title }}"
+                autocomplete="off"
+                placeholder="Необязательно — будет взято из имени файла"
+            >
+        </div>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="source-language">Язык источника</label>
+            <select class="admin-form-select" id="source-language" name="source_language">
+                <option value="auto"{% if source_language == "auto" %} selected{% endif %}>Авто</option>
+                <option value="ru"{% if source_language == "ru" %} selected{% endif %}>Русский</option>
+                <option value="kk"{% if source_language == "kk" %} selected{% endif %}>Қазақша</option>
+                <option value="en"{% if source_language == "en" %} selected{% endif %}>English</option>
+            </select>
+        </div>
+    </fieldset>
+
+    <div class="admin-form-actions">
+        <button class="button button-primary" type="submit">Импортировать</button>
+        <a class="button button-secondary" href="/admin/knowledge">Отмена</a>
+    </div>
+</form>
+{% endblock %}

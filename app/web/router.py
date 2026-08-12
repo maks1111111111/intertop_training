@@ -93,6 +93,10 @@ from app.web.admin_upload_service import (
     parse_admin_course_form,
 )
 from app.web.admin_knowledge_service import AdminKnowledgeService
+from app.web.admin_knowledge_upload_service import (
+    AdminKnowledgeUploadError,
+    AdminKnowledgeUploadService,
+)
 from app.web.dashboard_service import DashboardService
 from app.web.progress_service import WebProgressService
 from app.web.quiz_scoring import (
@@ -148,6 +152,17 @@ def get_admin_knowledge_service(
 ) -> AdminKnowledgeService:
     """Return the admin Knowledge Base service for the current database."""
     return AdminKnowledgeService(db_path)
+
+
+def get_admin_knowledge_upload_service(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+) -> AdminKnowledgeUploadService:
+    """Return the admin Knowledge Base upload service."""
+    override = getattr(request.app.state, "admin_knowledge_upload_service", None)
+    if override is not None:
+        return override
+    return AdminKnowledgeUploadService(db_path, request.app.state.upload_dir)
 
 
 def get_upload_service(request: Request) -> AdminUploadService:
@@ -400,6 +415,82 @@ def admin_knowledge_page(
             "documents_count": len(documents),
         },
     )
+
+
+def _render_admin_knowledge_upload_page(
+    request: Request,
+    *,
+    error_message: str = "",
+    title: str = "",
+    source_language: str = "auto",
+) -> HTMLResponse:
+    """Render the Knowledge Base document upload form."""
+    return templates.TemplateResponse(
+        request,
+        "admin_knowledge_upload.html",
+        {
+            "active_nav": "admin",
+            "error_message": error_message,
+            "title": title,
+            "source_language": source_language,
+        },
+    )
+
+
+@router.get(
+    "/admin/knowledge/upload",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_knowledge_upload_page(request: Request) -> HTMLResponse:
+    """Render the Knowledge Base document upload form."""
+    return _render_admin_knowledge_upload_page(request)
+
+
+@router.post(
+    "/admin/knowledge/upload",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def admin_knowledge_upload_submit(
+    request: Request,
+    upload_service: AdminKnowledgeUploadService = Depends(
+        get_admin_knowledge_upload_service
+    ),
+) -> HTMLResponse:
+    """Validate and import one uploaded Knowledge Base document."""
+    form = await request.form()
+    title = str(form.get("title") or "").strip()
+    source_language = str(form.get("source_language") or "auto").strip()
+    upload_file = form.get("source_file")
+
+    filename = getattr(upload_file, "filename", None)
+    if upload_file is None or not filename:
+        return _render_admin_knowledge_upload_page(
+            request,
+            error_message="Файл не выбран. Загрузите документ.",
+            title=title,
+            source_language=source_language,
+        )
+
+    content = await upload_file.read()
+    try:
+        upload_service.import_upload(
+            company_id=_WEB_ADMIN_COMPANY_ID,
+            filename=filename,
+            content=content,
+            title=title or None,
+            source_language=source_language,
+        )
+    except AdminKnowledgeUploadError as exc:
+        return _render_admin_knowledge_upload_page(
+            request,
+            error_message=exc.message,
+            title=title,
+            source_language=source_language,
+        )
+
+    return RedirectResponse(url="/admin/knowledge", status_code=303)
 
 
 def _render_admin_course_create_page(
