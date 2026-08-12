@@ -32,7 +32,7 @@ class KnowledgeAnswerValidator:
             context: Tenant-scoped retrieval context used for answering.
 
         Returns:
-            The same ``result`` when validation succeeds.
+            A validated result with canonicalized citations when needed.
 
         Raises:
             KnowledgeAnswerValidationError: If the answer is inconsistent with
@@ -41,8 +41,17 @@ class KnowledgeAnswerValidator:
         self._validate_context(context)
         self._validate_answer(result)
         self._validate_sufficient_context_rules(result, context)
-        self._validate_citations(result.citations, context)
-        return result
+        canonical_citations = self._canonicalize_citations(
+            result.citations,
+            context,
+        )
+        if canonical_citations is result.citations:
+            return result
+        return KnowledgeAnswerResult(
+            answer=result.answer,
+            citations=canonical_citations,
+            sufficient_context=result.sufficient_context,
+        )
 
     def _validate_context(self, context: KnowledgeRetrievalContext) -> None:
         source_count = len(context.sources)
@@ -87,47 +96,50 @@ class KnowledgeAnswerValidator:
                 "Knowledge answer requires at least one valid citation."
             )
 
-    def _validate_citations(
+    def _canonicalize_citations(
         self,
         citations: tuple[KnowledgeAnswerCitation, ...],
         context: KnowledgeRetrievalContext,
-    ) -> None:
-        seen: set[tuple[int, str, int]] = set()
-        source_count = len(context.sources)
+    ) -> tuple[KnowledgeAnswerCitation, ...]:
+        seen_identities: set[tuple[str, int]] = set()
+        canonical: list[KnowledgeAnswerCitation] = []
 
         for citation in citations:
-            identity = (
-                citation.source_number,
-                citation.document_id,
-                citation.chunk_index,
-            )
-            if identity in seen:
+            matches = [
+                (index, source)
+                for index, source in enumerate(context.sources)
+                if source.document_id == citation.document_id
+                and source.chunk_index == citation.chunk_index
+            ]
+
+            if not matches:
+                raise KnowledgeAnswerValidationError(
+                    "Knowledge answer citation does not match the referenced "
+                    "source."
+                )
+
+            if len(matches) > 1:
+                raise KnowledgeAnswerValidationError(
+                    "Knowledge answer citation does not match the referenced "
+                    "source."
+                )
+
+            source_index, source = matches[0]
+            identity = (source.document_id, source.chunk_index)
+            if identity in seen_identities:
                 raise KnowledgeAnswerValidationError(
                     "Knowledge answer contains duplicate citations."
                 )
-            seen.add(identity)
+            seen_identities.add(identity)
 
-            if citation.source_number < 1:
-                raise KnowledgeAnswerValidationError(
-                    "Knowledge answer citation source_number is out of range."
+            canonical.append(
+                KnowledgeAnswerCitation(
+                    source_number=source_index + 1,
+                    document_id=source.document_id,
+                    chunk_index=source.chunk_index,
                 )
+            )
 
-            if citation.source_number > source_count:
-                raise KnowledgeAnswerValidationError(
-                    "Knowledge answer citation source_number is out of range."
-                )
-
-            source = context.sources[citation.source_number - 1]
-
-            if citation.document_id != source.document_id:
-                raise KnowledgeAnswerValidationError(
-                    "Knowledge answer citation does not match the referenced "
-                    "source."
-                )
-
-            if citation.chunk_index != source.chunk_index:
-                raise KnowledgeAnswerValidationError(
-                    "Knowledge answer citation does not match the referenced "
-                    "source."
-                )
-
+        if canonical == list(citations):
+            return citations
+        return tuple(canonical)

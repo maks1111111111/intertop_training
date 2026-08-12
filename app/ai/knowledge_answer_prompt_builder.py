@@ -96,6 +96,12 @@ def _citation_rules_lines() -> list[str]:
             "supported by one or more supplied sources."
         ),
         "- citations must reference ONLY sources actually present in the supplied context.",
+        (
+            "- source_number is the exact 1-based number shown in the supplied "
+            "context headers (for example, [Source 1 | ...])."
+        ),
+        "- Copy document_id and chunk_index exactly from the matching source header.",
+        "- Never infer, guess, or renumber sources.",
         "- Never invent source numbers.",
         "- Never cite a source that does not support the answer.",
         "- Prefer the minimum sufficient set of relevant sources.",
@@ -149,8 +155,12 @@ def _output_format_lines() -> list[str]:
             "corporate answer."
         ),
         (
-            "- citations: each citation must match source_number, document_id, "
-            "and chunk_index from the supplied context."
+            "- citations: each citation must use the exact source_number, "
+            "document_id, and chunk_index from the supplied context."
+        ),
+        (
+            "- citations: document_id and chunk_index are the authoritative "
+            "source identity; source_number must match the header label."
         ),
     ]
 

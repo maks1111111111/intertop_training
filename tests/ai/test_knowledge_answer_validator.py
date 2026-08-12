@@ -87,7 +87,8 @@ class KnowledgeAnswerValidatorSuccessTests(unittest.TestCase):
 
         validated = self.validator.validate(result, context)
 
-        self.assertIs(validated, result)
+        self.assertEqual(validated.citations, result.citations)
+        self.assertEqual(validated.citations[0].source_number, 1)
 
     def test_sufficient_context_true_multiple_valid_citations(self) -> None:
         sources = (
@@ -104,7 +105,6 @@ class KnowledgeAnswerValidatorSuccessTests(unittest.TestCase):
 
         validated = self.validator.validate(result, context)
 
-        self.assertIs(validated, result)
         self.assertEqual(len(validated.citations), 2)
 
     def test_sufficient_context_false_empty_citations(self) -> None:
@@ -113,7 +113,6 @@ class KnowledgeAnswerValidatorSuccessTests(unittest.TestCase):
 
         validated = self.validator.validate(result, context)
 
-        self.assertIs(validated, result)
         self.assertEqual(validated.citations, ())
 
     def test_sufficient_context_false_valid_citation(self) -> None:
@@ -161,31 +160,7 @@ class KnowledgeAnswerValidatorSourceMatchFailureTests(unittest.TestCase):
         self.validator = KnowledgeAnswerValidator()
         self.context = _context(sources=(_source(document_id="policy-a", chunk_index=3),))
 
-    def test_source_number_zero_rejected(self) -> None:
-        result = _result(citations=(KnowledgeAnswerCitation(0, "policy-a", 3),))
-
-        with self.assertRaises(KnowledgeAnswerValidationError) as ctx:
-            self.validator.validate(result, self.context)
-
-        self.assertIn("out of range", ctx.exception.message)
-
-    def test_source_number_negative_rejected(self) -> None:
-        result = _result(citations=(KnowledgeAnswerCitation(-1, "policy-a", 3),))
-
-        with self.assertRaises(KnowledgeAnswerValidationError) as ctx:
-            self.validator.validate(result, self.context)
-
-        self.assertIn("out of range", ctx.exception.message)
-
-    def test_source_number_greater_than_source_count_rejected(self) -> None:
-        result = _result(citations=(KnowledgeAnswerCitation(2, "policy-a", 3),))
-
-        with self.assertRaises(KnowledgeAnswerValidationError) as ctx:
-            self.validator.validate(result, self.context)
-
-        self.assertIn("out of range", ctx.exception.message)
-
-    def test_document_id_mismatch_rejected(self) -> None:
+    def test_fabricated_document_id_rejected(self) -> None:
         result = _result(citations=(KnowledgeAnswerCitation(1, "policy-b", 3),))
 
         with self.assertRaises(KnowledgeAnswerValidationError) as ctx:
@@ -193,7 +168,7 @@ class KnowledgeAnswerValidatorSourceMatchFailureTests(unittest.TestCase):
 
         self.assertIn("does not match", ctx.exception.message)
 
-    def test_chunk_index_mismatch_rejected(self) -> None:
+    def test_correct_document_id_wrong_chunk_index_rejected(self) -> None:
         result = _result(citations=(KnowledgeAnswerCitation(1, "policy-a", 4),))
 
         with self.assertRaises(KnowledgeAnswerValidationError) as ctx:
@@ -201,7 +176,27 @@ class KnowledgeAnswerValidatorSourceMatchFailureTests(unittest.TestCase):
 
         self.assertIn("does not match", ctx.exception.message)
 
-    def test_valid_document_chunk_wrong_source_number_rejected(self) -> None:
+    def test_fabricated_document_chunk_pair_rejected(self) -> None:
+        sources = (
+            _source(document_id="policy-a", chunk_index=0),
+            _source(document_id="policy-b", chunk_index=1),
+        )
+        context = _context(sources=sources)
+        result = _result(citations=(KnowledgeAnswerCitation(1, "policy-c", 99),))
+
+        with self.assertRaises(KnowledgeAnswerValidationError) as ctx:
+            self.validator.validate(result, context)
+
+        self.assertIn("does not match", ctx.exception.message)
+
+
+class KnowledgeAnswerValidatorCanonicalizationTests(unittest.TestCase):
+    """Tests for citation canonicalization from document/chunk identity."""
+
+    def setUp(self) -> None:
+        self.validator = KnowledgeAnswerValidator()
+
+    def test_wrong_in_range_source_number_accepted_and_canonicalized(self) -> None:
         sources = (
             _source(document_id="policy-a", chunk_index=0),
             _source(document_id="policy-b", chunk_index=1),
@@ -209,12 +204,61 @@ class KnowledgeAnswerValidatorSourceMatchFailureTests(unittest.TestCase):
         context = _context(sources=sources)
         result = _result(citations=(KnowledgeAnswerCitation(2, "policy-a", 0),))
 
-        with self.assertRaises(KnowledgeAnswerValidationError) as ctx:
-            self.validator.validate(result, context)
+        validated = self.validator.validate(result, context)
 
-        self.assertIn("does not match", ctx.exception.message)
+        self.assertEqual(validated.citations[0].source_number, 1)
+        self.assertEqual(validated.citations[0].document_id, "policy-a")
+        self.assertEqual(validated.citations[0].chunk_index, 0)
 
-    def test_document_id_exists_elsewhere_wrong_source_number_rejected(self) -> None:
+    def test_out_of_range_source_number_accepted_and_canonicalized(self) -> None:
+        context = _context(sources=(_source(document_id="policy-a", chunk_index=3),))
+        result = _result(citations=(KnowledgeAnswerCitation(99, "policy-a", 3),))
+
+        validated = self.validator.validate(result, context)
+
+        self.assertEqual(validated.citations[0].source_number, 1)
+
+    def test_source_number_zero_with_valid_document_chunk_canonicalized(self) -> None:
+        context = _context(sources=(_source(document_id="policy-a", chunk_index=3),))
+        result = _result(citations=(KnowledgeAnswerCitation(0, "policy-a", 3),))
+
+        validated = self.validator.validate(result, context)
+
+        self.assertEqual(validated.citations[0].source_number, 1)
+
+    def test_source_number_six_with_five_sources_canonicalized_to_five(self) -> None:
+        sources = (
+            _source(document_id="512bd4f786724476a7ab2313e06a6554", chunk_index=11),
+            _source(document_id="d4d35885d985418c93f45f3a05474720", chunk_index=11),
+            _source(document_id="512bd4f786724476a7ab2313e06a6554", chunk_index=4),
+            _source(document_id="512bd4f786724476a7ab2313e06a6554", chunk_index=5),
+            _source(document_id="512bd4f786724476a7ab2313e06a6554", chunk_index=6),
+        )
+        context = _context(sources=sources)
+        result = _result(
+            citations=(
+                KnowledgeAnswerCitation(3, "512bd4f786724476a7ab2313e06a6554", 4),
+                KnowledgeAnswerCitation(4, "512bd4f786724476a7ab2313e06a6554", 5),
+                KnowledgeAnswerCitation(6, "512bd4f786724476a7ab2313e06a6554", 6),
+                KnowledgeAnswerCitation(
+                    1, "d4d35885d985418c93f45f3a05474720", 11
+                ),
+            )
+        )
+
+        validated = self.validator.validate(result, context)
+
+        self.assertEqual(len(validated.citations), 4)
+        self.assertEqual(validated.citations[0].source_number, 3)
+        self.assertEqual(validated.citations[0].chunk_index, 4)
+        self.assertEqual(validated.citations[1].source_number, 4)
+        self.assertEqual(validated.citations[1].chunk_index, 5)
+        self.assertEqual(validated.citations[2].source_number, 5)
+        self.assertEqual(validated.citations[2].chunk_index, 6)
+        self.assertEqual(validated.citations[3].source_number, 2)
+        self.assertEqual(validated.citations[3].document_id, "d4d35885d985418c93f45f3a05474720")
+
+    def test_wrong_source_number_for_second_source_canonicalized(self) -> None:
         sources = (
             _source(document_id="policy-a", chunk_index=0),
             _source(document_id="policy-b", chunk_index=1),
@@ -222,10 +266,40 @@ class KnowledgeAnswerValidatorSourceMatchFailureTests(unittest.TestCase):
         context = _context(sources=sources)
         result = _result(citations=(KnowledgeAnswerCitation(1, "policy-b", 1),))
 
-        with self.assertRaises(KnowledgeAnswerValidationError) as ctx:
-            self.validator.validate(result, context)
+        validated = self.validator.validate(result, context)
 
-        self.assertIn("does not match", ctx.exception.message)
+        self.assertEqual(validated.citations[0].source_number, 2)
+        self.assertEqual(validated.citations[0].document_id, "policy-b")
+        self.assertEqual(validated.citations[0].chunk_index, 1)
+
+    def test_valid_citations_preserve_original_order(self) -> None:
+        sources = (
+            _source(document_id="doc-1", chunk_index=0),
+            _source(document_id="doc-2", chunk_index=1),
+            _source(document_id="doc-3", chunk_index=2),
+        )
+        context = _context(sources=sources)
+        result = _result(
+            citations=(
+                KnowledgeAnswerCitation(9, "doc-3", 2),
+                KnowledgeAnswerCitation(8, "doc-1", 0),
+            )
+        )
+
+        validated = self.validator.validate(result, context)
+
+        self.assertEqual(validated.citations[0].source_number, 3)
+        self.assertEqual(validated.citations[0].document_id, "doc-3")
+        self.assertEqual(validated.citations[1].source_number, 1)
+        self.assertEqual(validated.citations[1].document_id, "doc-1")
+
+    def test_already_canonical_citations_return_same_result(self) -> None:
+        context = _context(sources=(_source(),))
+        result = _result()
+
+        validated = self.validator.validate(result, context)
+
+        self.assertIs(validated, result)
 
 
 class KnowledgeAnswerValidatorDuplicateTests(unittest.TestCase):
@@ -238,6 +312,19 @@ class KnowledgeAnswerValidatorDuplicateTests(unittest.TestCase):
     def test_exact_duplicate_citation_rejected(self) -> None:
         duplicate = KnowledgeAnswerCitation(1, "doc-1", 0)
         result = _result(citations=(duplicate, duplicate))
+
+        with self.assertRaises(KnowledgeAnswerValidationError) as ctx:
+            self.validator.validate(result, self.context)
+
+        self.assertIn("duplicate citations", ctx.exception.message)
+
+    def test_different_source_numbers_same_document_chunk_rejected(self) -> None:
+        result = _result(
+            citations=(
+                KnowledgeAnswerCitation(1, "doc-1", 0),
+                KnowledgeAnswerCitation(3, "doc-1", 0),
+            )
+        )
 
         with self.assertRaises(KnowledgeAnswerValidationError) as ctx:
             self.validator.validate(result, self.context)

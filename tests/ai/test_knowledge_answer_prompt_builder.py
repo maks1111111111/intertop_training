@@ -230,6 +230,12 @@ class KnowledgeAnswerPromptBuilderTests(unittest.TestCase):
             prompt,
         )
         self.assertIn("Never invent source numbers.", prompt)
+        self.assertIn(
+            "source_number is the exact 1-based number shown in the supplied context headers",
+            prompt,
+        )
+        self.assertIn("Copy document_id and chunk_index exactly", prompt)
+        self.assertIn("Never infer, guess, or renumber sources.", prompt)
 
     def test_material_claims_require_citations(self) -> None:
         request = KnowledgeAnswerRequest(
