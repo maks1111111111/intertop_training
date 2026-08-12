@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Задать вопрос — База знаний — Intertop Training{% endblock %}
+{% block title %}AI-помощник — База знаний — Intertop Training{% endblock %}
 
 {% block content %}
 <section class="page-header admin-page-header">
@@ -12,10 +12,10 @@
             <span class="admin-breadcrumb-separator">/</span>
             <span>Задать вопрос</span>
         </nav>
-        <h1 class="page-title">Задать вопрос</h1>
+        <h1 class="page-title">AI-помощник по базе знаний</h1>
         <p class="page-lead">
-            Ответ формируется только на основе опубликованных документов базы знаний.
-            Черновики и архивные материалы не используются.
+            Задавайте вопросы по корпоративным документам. Ответы формируются только
+            на основе опубликованной базы знаний.
         </p>
     </div>
 </section>
@@ -25,81 +25,113 @@
     <a href="/admin/knowledge" class="admin-subnav-link is-active">База знаний</a>
 </nav>
 
-{% if error_message %}
-<div class="admin-form-error" role="alert">{{ error_message }}</div>
-{% endif %}
+<section class="ai-chat" aria-label="Диалог с AI-помощником по базе знаний">
+    {% if error_message %}
+    <div class="admin-form-error" role="alert">{{ error_message }}</div>
+    {% endif %}
 
-{% if answer_view %}
-<section
-    class="admin-knowledge-answer-section{% if not answer_view.sufficient_context %} admin-knowledge-answer-section--insufficient{% endif %}"
-    aria-labelledby="knowledge-answer-heading"
->
-    {% if answer_view.sufficient_context %}
-    <h2 class="admin-form-section-title" id="knowledge-answer-heading">Ответ</h2>
-    <div class="admin-knowledge-answer-text">{{ answer_view.answer }}</div>
+    <div class="ai-chat-messages">
+        {% if not answer_view and not question.strip() %}
+        <div class="ai-chat-empty">
+            <p class="ai-chat-empty-greeting">
+                Здравствуйте! Я помогу найти информацию в корпоративной базе знаний.
+            </p>
+            <p class="ai-chat-empty-hint">
+                Задайте вопрос о регламентах, инструкциях, стандартах или других
+                опубликованных документах.
+            </p>
+            <div class="ai-chat-examples" aria-hidden="true">
+                <span class="ai-chat-example">Как оформить возврат товара?</span>
+                <span class="ai-chat-example">Какие стандарты обслуживания существуют?</span>
+                <span class="ai-chat-example">Где найти инструкцию по открытию смены?</span>
+                <span class="ai-chat-example">Какие документы нужны для приёмки?</span>
+            </div>
+        </div>
+        {% endif %}
 
-    {% if answer_view.sources %}
-    <h3 class="admin-knowledge-sources-title" id="knowledge-sources-heading">Источники</h3>
-    <ol class="admin-knowledge-sources-list" aria-labelledby="knowledge-sources-heading">
-        {% for source in answer_view.sources %}
-        <li class="admin-knowledge-source-card">
-            <span class="admin-knowledge-source-number">Источник {{ source.source_number }}</span>
-            {% if source.title %}
-            <span class="admin-knowledge-source-title">{{ source.title }}</span>
+        {% if answer_view %}
+        <div class="ai-chat-message ai-chat-message--user">
+            <div class="ai-chat-message-body">{{ answer_view.question }}</div>
+        </div>
+        {% elif question.strip() %}
+        <div class="ai-chat-message ai-chat-message--user">
+            <div class="ai-chat-message-body">{{ question.strip() }}</div>
+        </div>
+        {% endif %}
+
+        {% if answer_view %}
+        <div class="ai-chat-message ai-chat-message--assistant{% if not answer_view.sufficient_context %} ai-chat-message--insufficient{% endif %}">
+            <div class="ai-chat-assistant-label">AI-помощник</div>
+
+            {% if answer_view.sufficient_context %}
+            <div class="ai-chat-message-body">{{ answer_view.answer }}</div>
+
+            {% if answer_view.sources %}
+            <div class="ai-chat-sources" aria-label="Источники ответа">
+                {% for source in answer_view.sources %}
+                <div class="ai-chat-source-card">
+                    <span class="ai-chat-source-icon" aria-hidden="true">📄</span>
+                    <div class="ai-chat-source-content">
+                        {% if source.title %}
+                        <span class="ai-chat-source-title">{{ source.title }}</span>
+                        {% endif %}
+                        {% if source.original_filename %}
+                        <span class="ai-chat-source-filename">{{ source.original_filename }}</span>
+                        {% endif %}
+                        <span class="ai-chat-source-meta">Фрагмент {{ source.chunk_index }}</span>
+                        <span class="ai-chat-source-label">Источник ответа</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
             {% endif %}
-            {% if source.original_filename %}
-            <span class="admin-knowledge-source-filename">{{ source.original_filename }}</span>
+
+            {% else %}
+            <p class="ai-chat-insufficient-message" role="status">
+                Недостаточно информации в опубликованных документах.
+            </p>
+            <p class="ai-chat-insufficient-explanation">
+                AI отвечает только на основании опубликованной базы знаний и не
+                придумывает информацию, которой в ней нет.
+            </p>
+            {% if answer_view.answer %}
+            <div class="ai-chat-message-body ai-chat-message-body--secondary">{{ answer_view.answer }}</div>
             {% endif %}
-            <span class="admin-knowledge-source-meta">Фрагмент {{ source.chunk_index }}</span>
-        </li>
-        {% endfor %}
-    </ol>
-    {% endif %}
-    {% else %}
-    <h2 class="admin-form-section-title" id="knowledge-answer-heading">Результат</h2>
-    <p class="admin-knowledge-insufficient-message" role="status">
-        Недостаточно информации в опубликованных документах.
-    </p>
-    {% if answer_view.answer %}
-    <div class="admin-knowledge-answer-text admin-knowledge-answer-text--secondary">{{ answer_view.answer }}</div>
-    {% endif %}
-    {% endif %}
-</section>
-{% endif %}
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
 
-<form
-    class="admin-create-form"
-    action="/admin/knowledge/ask"
-    method="post"
-    aria-label="Форма вопроса к базе знаний"
->
-    <fieldset class="admin-form-section">
-        <legend class="admin-form-section-title">Вопрос</legend>
-
-        <div class="admin-form-field">
-            <label class="admin-form-label" for="knowledge-question">Ваш вопрос</label>
+    <form
+        class="ai-chat-composer"
+        action="/admin/knowledge/ask"
+        method="post"
+        aria-label="Форма вопроса к базе знаний"
+    >
+        <div class="ai-chat-composer-fields">
             <textarea
-                class="admin-form-input admin-form-textarea admin-form-textarea--tall"
+                class="ai-chat-composer-input admin-form-input admin-form-textarea"
                 id="knowledge-question"
                 name="question"
-                rows="4"
+                rows="3"
                 required
+                placeholder="Спросите что-нибудь о корпоративных документах..."
             >{{ question }}</textarea>
+
+            <div class="ai-chat-composer-controls">
+                <label class="visually-hidden" for="answer-language">Язык ответа</label>
+                <select class="admin-form-select ai-chat-composer-language" id="answer-language" name="language">
+                    <option value="ru"{% if language == "ru" %} selected{% endif %}>Русский</option>
+                    <option value="kk"{% if language == "kk" %} selected{% endif %}>Қазақша</option>
+                    <option value="en"{% if language == "en" %} selected{% endif %}>English</option>
+                </select>
+                <button class="button button-primary ai-chat-composer-submit" type="submit">Отправить</button>
+            </div>
         </div>
 
-        <div class="admin-form-field">
-            <label class="admin-form-label" for="answer-language">Язык ответа</label>
-            <select class="admin-form-select" id="answer-language" name="language">
-                <option value="ru"{% if language == "ru" %} selected{% endif %}>Русский</option>
-                <option value="kk"{% if language == "kk" %} selected{% endif %}>Қазақша</option>
-                <option value="en"{% if language == "en" %} selected{% endif %}>English</option>
-            </select>
+        <div class="ai-chat-composer-footer">
+            <a class="button button-secondary button-small" href="/admin/knowledge">Назад к документам</a>
         </div>
-    </fieldset>
-
-    <div class="admin-form-actions">
-        <button class="button button-primary" type="submit">Получить ответ</button>
-        <a class="button button-secondary" href="/admin/knowledge">Назад к документам</a>
-    </div>
-</form>
+    </form>
+</section>
 {% endblock %}

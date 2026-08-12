@@ -105,11 +105,38 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_ask_page_shows_ai_assistant_title(self) -> None:
+        response = self.client.get("/admin/knowledge/ask")
+
+        self.assertIn("AI-помощник по базе знаний", response.text)
+
+    def test_ask_page_shows_empty_welcome_state(self) -> None:
+        response = self.client.get("/admin/knowledge/ask")
+
+        html = response.text
+        self.assertIn("ai-chat-empty", html)
+        self.assertIn(
+            "Здравствуйте! Я помогу найти информацию в корпоративной базе знаний.",
+            html,
+        )
+
     def test_ask_page_shows_question_textarea(self) -> None:
         response = self.client.get("/admin/knowledge/ask")
 
         self.assertIn('name="question"', response.text)
-        self.assertIn("Ваш вопрос", response.text)
+
+    def test_ask_page_shows_composer_placeholder(self) -> None:
+        response = self.client.get("/admin/knowledge/ask")
+
+        self.assertIn(
+            'placeholder="Спросите что-нибудь о корпоративных документах..."',
+            response.text,
+        )
+
+    def test_ask_page_shows_submit_button(self) -> None:
+        response = self.client.get("/admin/knowledge/ask")
+
+        self.assertIn(">Отправить</button>", response.text)
 
     def test_ask_page_shows_language_selector(self) -> None:
         response = self.client.get("/admin/knowledge/ask")
@@ -123,7 +150,7 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
     def test_ask_page_explains_published_documents_are_used(self) -> None:
         response = self.client.get("/admin/knowledge/ask")
 
-        self.assertIn("опубликованных документов", response.text)
+        self.assertIn("опубликованной базы знаний", response.text)
 
     def test_knowledge_page_links_to_ask_page(self) -> None:
         response = self.client.get("/admin/knowledge")
@@ -140,13 +167,28 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         )
         self.assertNotIn("admin-subnav-linkis-active", response.text)
 
+    def test_ask_page_presentation_copy_regressions(self) -> None:
+        """Guard against missing spaces in subnav class and welcome/example copy."""
+        response = self.client.get("/admin/knowledge/ask")
+        html = response.text
+
+        self.assertIn('class="admin-subnav-link is-active"', html)
+        self.assertNotIn("admin-subnav-linkis-active", html)
+        self.assertIn(
+            "Здравствуйте! Я помогу найти информацию в корпоративной базе знаний.",
+            html,
+        )
+        self.assertNotIn("информациюв", html)
+        self.assertIn("Где найти инструкцию по открытию смены?", html)
+        self.assertNotIn("найтиинструкцию", html)
+
     def test_ask_page_title_uses_intertop_training_brand(self) -> None:
         response = self.client.get("/admin/knowledge/ask")
 
         self.assertIn("Intertop Training", response.text)
         self.assertNotIn("IntertopTraining", response.text)
         self.assertIn(
-            "<title>Задать вопрос — База знаний — Intertop Training</title>",
+            "<title>AI-помощник — База знаний — Intertop Training</title>",
             response.text,
         )
 
@@ -181,8 +223,37 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Ответ", response.text)
+        self.assertIn("AI-помощник", response.text)
         self.assertIn("Возврат оформляется в течение 14 дней.", response.text)
+
+    def test_post_success_renders_user_message_as_chat_bubble(self) -> None:
+        self.fake_service.result = _success_view(
+            question="Какие стандарты обслуживания существуют?",
+        )
+
+        response = self.client.post(
+            "/admin/knowledge/ask",
+            data={
+                "question": "Какие стандарты обслуживания существуют?",
+                "language": "ru",
+            },
+        )
+
+        html = response.text
+        self.assertIn("ai-chat-message--user", html)
+        self.assertIn("Какие стандарты обслуживания существуют?", html)
+
+    def test_post_success_renders_assistant_chat_message(self) -> None:
+        self.fake_service.result = _success_view()
+
+        response = self.client.post(
+            "/admin/knowledge/ask",
+            data={"question": "Как оформить возврат?", "language": "ru"},
+        )
+
+        html = response.text
+        self.assertIn("ai-chat-message--assistant", html)
+        self.assertIn("ai-chat-assistant-label", html)
 
     def test_post_success_renders_sufficient_context_state(self) -> None:
         self.fake_service.result = _success_view(sufficient_context=True)
@@ -196,7 +267,7 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
             "Недостаточно информации в опубликованных документах.",
             response.text,
         )
-        self.assertNotIn("admin-knowledge-answer-section--insufficient", response.text)
+        self.assertNotIn("ai-chat-message--insufficient", response.text)
 
     def test_post_success_renders_source_title(self) -> None:
         self.fake_service.result = _success_view()
@@ -219,6 +290,38 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
 
         self.assertIn("returns.pdf", response.text)
         self.assertIn("service.docx", response.text)
+
+    def test_post_success_renders_compact_source_cards(self) -> None:
+        self.fake_service.result = _success_view()
+
+        response = self.client.post(
+            "/admin/knowledge/ask",
+            data={"question": "Как оформить возврат?", "language": "ru"},
+        )
+
+        html = response.text
+        self.assertIn("ai-chat-sources", html)
+        self.assertIn("ai-chat-source-card", html)
+
+    def test_post_success_does_not_show_source_number_as_primary_label(self) -> None:
+        self.fake_service.result = _success_view()
+
+        response = self.client.post(
+            "/admin/knowledge/ask",
+            data={"question": "Как оформить возврат?", "language": "ru"},
+        )
+
+        self.assertNotRegex(response.text, r"Источник\s+\d+")
+
+    def test_post_success_does_not_render_fake_source_links(self) -> None:
+        self.fake_service.result = _success_view()
+
+        response = self.client.post(
+            "/admin/knowledge/ask",
+            data={"question": "Как оформить возврат?", "language": "ru"},
+        )
+
+        self.assertNotIn('href="#"', response.text)
 
     def test_post_success_preserves_source_ordering(self) -> None:
         self.fake_service.result = _success_view()
@@ -269,7 +372,23 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
             "Недостаточно информации в опубликованных документах.",
             response.text,
         )
-        self.assertIn("admin-knowledge-answer-section--insufficient", response.text)
+        self.assertIn("ai-chat-message--insufficient", response.text)
+
+    def test_post_insufficient_context_explains_published_only_policy(self) -> None:
+        self.fake_service.result = _success_view(
+            sufficient_context=False,
+            sources=(),
+        )
+
+        response = self.client.post(
+            "/admin/knowledge/ask",
+            data={"question": "Как оформить возврат?", "language": "ru"},
+        )
+
+        self.assertIn(
+            "AI отвечает только на основании опубликованной базы знаний",
+            response.text,
+        )
 
     def test_post_insufficient_context_does_not_render_sources_section(self) -> None:
         self.fake_service.result = _success_view(
@@ -282,8 +401,8 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
             data={"question": "Как оформить возврат?", "language": "ru"},
         )
 
-        self.assertNotIn("admin-knowledge-sources-list", response.text)
-        self.assertNotIn("Источники", response.text)
+        self.assertNotIn("ai-chat-sources", response.text)
+        self.assertNotIn("ai-chat-source-card", response.text)
 
     def test_post_error_renders_safe_message(self) -> None:
         self.fake_service.error = AdminKnowledgeQuestionError("Вопрос обязателен.")
