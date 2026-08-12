@@ -10,11 +10,13 @@ from fastapi.staticfiles import StaticFiles
 from app.api.router import router
 from app.content.runtime import ContentRuntime
 from app.database.db import initialize_database
+from app.env import load_project_env
 from app.web.router import router as web_router
 
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
+    load_project_env()
     application = FastAPI(title="Intertop Training API")
     project_root = Path(__file__).resolve().parents[2]
     db_path = project_root / "data" / "training.db"
