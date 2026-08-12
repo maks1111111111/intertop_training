@@ -92,6 +92,7 @@ from app.web.admin_upload_service import (
     build_upload_confirm_view,
     parse_admin_course_form,
 )
+from app.web.admin_knowledge_service import AdminKnowledgeService
 from app.web.dashboard_service import DashboardService
 from app.web.progress_service import WebProgressService
 from app.web.quiz_scoring import (
@@ -140,6 +141,13 @@ def get_admin_service(
 ) -> AdminService:
     """Return the admin service wired to the application runtime."""
     return AdminService(runtime)
+
+
+def get_admin_knowledge_service(
+    db_path: Path = Depends(get_db_path),
+) -> AdminKnowledgeService:
+    """Return the admin Knowledge Base service for the current database."""
+    return AdminKnowledgeService(db_path)
 
 
 def get_upload_service(request: Request) -> AdminUploadService:
@@ -320,6 +328,9 @@ def get_admin_quiz_question_reorder_service(
 # TODO: Replace with authenticated web user identity when auth is implemented.
 _WEB_DASHBOARD_TELEGRAM_ID = 1
 
+# TODO: Replace with authenticated tenant/company identity when auth is implemented.
+_WEB_ADMIN_COMPANY_ID = "intertop"
+
 
 def _parse_quiz_answers(form_data) -> dict[str, str]:
     """Extract question answers from submitted form fields."""
@@ -369,6 +380,24 @@ def admin_dashboard_page(
             "active_nav": "admin",
             "courses": courses,
             "courses_count": len(courses),
+        },
+    )
+
+
+@router.get("/admin/knowledge", response_class=HTMLResponse, include_in_schema=False)
+def admin_knowledge_page(
+    request: Request,
+    knowledge_service: AdminKnowledgeService = Depends(get_admin_knowledge_service),
+) -> HTMLResponse:
+    """Render the admin Knowledge Base document list."""
+    documents = knowledge_service.get_documents(_WEB_ADMIN_COMPANY_ID)
+    return templates.TemplateResponse(
+        request,
+        "admin_knowledge.html",
+        {
+            "active_nav": "admin",
+            "documents": documents,
+            "documents_count": len(documents),
         },
     )
 

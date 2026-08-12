@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}База знаний — Intertop Training{% endblock %}
+
+{% block content %}
+<section class="page-header admin-page-header">
+    <div class="admin-page-header-body">
+        <nav class="admin-breadcrumb" aria-label="Навигация администратора">
+            <a href="/admin">Админ</a>
+            <span class="admin-breadcrumb-separator">/</span>
+            <span>База знаний</span>
+        </nav>
+        <h1 class="page-title">База знаний</h1>
+        <p class="page-lead">Корпоративные документы для поиска и ответов на вопросы сотрудников.</p>
+    </div>
+    <div class="admin-page-header-actions">
+        <a class="button button-primary admin-create-btn" href="#">Загрузить документ</a>
+    </div>
+</section>
+
+<nav class="admin-subnav" aria-label="Разделы администратора">
+    <a href="/admin" class="admin-subnav-link">Курсы</a>
+    <a href="/admin/knowledge" class="admin-subnav-link is-active">База знаний</a>
+</nav>
+
+{% if documents %}
+<section class="section">
+    <ul class="course-list admin-course-list admin-knowledge-list">
+        {% for document in documents %}
+        <li class="course-card admin-course-card admin-knowledge-card">
+            <div class="admin-course-body">
+                <header class="admin-course-header">
+                    <h2 class="course-card-title">{{ document.title }}</h2>
+                    <span class="admin-status-badge admin-status-badge--{{ document.status }}">
+                        {{ document.status_label }}
+                    </span>
+                </header>
+
+                <div class="admin-course-meta">
+                    <span class="admin-meta-item">Файл: {{ document.original_filename }}</span>
+                    <span class="admin-meta-item">Тип: {{ document.source_type }}</span>
+                    <span class="admin-meta-item">Язык: {{ document.source_language }}</span>
+                    <span class="admin-meta-item">Версия: {{ document.version }}</span>
+                    <span class="admin-meta-item">Создан: {{ document.created_at }}</span>
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% else %}
+<div class="empty-state admin-empty-state">
+    <p class="admin-empty-state-message">Документы базы знаний пока отсутствуют.</p>
+</div>
+{% endif %}
+{% endblock %}
