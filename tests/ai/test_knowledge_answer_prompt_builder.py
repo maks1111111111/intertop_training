@@ -75,7 +75,7 @@ class KnowledgeAnswerPromptBuilderTests(unittest.TestCase):
         self.assertIn(question, prompt)
         self.assertIn(context.context_text, prompt)
         self.assertIn("Language code: ru", prompt)
-        self.assertIn("Write the answer string in Russian.", prompt)
+        self.assertIn("Write the answer string only in Russian.", prompt)
 
     def test_kazakh_language_instruction(self) -> None:
         request = KnowledgeAnswerRequest(
@@ -87,7 +87,7 @@ class KnowledgeAnswerPromptBuilderTests(unittest.TestCase):
         prompt = self.builder.build(request)
 
         self.assertIn("Language code: kk", prompt)
-        self.assertIn("Write the answer string in Kazakh.", prompt)
+        self.assertIn("Write the answer string only in Kazakh.", prompt)
 
     def test_english_language_instruction(self) -> None:
         request = KnowledgeAnswerRequest(
@@ -99,9 +99,67 @@ class KnowledgeAnswerPromptBuilderTests(unittest.TestCase):
         prompt = self.builder.build(request)
 
         self.assertIn("Language code: en", prompt)
-        self.assertIn("Write the answer string in English.", prompt)
+        self.assertIn("Write the answer string only in English.", prompt)
         self.assertNotIn(
             "Do not reply in English unless the response language code is en.",
+            prompt,
+        )
+
+    def test_english_response_language_overrides_source_language(self) -> None:
+        request = KnowledgeAnswerRequest(
+            question="How many days does a customer have to return an item?",
+            context=_context_with_sources(),
+            language="en",
+        )
+
+        prompt = self.builder.build(request)
+
+        self.assertIn("Language code: en", prompt)
+        self.assertIn("Write the answer string only in English.", prompt)
+        self.assertIn(
+            "Do not write the answer in Russian or Kazakh",
+            prompt,
+        )
+        self.assertIn(
+            "The language of the question or Knowledge Base sources MUST NOT "
+            "change the requested response language.",
+            prompt,
+        )
+        self.assertIn(
+            "Translate supported information from the supplied sources into "
+            "the requested response language when necessary.",
+            prompt,
+        )
+
+    def test_workflow_stage_names_must_be_translated(self) -> None:
+        request = KnowledgeAnswerRequest(
+            question="Расскажи про этап спрашивай",
+            context=_context_with_sources(),
+            language="en",
+        )
+
+        prompt = self.builder.build(request)
+
+        self.assertIn(
+            "Translate ordinary business terminology into the requested response language",
+            prompt,
+        )
+        self.assertIn(
+            "Do not preserve Russian or Kazakh workflow-stage labels",
+            prompt,
+        )
+
+    def test_only_genuine_proper_nouns_may_remain_untranslated(self) -> None:
+        request = KnowledgeAnswerRequest(
+            question="Расскажи про этап спрашивай",
+            context=_context_with_sources(),
+            language="kk",
+        )
+
+        prompt = self.builder.build(request)
+
+        self.assertIn(
+            "Only genuine proper nouns may remain in their original language",
             prompt,
         )
 

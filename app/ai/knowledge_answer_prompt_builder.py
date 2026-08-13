@@ -31,14 +31,46 @@ def _language_instruction_lines(language: str) -> list[str]:
         "",
         "Response language:",
         f"- Language code: {language}",
-        f"- Write the answer string in {label}.",
-        "- Use the same response language consistently throughout the answer.",
-        "- Do not mix languages within the answer unless source names or proper nouns require it.",
+        f"- Write the answer string only in {label}.",
+        "- The requested response language is authoritative.",
+        (
+            "- The language of the question or Knowledge Base sources MUST NOT "
+            "change the requested response language."
+        ),
+        (
+            "- Translate supported information from the supplied sources into "
+            "the requested response language when necessary."
+        ),
+        "- Use the requested response language consistently throughout the answer.",
+        (
+            "- Translate ordinary business terminology into the requested response "
+            "language, including section headings, workflow stage names, process "
+            "step names, instructions, rules, and employee actions."
+        ),
+        (
+            "- Do not preserve Russian or Kazakh workflow-stage labels merely "
+            "because they appear as headings in the source document."
+        ),
+        (
+            "- Only genuine proper nouns may remain in their original language "
+            "when appropriate: company names, brand names, trademarks, product "
+            "names, filenames, and document titles."
+        ),
     ]
-    if language != "en":
+
+    if language == "en":
         lines.append(
-            "- Do not reply in English unless the response language code is en."
+            "- Do not write the answer in Russian or Kazakh, even when the supplied sources are in those languages."
         )
+    elif language == "kk":
+        lines.append(
+            "- Do not write the answer in Russian or English, even when the supplied sources are in those languages."
+        )
+    elif language == "ru":
+        lines.append(
+            "- Do not write the answer in Kazakh or English, even when the supplied sources are in those languages."
+        )
+
     return lines
 
 

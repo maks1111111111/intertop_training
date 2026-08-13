@@ -25,6 +25,12 @@ from app.ai.knowledge_answer_validator import (
     KnowledgeAnswerValidator,
     KnowledgeAnswerValidationError,
 )
+from app.ai.knowledge_answer_language_guard import (
+    KnowledgeAnswerLanguageGuard,
+    KnowledgeAnswerLanguageRewriteError,
+)
+
+_USE_DEFAULT_LANGUAGE_GUARD = object()
 
 
 class KnowledgeAnswerGenerationError(Exception):
@@ -44,6 +50,7 @@ class KnowledgeAnswerService:
         prompt_builder: Optional[KnowledgeAnswerPromptBuilder] = None,
         response_parser: Optional[KnowledgeAnswerResponseParser] = None,
         validator: Optional[KnowledgeAnswerValidator] = None,
+        language_guard=_USE_DEFAULT_LANGUAGE_GUARD,
     ) -> None:
         """Initialize the service with injectable pipeline dependencies.
 
@@ -55,6 +62,9 @@ class KnowledgeAnswerService:
                 :class:`KnowledgeAnswerResponseParser`.
             validator: Optional semantic validator; defaults to
                 :class:`KnowledgeAnswerValidator`.
+            language_guard: Optional language compliance guard. Defaults to
+                :class:`KnowledgeAnswerLanguageGuard` using the same provider.
+                Pass ``None`` to disable language rewriting.
         """
         self._provider = provider
         self._prompt_builder = (
@@ -70,6 +80,12 @@ class KnowledgeAnswerService:
         self._validator = (
             validator if validator is not None else KnowledgeAnswerValidator()
         )
+        if language_guard is _USE_DEFAULT_LANGUAGE_GUARD:
+            self._language_guard: Optional[KnowledgeAnswerLanguageGuard] = (
+                KnowledgeAnswerLanguageGuard(provider)
+            )
+        else:
+            self._language_guard = language_guard
 
     def answer(
         self,
@@ -107,6 +123,14 @@ class KnowledgeAnswerService:
             raise KnowledgeAnswerGenerationError(exc.message) from exc
 
         try:
-            return self._validator.validate(parsed, request.context)
+            validated = self._validator.validate(parsed, request.context)
         except KnowledgeAnswerValidationError as exc:
+            raise KnowledgeAnswerGenerationError(exc.message) from exc
+
+        if self._language_guard is None:
+            return validated
+
+        try:
+            return self._language_guard.enforce(validated, request.language)
+        except KnowledgeAnswerLanguageRewriteError as exc:
             raise KnowledgeAnswerGenerationError(exc.message) from exc

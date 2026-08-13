@@ -6,7 +6,8 @@ from typing import Optional
 
 SUPPORTED_REVIEW_LANGUAGES = frozenset({"en", "kk", "ru"})
 
-_KAZAKH_SPECIFIC_LETTERS = frozenset("әіңғүұқөһӘІҢҒҮҰҚӨҮ")
+KAZAKH_SPECIFIC_LETTERS = frozenset("әіңғүұқөһӘІҢҒҮҰҚӨҮ")
+_KAZAKH_SPECIFIC_LETTERS = KAZAKH_SPECIFIC_LETTERS
 
 
 def normalize_review_language(raw: str) -> Optional[str]:
