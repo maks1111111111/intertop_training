@@ -11,6 +11,10 @@ from typing import Tuple
 
 from app.ai.client import AIClient
 from app.ai.knowledge_answer_interfaces import KnowledgeAnswerResult
+from app.ai.knowledge_answer_alphabet_guard import (
+    has_unfixable_mixed_alphabet,
+    normalize_answer_alphabet,
+)
 from app.ai.review_language import (
     KAZAKH_SPECIFIC_LETTERS,
     SUPPORTED_REVIEW_LANGUAGES,
@@ -99,6 +103,12 @@ _WORD_PATTERN = re.compile(
     r"А-Яа-яЁё"
     r"ӘәІіҢңҒғҮүҰұҚқӨөҺһ"
     r"']+",
+    re.UNICODE,
+)
+
+# Quoted spans such as «спрашивай», "этап", or 'раздел'.
+_QUOTED_SEGMENT_PATTERN = re.compile(
+    r"[«\"']([^«»\"']+)[»\"']",
     re.UNICODE,
 )
 
@@ -254,12 +264,76 @@ def _find_longest_russian_only_run(words: Tuple[str, ...]) -> Tuple[str, ...]:
     return longest
 
 
+def _extract_quoted_segments(text: str) -> Tuple[str, ...]:
+    return tuple(
+        match.group(1).strip()
+        for match in _QUOTED_SEGMENT_PATTERN.finditer(text)
+        if match.group(1).strip()
+    )
+
+
+def _segment_has_russian_only_leakage(segment: str) -> bool:
+    """Return True when *segment* contains meaningful Russian-only Cyrillic."""
+    words = _meaningful_cyrillic_words(_extract_words(segment))
+    russian_only_words = tuple(
+        word for word in words if _russian_only_cyrillic_word(word)
+    )
+    if not russian_only_words:
+        return False
+
+    if any(_word_has_strong_russian_indicator_letters(word) for word in russian_only_words):
+        return True
+    if any(_is_russian_function_word(word) for word in russian_only_words):
+        return True
+    if len(russian_only_words) >= 2:
+        return True
+    if any(_alpha_length(word) >= 5 for word in russian_only_words):
+        return True
+    return False
+
+
+def _detect_quoted_russian_leakage_in_kazakh(answer: str) -> bool:
+    """Detect Russian terminology inside quotes within an otherwise Kazakh answer."""
+    if not _contains_kazakh_specific_letters(answer):
+        return False
+    return any(
+        _segment_has_russian_only_leakage(segment)
+        for segment in _extract_quoted_segments(answer)
+    )
+
+
+def _detect_isolated_russian_token_in_kazakh(
+    answer: str,
+    cyrillic_words: Tuple[str, ...],
+) -> bool:
+    """Detect a substantial Russian-only token inside an otherwise Kazakh answer."""
+    if not _contains_kazakh_specific_letters(answer):
+        return False
+
+    for word in cyrillic_words:
+        if not _russian_only_cyrillic_word(word):
+            continue
+        if _is_likely_proper_noun(word):
+            continue
+        if _alpha_length(word) >= 8:
+            return True
+        if _word_has_strong_russian_indicator_letters(word):
+            return True
+    return False
+
+
 def _detect_kazakh_violation(answer: str) -> bool:
     words = _extract_words(answer)
     latin_words = _meaningful_latin_words(words)
     cyrillic_words = _meaningful_cyrillic_words(words)
 
     if _detect_latin_leakage(latin_words, cyrillic_words):
+        return True
+
+    if _detect_quoted_russian_leakage_in_kazakh(answer):
+        return True
+
+    if _detect_isolated_russian_token_in_kazakh(answer, cyrillic_words):
         return True
 
     if not cyrillic_words:
@@ -294,6 +368,9 @@ def needs_language_rewrite(answer: str, requested_language: str) -> bool:
     normalized = answer.strip()
     if not normalized:
         return False
+
+    if has_unfixable_mixed_alphabet(normalized, language):
+        return True
 
     if language == "en":
         return _detect_english_violation(normalized)
@@ -331,6 +408,10 @@ def build_language_rewrite_prompt(answer: str, requested_language: str) -> str:
             ),
             "- Return ONLY the rewritten answer text.",
             "- Do not return JSON, Markdown, code fences, or commentary.",
+            (
+                "- Do not mix Latin and Cyrillic letters inside the same word. "
+                "Use one consistent alphabet per word."
+            ),
             "",
             "Answer to rewrite:",
             answer.strip(),
@@ -350,10 +431,26 @@ class KnowledgeAnswerLanguageGuard:
         requested_language: str,
     ) -> KnowledgeAnswerResult:
         """Return *result* or a language-compliant copy with rewritten answer."""
-        if not needs_language_rewrite(result.answer, requested_language):
-            return result
+        normalized_answer = normalize_answer_alphabet(
+            result.answer,
+            requested_language,
+        )
+        if not needs_language_rewrite(normalized_answer, requested_language):
+            if normalized_answer == result.answer:
+                return result
+            return KnowledgeAnswerResult(
+                answer=normalized_answer,
+                citations=result.citations,
+                sufficient_context=result.sufficient_context,
+            )
 
-        prompt = build_language_rewrite_prompt(result.answer, requested_language)
+        working = KnowledgeAnswerResult(
+            answer=normalized_answer,
+            citations=result.citations,
+            sufficient_context=result.sufficient_context,
+        )
+
+        prompt = build_language_rewrite_prompt(working.answer, requested_language)
         try:
             rewritten = self._provider.generate(prompt)
         except Exception as exc:
@@ -361,8 +458,16 @@ class KnowledgeAnswerLanguageGuard:
                 "Failed to rewrite knowledge answer for language compliance."
             ) from exc
 
-        normalized = rewritten.strip()
+        normalized = normalize_answer_alphabet(
+            rewritten.strip(),
+            requested_language,
+        )
         if not normalized:
+            raise KnowledgeAnswerLanguageRewriteError(
+                "Failed to rewrite knowledge answer for language compliance."
+            )
+
+        if has_unfixable_mixed_alphabet(normalized, requested_language):
             raise KnowledgeAnswerLanguageRewriteError(
                 "Failed to rewrite knowledge answer for language compliance."
             )

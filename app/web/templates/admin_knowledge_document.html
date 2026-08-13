@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}{{ detail.title }} — База знаний — Intertop Training{% endblock %}
+
+{% block content %}
+<section class="page-header admin-page-header">
+    <div class="admin-page-header-body">
+        <nav class="admin-breadcrumb" aria-label="Навигация администратора">
+            <a href="/admin">Админ</a>
+            <span class="admin-breadcrumb-separator">/</span>
+            <a href="/admin/knowledge">База знаний</a>
+            <span class="admin-breadcrumb-separator">/</span>
+            <span>{{ detail.title }}</span>
+        </nav>
+        <h1 class="page-title">{{ detail.title }}</h1>
+        <p class="page-lead admin-knowledge-document-meta">
+            {{ detail.status_label }}
+            · Фрагментов: {{ detail.chunk_count }}
+        </p>
+    </div>
+</section>
+
+<nav class="admin-subnav" aria-label="Разделы администратора">
+    <a href="/admin" class="admin-subnav-link">Курсы</a>
+    <a href="/admin/knowledge" class="admin-subnav-link is-active">База знаний</a>
+</nav>
+
+<section class="admin-knowledge-document">
+    <div class="admin-knowledge-document-layout">
+        <div class="admin-knowledge-document-actions">
+            <a class="button button-secondary" href="{{ detail.list_url }}">К документам</a>
+        </div>
+
+        <div class="admin-knowledge-document-summary">
+            <h2 class="admin-section-title">Описание</h2>
+            <p class="admin-knowledge-document-description">
+                Корпоративный документ базы знаний. Ниже показаны сохранённые фрагменты
+                текста, которые используются при поиске ответов.
+            </p>
+            <dl class="admin-knowledge-document-metadata">
+                <div class="admin-knowledge-document-metadata-item">
+                    <dt>Файл</dt>
+                    <dd>{{ detail.original_filename }}</dd>
+                </div>
+                <div class="admin-knowledge-document-metadata-item">
+                    <dt>Тип</dt>
+                    <dd>{{ detail.source_type|upper }}</dd>
+                </div>
+                <div class="admin-knowledge-document-metadata-item">
+                    <dt>Язык</dt>
+                    <dd>{{ detail.source_language }}</dd>
+                </div>
+                <div class="admin-knowledge-document-metadata-item">
+                    <dt>Статус</dt>
+                    <dd>{{ detail.status_label }}</dd>
+                </div>
+                <div class="admin-knowledge-document-metadata-item">
+                    <dt>Загружен</dt>
+                    <dd>{{ detail.created_at }}</dd>
+                </div>
+                <div class="admin-knowledge-document-metadata-item">
+                    <dt>Фрагментов</dt>
+                    <dd>{{ detail.chunk_count }}</dd>
+                </div>
+            </dl>
+        </div>
+
+        {% if detail.chunks %}
+        <div class="admin-knowledge-document-chunks">
+            <h2 class="admin-section-title">Фрагменты документа</h2>
+            <div class="admin-knowledge-chunk-list">
+                {% for chunk in detail.chunks %}
+                {% set is_long_chunk = chunk.text|length > 420 %}
+                <article
+                    class="admin-knowledge-chunk-card{% if detail.focus_chunk_index == chunk.chunk_index %} admin-knowledge-chunk-card--focus{% endif %}{% if is_long_chunk %} admin-knowledge-chunk-card--collapsible{% endif %}"
+                    id="{{ chunk.anchor_id }}"
+                    data-chunk-index="{{ chunk.chunk_index }}"
+                >
+                    <header class="admin-knowledge-chunk-header">
+                        <h3 class="admin-knowledge-chunk-title">Фрагмент {{ chunk.chunk_index + 1 }}</h3>
+                        <p class="admin-knowledge-chunk-subtitle">Сохранённый фрагмент базы знаний</p>
+                    </header>
+                    <div class="admin-knowledge-chunk-body-shell">
+                        <div class="admin-knowledge-chunk-body-wrap{% if is_long_chunk %} admin-knowledge-chunk-body-wrap--collapsed{% endif %}">
+                            <div class="admin-knowledge-chunk-body">{{ chunk.text }}</div>
+                        </div>
+                        {% if is_long_chunk %}
+                        <div class="admin-knowledge-chunk-fade" aria-hidden="true"></div>
+                        <button
+                            type="button"
+                            class="admin-knowledge-chunk-toggle"
+                            aria-expanded="false"
+                            data-label-expand="Показать полностью"
+                            data-label-collapse="Свернуть"
+                        >
+                            Показать полностью
+                        </button>
+                        {% endif %}
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <p class="admin-empty-state">Текст документа пока недоступен.</p>
+        {% endif %}
+    </div>
+</section>
+
+{% set longest_chunk = detail.chunks | map(attribute='text') | map('length') | max if detail.chunks else 0 %}
+{% if longest_chunk > 420 %}
+<script>
+(function () {
+    var cards = document.querySelectorAll(".admin-knowledge-chunk-card--collapsible");
+    cards.forEach(function (card) {
+        var wrap = card.querySelector(".admin-knowledge-chunk-body-wrap");
+        var toggle = card.querySelector(".admin-knowledge-chunk-toggle");
+        var fade = card.querySelector(".admin-knowledge-chunk-fade");
+        if (!wrap || !toggle) {
+            return;
+        }
+
+        function setExpanded(expanded) {
+            wrap.classList.toggle("admin-knowledge-chunk-body-wrap--collapsed", !expanded);
+            wrap.classList.toggle("admin-knowledge-chunk-body-wrap--expanded", expanded);
+            card.classList.toggle("admin-knowledge-chunk-card--expanded", expanded);
+            toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+            toggle.textContent = expanded
+                ? toggle.getAttribute("data-label-collapse")
+                : toggle.getAttribute("data-label-expand");
+            if (fade) {
+                fade.hidden = expanded;
+            }
+        }
+
+        toggle.addEventListener("click", function () {
+            var expanded = toggle.getAttribute("aria-expanded") === "true";
+            setExpanded(!expanded);
+        });
+
+        if (card.classList.contains("admin-knowledge-chunk-card--focus")) {
+            setExpanded(true);
+        }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

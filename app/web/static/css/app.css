@@ -1787,6 +1787,30 @@ a:focus-visible,
     font-size: 0.75rem;
 }
 
+.ai-chat-source-excerpt {
+    margin: 0.375rem 0 0;
+    padding: 0.5rem 0.625rem;
+    border-left: 3px solid #d1d5db;
+    color: #374151;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    font-style: normal;
+}
+
+.ai-chat-source-link {
+    display: inline-block;
+    margin-top: 0.375rem;
+    color: #2563eb;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.ai-chat-source-link:hover,
+.ai-chat-source-link:focus-visible {
+    text-decoration: underline;
+}
+
 .ai-chat-source-label {
     color: #9ca3af;
     font-size: 0.6875rem;
@@ -1801,6 +1825,37 @@ a:focus-visible,
     border: 1px solid #e5e7eb;
     border-radius: 0.875rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.admin-knowledge-document {
+    margin-top: 1rem;
+}
+
+.admin-knowledge-document-layout {
+    max-width: 52rem;
+    margin: 0 auto;
+}
+
+.admin-knowledge-document-actions {
+    margin-bottom: 1rem;
+}
+
+.admin-knowledge-document-meta {
+    color: #6b7280;
+}
+
+.admin-knowledge-document-content {
+    padding: 1.25rem;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+}
+
+.admin-knowledge-document-text {
+    white-space: pre-wrap;
+    line-height: 1.6;
+    color: #374151;
+    font-size: 0.9375rem;
 }
 
 .ai-chat-composer-fields {
@@ -1836,6 +1891,230 @@ a:focus-visible,
     margin-top: 0.75rem;
     padding-top: 0.75rem;
     border-top: 1px solid #f3f4f6;
+}
+
+.ai-chat-thinking {
+    margin-top: 0.75rem;
+}
+
+.ai-chat-message--thinking {
+    border-style: dashed;
+    background: #f9fafb;
+}
+
+.ai-chat-thinking-title {
+    margin: 0.25rem 0 0.5rem;
+    color: #374151;
+    font-size: 0.9375rem;
+    font-weight: 500;
+}
+
+.ai-chat-thinking-steps {
+    margin: 0;
+    padding-left: 1.125rem;
+    color: #6b7280;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
+.ai-chat-composer--loading .ai-chat-composer-input,
+.ai-chat-composer--loading .ai-chat-composer-language {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.ai-chat-composer--loading .ai-chat-composer-submit {
+    position: relative;
+    min-width: 12rem;
+}
+
+.ai-chat-composer-spinner {
+    display: none;
+    width: 1rem;
+    height: 1rem;
+    margin-left: 0.5rem;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: ai-chat-spin 0.8s linear infinite;
+    vertical-align: middle;
+}
+
+.ai-chat-composer--loading .ai-chat-composer-spinner {
+    display: inline-block;
+}
+
+@keyframes ai-chat-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.admin-knowledge-document-summary {
+    margin-bottom: 1.75rem;
+    padding: 1.375rem 1.5rem;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.875rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.admin-knowledge-document-description {
+    margin: 0 0 1.125rem;
+    color: #4b5563;
+    line-height: 1.6;
+    font-size: 0.9375rem;
+}
+
+.admin-knowledge-document-metadata {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.875rem 1.25rem;
+    margin: 0;
+    padding: 1rem 1.125rem;
+    background: #f9fafb;
+    border: 1px solid #eef2f7;
+    border-radius: 0.625rem;
+}
+
+.admin-knowledge-document-metadata-item {
+    min-width: 0;
+}
+
+.admin-knowledge-document-metadata-item dt {
+    margin: 0 0 0.25rem;
+    color: #6b7280;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.admin-knowledge-document-metadata-item dd {
+    margin: 0;
+    color: #111827;
+    font-size: 0.9375rem;
+    line-height: 1.45;
+    word-break: break-word;
+}
+
+.admin-knowledge-document-chunks {
+    margin-top: 0.5rem;
+}
+
+.admin-knowledge-chunk-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.375rem;
+}
+
+.admin-knowledge-chunk-card {
+    padding: 1.375rem 1.5rem;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.875rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    scroll-margin-top: 1.25rem;
+}
+
+.admin-knowledge-chunk-card--focus {
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.admin-knowledge-chunk-header {
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.admin-knowledge-chunk-title {
+    margin: 0;
+    color: #111827;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.admin-knowledge-chunk-subtitle {
+    margin: 0.25rem 0 0;
+    color: #6b7280;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
+
+.admin-knowledge-chunk-body-shell {
+    position: relative;
+}
+
+.admin-knowledge-chunk-body-wrap {
+    overflow: hidden;
+}
+
+.admin-knowledge-chunk-body-wrap--collapsed {
+    max-height: 18rem;
+}
+
+.admin-knowledge-chunk-body {
+    color: #1f2937;
+    font-size: 1rem;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.admin-knowledge-chunk-fade {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 2.75rem;
+    height: 4rem;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, #ffffff 88%);
+}
+
+.admin-knowledge-chunk-card--expanded .admin-knowledge-chunk-fade {
+    display: none;
+}
+
+.admin-knowledge-chunk-toggle {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 0.875rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #2563eb;
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.4;
+    cursor: pointer;
+}
+
+.admin-knowledge-chunk-toggle:hover,
+.admin-knowledge-chunk-toggle:focus-visible {
+    color: #1d4ed8;
+    text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+    .admin-knowledge-document-layout {
+        max-width: none;
+    }
+
+    .admin-knowledge-document-metadata {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-knowledge-chunk-card {
+        padding: 1.125rem 1.25rem;
+    }
+
+    .admin-knowledge-chunk-body-wrap--collapsed {
+        max-height: 16rem;
+    }
 }
 
 @media (max-width: 640px) {

@@ -13,11 +13,12 @@ from app.ai.knowledge_answer_interfaces import (
     KnowledgeAnswerResult,
 )
 from app.database.db import initialize_database
-from app.knowledge.models import KnowledgeSourceType
+from app.knowledge.models import KnowledgeDocumentChunkInput, KnowledgeSourceType
 from app.knowledge.question_answering_service import KnowledgeQuestionAnsweringError
-from app.repositories import knowledge_document_repository
+from app.repositories import knowledge_chunk_repository, knowledge_document_repository
 from app.web.admin_knowledge_question_service import (
     AdminKnowledgeAnswerSource,
+    AdminKnowledgeAnswerSourceGroup,
     AdminKnowledgeAnswerView,
     AdminKnowledgeQuestionError,
     AdminKnowledgeQuestionService,
@@ -200,6 +201,7 @@ class AdminKnowledgeQuestionServiceTests(unittest.TestCase):
         view = self.service.answer_question("company-a", "Вопрос?")
 
         self.assertEqual(view.sources, ())
+        self.assertEqual(view.source_groups, ())
 
     def test_citations_preserve_ordering(self) -> None:
         self.question_service.result = _sample_result(
@@ -351,6 +353,126 @@ class AdminKnowledgeQuestionServiceTests(unittest.TestCase):
             company_id="company-a",
             question="Вопрос?",
             language="ru",
+        )
+
+    def test_duplicate_document_citations_are_grouped(self) -> None:
+        document = self._create_document(title="Standards")
+        self.question_service.result = _sample_result(
+            citations=(
+                KnowledgeAnswerCitation(1, document.document_id, 0),
+                KnowledgeAnswerCitation(5, document.document_id, 4),
+            ),
+        )
+
+        view = self.service.answer_question("company-a", "Вопрос?")
+
+        self.assertEqual(len(view.source_groups), 1)
+        group = view.source_groups[0]
+        self.assertIsInstance(group, AdminKnowledgeAnswerSourceGroup)
+        self.assertEqual(group.document_id, document.document_id)
+        self.assertEqual(group.fragment_count, 2)
+        self.assertEqual(group.view_url, f"/admin/knowledge/{document.document_id}")
+        self.assertEqual(len(view.sources), 2)
+
+    def test_source_group_includes_chunk_excerpt(self) -> None:
+        document = self._create_document(title="Standards")
+        knowledge_chunk_repository.replace_document_chunks(
+            self.db_path,
+            company_id=document.company_id,
+            document_id=document.document_id,
+            chunks=[
+                KnowledgeDocumentChunkInput(
+                    chunk_index=0,
+                    text="Активно слушай, проявляй интерес и понимание.",
+                    start_char=0,
+                    end_char=42,
+                )
+            ],
+        )
+        self.question_service.result = _sample_result(
+            citations=(KnowledgeAnswerCitation(1, document.document_id, 0),),
+        )
+
+        view = self.service.answer_question("company-a", "Вопрос?")
+
+        self.assertEqual(len(view.source_groups), 1)
+        self.assertEqual(len(view.source_groups[0].excerpts), 1)
+        self.assertIn(
+            "Активно слушай",
+            view.source_groups[0].excerpts[0].excerpt,
+        )
+
+    def test_source_group_tenant_scoped_chunk_lookup(self) -> None:
+        own = self._create_document(
+            company_id="company-a",
+            title="Own",
+        )
+        other = self._create_document(
+            company_id="company-b",
+            title="Other",
+        )
+        knowledge_chunk_repository.replace_document_chunks(
+            self.db_path,
+            company_id=other.company_id,
+            document_id=other.document_id,
+            chunks=[
+                KnowledgeDocumentChunkInput(
+                    chunk_index=0,
+                    text="Secret other-company chunk text.",
+                    start_char=0,
+                    end_char=30,
+                )
+            ],
+        )
+        self.question_service.result = _sample_result(
+            citations=(KnowledgeAnswerCitation(1, other.document_id, 0),),
+        )
+
+        view = self.service.answer_question("company-a", "Вопрос?")
+
+        self.assertEqual(view.source_groups[0].excerpts[0].excerpt, "")
+        self.assertEqual(view.sources[0].title, "")
+
+    def test_source_group_skips_ocr_garbage_excerpt(self) -> None:
+        document = self._create_document(title="Standards")
+        knowledge_chunk_repository.replace_document_chunks(
+            self.db_path,
+            company_id=document.company_id,
+            document_id=document.document_id,
+            chunks=[
+                KnowledgeDocumentChunkInput(
+                    chunk_index=0,
+                    text=(
+                        "СЕРВИСНЫЕСТАНДАРТЫ\nMadeby\n010203\n"
+                        "Активно слушай, проявляй интерес и понимание."
+                    ),
+                    start_char=0,
+                    end_char=80,
+                )
+            ],
+        )
+        self.question_service.result = _sample_result(
+            citations=(KnowledgeAnswerCitation(1, document.document_id, 0),),
+        )
+
+        view = self.service.answer_question("company-a", "Вопрос?")
+
+        excerpt = view.source_groups[0].excerpts[0].excerpt
+        self.assertIn("Активно слушай", excerpt)
+        self.assertNotIn("Madeby", excerpt)
+        self.assertNotIn("010203", excerpt)
+
+    def test_single_fragment_view_url_includes_chunk_query(self) -> None:
+        document = self._create_document(title="Standards")
+        self.question_service.result = _sample_result(
+            citations=(KnowledgeAnswerCitation(1, document.document_id, 4),),
+        )
+
+        view = self.service.answer_question("company-a", "Вопрос?")
+
+        self.assertEqual(
+            view.source_groups[0].view_url,
+            f"/admin/knowledge/{document.document_id}?chunk=4",
         )
 
 

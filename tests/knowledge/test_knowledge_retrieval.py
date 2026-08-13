@@ -12,6 +12,7 @@ from app.knowledge.models import KnowledgeDocumentChunk, KnowledgeDocumentChunkI
 from app.knowledge.retrieval import (
     KnowledgeChunkRetrievalService,
     KnowledgeRetrievalError,
+    query_term_matches_chunk_term,
     rank_chunks,
     score_chunk,
     tokenize,
@@ -45,6 +46,23 @@ class KnowledgeRetrievalHelpersTests(unittest.TestCase):
             score_chunk(("return", "policy"), "Company return policy details"),
             1.0,
         )
+
+    def test_query_term_matches_russian_inflection(self) -> None:
+        self.assertTrue(query_term_matches_chunk_term("этапов", "этапы"))
+        self.assertTrue(query_term_matches_chunk_term("стандартов", "стандарты"))
+        self.assertTrue(query_term_matches_chunk_term("сервисных", "сервисные"))
+
+    def test_score_chunk_russian_inflected_question_finds_nominative_content(self) -> None:
+        chunk_text = (
+            "Сервисные стандарты обслуживания включают этапы: "
+            "Приветствуй, Спрашивай, Предлагай, Продавай."
+        )
+        query_terms = unique_query_terms(
+            "Сколько этапов сервисных стандартов существует?"
+        )
+        score = score_chunk(query_terms, chunk_text)
+        self.assertGreaterEqual(score, 0.6)
+        self.assertLess(score, 1.0)
 
 
 class KnowledgeChunkRetrievalServiceTests(unittest.TestCase):

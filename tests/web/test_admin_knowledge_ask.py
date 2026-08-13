@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.web.admin_knowledge_question_service import (
     AdminKnowledgeAnswerSource,
+    AdminKnowledgeAnswerSourceGroup,
     AdminKnowledgeAnswerView,
     AdminKnowledgeQuestionError,
     AdminKnowledgeQuestionService,
@@ -73,12 +74,33 @@ def _success_view(
             original_filename="service.docx",
         ),
     ),
+    source_groups: Optional[tuple[AdminKnowledgeAnswerSourceGroup, ...]] = None,
 ) -> AdminKnowledgeAnswerView:
+    if source_groups is None:
+        source_groups = (
+            AdminKnowledgeAnswerSourceGroup(
+                document_id="doc-a",
+                title="Return Policy",
+                original_filename="returns.pdf",
+                view_url="/admin/knowledge/doc-a",
+                excerpts=(),
+                fragment_count=1,
+            ),
+            AdminKnowledgeAnswerSourceGroup(
+                document_id="doc-b",
+                title="Customer Service",
+                original_filename="service.docx",
+                view_url="/admin/knowledge/doc-b",
+                excerpts=(),
+                fragment_count=1,
+            ),
+        )
     return AdminKnowledgeAnswerView(
         question=question,
         answer=answer,
         sufficient_context=sufficient_context,
         sources=sources,
+        source_groups=source_groups,
     )
 
 
@@ -136,7 +158,8 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
     def test_ask_page_shows_submit_button(self) -> None:
         response = self.client.get("/admin/knowledge/ask")
 
-        self.assertIn(">Отправить</button>", response.text)
+        self.assertIn("ai-chat-composer-submit-label", response.text)
+        self.assertIn(">Отправить</span>", response.text)
 
     def test_ask_page_shows_language_selector(self) -> None:
         response = self.client.get("/admin/knowledge/ask")
@@ -323,6 +346,111 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
 
         self.assertNotIn('href="#"', response.text)
 
+    def test_post_success_renders_document_open_link(self) -> None:
+        self.fake_service.result = _success_view()
+
+        response = self.client.post(
+            "/admin/knowledge/ask",
+            data={"question": "Как оформить возврат?", "language": "ru"},
+        )
+
+        self.assertIn('href="/admin/knowledge/doc-a"', response.text)
+        self.assertIn("Открыть документ →", response.text)
+
+    def test_post_success_renders_grouped_fragment_count(self) -> None:
+        self.fake_service.result = _success_view(
+            source_groups=(
+                AdminKnowledgeAnswerSourceGroup(
+                    document_id="doc-a",
+                    title="Return Policy",
+                    original_filename="returns.pdf",
+                    view_url="/admin/knowledge/doc-a",
+                    excerpts=(),
+                    fragment_count=2,
+                ),
+            ),
+        )
+
+        response = self.client.post(
+            "/admin/knowledge/ask",
+            data={"question": "Как оформить возврат?", "language": "ru"},
+        )
+
+        self.assertIn("Использовано фрагментов: 2", response.text)
+
+    def test_post_success_renders_chunk_excerpt(self) -> None:
+        from app.web.admin_knowledge_question_service import (
+            AdminKnowledgeAnswerChunkExcerpt,
+        )
+
+        self.fake_service.result = _success_view(
+            source_groups=(
+                AdminKnowledgeAnswerSourceGroup(
+                    document_id="doc-a",
+                    title="Return Policy",
+                    original_filename="returns.pdf",
+                    view_url="/admin/knowledge/doc-a",
+                    excerpts=(
+                        AdminKnowledgeAnswerChunkExcerpt(
+                            chunk_index=0,
+                            excerpt="Активно слушай, проявляй интерес и понимание.",
+                        ),
+                    ),
+                    fragment_count=1,
+                ),
+            ),
+        )
+
+        response = self.client.post(
+            "/admin/knowledge/ask",
+            data={"question": "Как оформить возврат?", "language": "ru"},
+        )
+
+        self.assertIn("ai-chat-source-excerpt", response.text)
+        self.assertIn(
+            "Активно слушай, проявляй интерес и понимание.",
+            response.text,
+        )
+
+    def test_post_success_groups_duplicate_document_citations(self) -> None:
+        self.fake_service.result = _success_view(
+            sources=(
+                AdminKnowledgeAnswerSource(
+                    source_number=1,
+                    document_id="doc-a",
+                    chunk_index=0,
+                    title="Return Policy",
+                    original_filename="returns.pdf",
+                ),
+                AdminKnowledgeAnswerSource(
+                    source_number=5,
+                    document_id="doc-a",
+                    chunk_index=4,
+                    title="Return Policy",
+                    original_filename="returns.pdf",
+                ),
+            ),
+            source_groups=(
+                AdminKnowledgeAnswerSourceGroup(
+                    document_id="doc-a",
+                    title="Return Policy",
+                    original_filename="returns.pdf",
+                    view_url="/admin/knowledge/doc-a",
+                    excerpts=(),
+                    fragment_count=2,
+                ),
+            ),
+        )
+
+        response = self.client.post(
+            "/admin/knowledge/ask",
+            data={"question": "Как оформить возврат?", "language": "ru"},
+        )
+
+        html = response.text
+        self.assertEqual(html.count("ai-chat-source-card"), 1)
+        self.assertIn("Использовано фрагментов: 2", html)
+
     def test_post_success_preserves_source_ordering(self) -> None:
         self.fake_service.result = _success_view()
 
@@ -482,6 +610,32 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         )
 
         self.assertEqual(len(self.fake_service.calls), 1)
+
+    def test_ask_page_contains_thinking_card_markup(self) -> None:
+        response = self.client.get("/admin/knowledge/ask")
+
+        html = response.text
+        self.assertIn("ai-chat-thinking", html)
+        self.assertIn("Поиск информации...", html)
+        self.assertIn("анализ документов", html)
+        self.assertIn("подготовка ответа", html)
+
+    def test_ask_page_contains_loading_state_markup(self) -> None:
+        response = self.client.get("/admin/knowledge/ask")
+
+        html = response.text
+        self.assertIn('data-loading-label="ИИ анализирует документы..."', html)
+        self.assertIn("ai-chat-composer-spinner", html)
+        self.assertIn('id="ai-chat-composer"', html)
+        self.assertIn("ai-chat-composer-submit-label", html)
+
+    def test_ask_page_submit_keeps_question_field_submittable(self) -> None:
+        response = self.client.get("/admin/knowledge/ask")
+
+        html = response.text
+        self.assertIn("textarea.readOnly = true", html)
+        self.assertNotIn("textarea.disabled = true", html)
+        self.assertNotIn("select.disabled = true", html)
 
 
 if __name__ == "__main__":

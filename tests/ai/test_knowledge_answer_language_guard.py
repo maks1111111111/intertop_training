@@ -138,6 +138,15 @@ class NeedsLanguageRewriteTests(unittest.TestCase):
         )
         self.assertTrue(needs_language_rewrite(answer, "kk"))
 
+    def test_kazakh_with_single_quoted_russian_workflow_term_triggers_rewrite(
+        self,
+    ) -> None:
+        answer = (
+            "Этап «спрашивай» қызметкердің қажеттіліктерін "
+            "түсінуге көмектеседі."
+        )
+        self.assertTrue(needs_language_rewrite(answer, "kk"))
+
     def test_kazakh_with_legitimate_latin_brand_name_no_rewrite(self) -> None:
         answer = (
             "Intertop дүкенінде сатып алуды 14 күн ішінде рәсімдеуге болады."
@@ -198,6 +207,20 @@ class KnowledgeAnswerLanguageGuardTests(unittest.TestCase):
 
         self.assertIs(enforced, result)
         provider.generate.assert_not_called()
+
+    def test_homoglyph_normalization_without_rewrite(self) -> None:
+        provider = MagicMock()
+        guard = KnowledgeAnswerLanguageGuard(provider)
+        original = _result("Проверьте контрol качества перед открытием смены.")
+
+        enforced = guard.enforce(original, "ru")
+
+        provider.generate.assert_not_called()
+        self.assertEqual(
+            enforced.answer,
+            "Проверьте контрол качества перед открытием смены.",
+        )
+        self.assertEqual(enforced.citations, original.citations)
 
     def test_violation_triggers_single_rewrite(self) -> None:
         provider = MagicMock()

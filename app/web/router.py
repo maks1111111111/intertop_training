@@ -662,6 +662,44 @@ async def admin_knowledge_upload_submit(
     return RedirectResponse(url="/admin/knowledge", status_code=303)
 
 
+@router.get(
+    "/admin/knowledge/{document_id}",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_knowledge_document_page(
+    request: Request,
+    document_id: str,
+    knowledge_service: AdminKnowledgeService = Depends(get_admin_knowledge_service),
+    chunk: Optional[int] = None,
+) -> HTMLResponse:
+    """Render one tenant-scoped Knowledge Base document."""
+    detail = knowledge_service.get_document_detail(
+        _WEB_ADMIN_COMPANY_ID,
+        document_id,
+        focus_chunk_index=chunk,
+    )
+    if detail is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Документ не найден",
+                "message": "Запрошенный документ базы знаний не найден.",
+            },
+            status_code=404,
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "admin_knowledge_document.html",
+        {
+            "active_nav": "admin",
+            "detail": detail,
+        },
+    )
+
+
 def _render_admin_course_create_page(
     request: Request,
     admin_service: AdminService,

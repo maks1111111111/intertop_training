@@ -66,20 +66,29 @@
             {% if answer_view.sufficient_context %}
             <div class="ai-chat-message-body">{{ answer_view.answer }}</div>
 
-            {% if answer_view.sources %}
+            {% if answer_view.source_groups %}
             <div class="ai-chat-sources" aria-label="Источники ответа">
-                {% for source in answer_view.sources %}
+                {% for group in answer_view.source_groups %}
                 <div class="ai-chat-source-card">
                     <span class="ai-chat-source-icon" aria-hidden="true">📄</span>
                     <div class="ai-chat-source-content">
-                        {% if source.title %}
-                        <span class="ai-chat-source-title">{{ source.title }}</span>
+                        {% if group.title %}
+                        <span class="ai-chat-source-title">{{ group.title }}</span>
                         {% endif %}
-                        {% if source.original_filename %}
-                        <span class="ai-chat-source-filename">{{ source.original_filename }}</span>
+                        {% if group.original_filename %}
+                        <span class="ai-chat-source-filename">{{ group.original_filename }}</span>
                         {% endif %}
-                        <span class="ai-chat-source-meta">Фрагмент {{ source.chunk_index }}</span>
-                        <span class="ai-chat-source-label">Источник ответа</span>
+                        {% for excerpt in group.excerpts %}
+                        {% if excerpt.excerpt %}
+                        <blockquote class="ai-chat-source-excerpt">{{ excerpt.excerpt }}</blockquote>
+                        {% endif %}
+                        {% endfor %}
+                        <span class="ai-chat-source-meta">
+                            Использовано фрагментов: {{ group.fragment_count }}
+                        </span>
+                        <a class="ai-chat-source-link" href="{{ group.view_url }}">
+                            Открыть документ →
+                        </a>
                     </div>
                 </div>
                 {% endfor %}
@@ -100,10 +109,23 @@
             {% endif %}
         </div>
         {% endif %}
+
+        <div class="ai-chat-thinking" id="ai-chat-thinking" hidden aria-live="polite">
+            <div class="ai-chat-message ai-chat-message--assistant ai-chat-message--thinking">
+                <div class="ai-chat-assistant-label">AI-помощник</div>
+                <p class="ai-chat-thinking-title">Поиск информации...</p>
+                <ul class="ai-chat-thinking-steps">
+                    <li>анализ документов</li>
+                    <li>поиск фрагментов</li>
+                    <li>подготовка ответа</li>
+                </ul>
+            </div>
+        </div>
     </div>
 
     <form
         class="ai-chat-composer"
+        id="ai-chat-composer"
         action="/admin/knowledge/ask"
         method="post"
         aria-label="Форма вопроса к базе знаний"
@@ -125,7 +147,15 @@
                     <option value="kk"{% if language == "kk" %} selected{% endif %}>Қазақша</option>
                     <option value="en"{% if language == "en" %} selected{% endif %}>English</option>
                 </select>
-                <button class="button button-primary ai-chat-composer-submit" type="submit">Отправить</button>
+                <button
+                    class="button button-primary ai-chat-composer-submit"
+                    type="submit"
+                    data-default-label="Отправить"
+                    data-loading-label="ИИ анализирует документы..."
+                >
+                    <span class="ai-chat-composer-submit-label">Отправить</span>
+                    <span class="ai-chat-composer-spinner" aria-hidden="true"></span>
+                </button>
             </div>
         </div>
 
@@ -134,4 +164,35 @@
         </div>
     </form>
 </section>
+
+<script>
+(function () {
+    var form = document.getElementById("ai-chat-composer");
+    if (!form) {
+        return;
+    }
+
+    form.addEventListener("submit", function () {
+        form.classList.add("ai-chat-composer--loading");
+
+        var textarea = form.querySelector("textarea");
+        var submit = form.querySelector(".ai-chat-composer-submit");
+        var label = form.querySelector(".ai-chat-composer-submit-label");
+        var thinking = document.getElementById("ai-chat-thinking");
+
+        if (textarea) {
+            textarea.readOnly = true;
+        }
+        if (submit) {
+            submit.disabled = true;
+        }
+        if (label && submit) {
+            label.textContent = submit.getAttribute("data-loading-label") || "Поиск ответа...";
+        }
+        if (thinking) {
+            thinking.hidden = false;
+        }
+    });
+})();
+</script>
 {% endblock %}

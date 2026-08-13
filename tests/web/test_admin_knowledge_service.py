@@ -8,8 +8,12 @@ from pathlib import Path
 from typing import Optional
 
 from app.database.db import initialize_database
-from app.knowledge.models import KnowledgeDocumentStatus, KnowledgeSourceType
-from app.repositories import knowledge_document_repository
+from app.knowledge.models import (
+    KnowledgeDocumentChunkInput,
+    KnowledgeDocumentStatus,
+    KnowledgeSourceType,
+)
+from app.repositories import knowledge_chunk_repository, knowledge_document_repository
 from app.web.admin_knowledge_service import (
     AdminKnowledgeDocumentItem,
     AdminKnowledgeError,
@@ -35,6 +39,7 @@ class AdminKnowledgeServiceTests(unittest.TestCase):
         original_filename: str = "manual.pdf",
         source_type: KnowledgeSourceType = KnowledgeSourceType.PDF,
         source_language: str = "auto",
+        extracted_text: str = "",
     ):
         return knowledge_document_repository.create_document(
             self.db_path,
@@ -43,6 +48,7 @@ class AdminKnowledgeServiceTests(unittest.TestCase):
             original_filename=original_filename,
             source_type=source_type,
             source_language=source_language,
+            extracted_text=extracted_text,
         )
 
     def test_empty_company_returns_empty_tuple(self) -> None:
@@ -169,6 +175,85 @@ class AdminKnowledgeServiceTests(unittest.TestCase):
         service.get_documents("  tenant-x  ")
 
         self.assertEqual(captured["company_id"], "tenant-x")
+
+    def test_get_document_detail_returns_view(self) -> None:
+        document = self._create_document(
+            title="Standards",
+            extracted_text="Full document text.",
+        )
+        knowledge_chunk_repository.replace_document_chunks(
+            self.db_path,
+            company_id=document.company_id,
+            document_id=document.document_id,
+            chunks=[
+                KnowledgeDocumentChunkInput(
+                    chunk_index=0,
+                    text="Chunk text.",
+                    start_char=0,
+                    end_char=10,
+                )
+            ],
+        )
+
+        detail = self.service.get_document_detail(
+            "company-a",
+            document.document_id,
+        )
+
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertEqual(detail.title, "Standards")
+        self.assertEqual(len(detail.chunks), 1)
+        self.assertEqual(detail.chunks[0].text, "Chunk text.")
+        self.assertEqual(detail.chunks[0].anchor_id, "chunk-0")
+        self.assertEqual(detail.chunk_count, 1)
+        self.assertEqual(detail.list_url, "/admin/knowledge")
+
+    def test_get_document_detail_focus_chunk_index(self) -> None:
+        document = self._create_document(title="Standards")
+        knowledge_chunk_repository.replace_document_chunks(
+            self.db_path,
+            company_id=document.company_id,
+            document_id=document.document_id,
+            chunks=[
+                KnowledgeDocumentChunkInput(
+                    chunk_index=0,
+                    text="First chunk.",
+                    start_char=0,
+                    end_char=11,
+                ),
+                KnowledgeDocumentChunkInput(
+                    chunk_index=3,
+                    text="Third chunk.",
+                    start_char=12,
+                    end_char=23,
+                ),
+            ],
+        )
+
+        detail = self.service.get_document_detail(
+            "company-a",
+            document.document_id,
+            focus_chunk_index=3,
+        )
+
+        assert detail is not None
+        self.assertEqual(detail.focus_chunk_index, 3)
+
+    def test_get_document_detail_unknown_returns_none(self) -> None:
+        detail = self.service.get_document_detail("company-a", "missing")
+
+        self.assertIsNone(detail)
+
+    def test_get_document_detail_is_tenant_scoped(self) -> None:
+        document = self._create_document(company_id="company-b")
+
+        detail = self.service.get_document_detail(
+            "company-a",
+            document.document_id,
+        )
+
+        self.assertIsNone(detail)
 
 
 if __name__ == "__main__":

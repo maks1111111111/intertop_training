@@ -421,3 +421,25 @@ class KnowledgeAnswerPromptBuilderTests(unittest.TestCase):
         self.assertNotIn("/Users/", prompt)
         self.assertNotIn("/tmp/", prompt)
         self.assertNotIn("courses/", prompt)
+
+    def test_prompt_requires_natural_opening_sentence(self) -> None:
+        request = KnowledgeAnswerRequest(
+            question="Расскажи про этап спрашивай",
+            context=_context_with_sources(query="Расскажи про этап спрашивай"),
+        )
+
+        prompt = self.builder.build(request)
+
+        self.assertIn("The first sentence must read naturally", prompt)
+        self.assertIn("Do not begin the answer as if quoting the middle", prompt)
+
+    def test_prompt_forbids_invented_item_counts(self) -> None:
+        request = KnowledgeAnswerRequest(
+            question="Сколько этапов?",
+            context=_context_with_sources(query="Сколько этапов?"),
+        )
+
+        prompt = self.builder.build(request)
+
+        self.assertIn("Do not state a specific count such as '7 steps'", prompt)
+        self.assertIn("includes the following steps", prompt)

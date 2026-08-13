@@ -11,6 +11,8 @@ from app.knowledge.models import KnowledgeDocumentChunk, KnowledgeDocumentStatus
 from app.repositories import knowledge_chunk_repository
 
 _TOKEN_SPLIT_RE = re.compile(r"[^\w]+", flags=re.UNICODE)
+# Minimum shared prefix length for inflected-form matching (e.g. этапов ~ этапы).
+_MIN_PREFIX_MATCH_LENGTH = 4
 
 ChunkLoader = Callable[[Path, str], Sequence[KnowledgeDocumentChunk]]
 
@@ -57,23 +59,60 @@ def unique_query_terms(query: str) -> tuple[str, ...]:
     return tuple(unique)
 
 
+def terms_share_match_prefix(left: str, right: str) -> bool:
+    """Return True when two tokens share a long enough common prefix."""
+    if left == right:
+        return True
+    if (
+        len(left) < _MIN_PREFIX_MATCH_LENGTH
+        or len(right) < _MIN_PREFIX_MATCH_LENGTH
+    ):
+        return False
+
+    max_stem = min(len(left), len(right))
+    for stem_length in range(max_stem, _MIN_PREFIX_MATCH_LENGTH - 1, -1):
+        if left[:stem_length] == right[:stem_length]:
+            return True
+    return False
+
+
+def query_term_matches_chunk_term(query_term: str, chunk_term: str) -> bool:
+    """Return True when a query token matches a chunk token exactly or by prefix."""
+    return terms_share_match_prefix(query_term, chunk_term)
+
+
+def query_term_matches_chunk_terms(
+    query_term: str,
+    chunk_terms: Sequence[str],
+) -> bool:
+    """Return True when *query_term* matches any token from a chunk."""
+    for chunk_term in chunk_terms:
+        if query_term_matches_chunk_term(query_term, chunk_term):
+            return True
+    return False
+
+
 def score_chunk(query_terms: Sequence[str], chunk_text: str) -> float:
     """Score one chunk by unique query-term coverage (0.0 when no overlap)."""
     if not query_terms:
         return 0.0
 
-    chunk_term_set = set(tokenize(chunk_text))
-    if not chunk_term_set:
+    chunk_terms = tokenize(chunk_text)
+    if not chunk_terms:
         return 0.0
 
-    matched = sum(1 for term in query_terms if term in chunk_term_set)
+    matched = sum(
+        1
+        for term in query_terms
+        if query_term_matches_chunk_terms(term, chunk_terms)
+    )
     if matched == 0:
         return 0.0
 
     coverage = matched / len(query_terms)
 
     normalized_query = " ".join(query_terms)
-    normalized_chunk = " ".join(tokenize(chunk_text))
+    normalized_chunk = " ".join(chunk_terms)
     phrase_bonus = 0.0
     if len(query_terms) > 1 and normalized_query in normalized_chunk:
         phrase_bonus = 0.1

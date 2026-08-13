@@ -119,6 +119,38 @@ def _grounding_rules_lines() -> list[str]:
     ]
 
 
+def _answer_quality_rules_lines() -> list[str]:
+    return [
+        "",
+        "Answer quality rules:",
+        (
+            "- The first sentence must read naturally and answer the user's "
+            "question directly."
+        ),
+        (
+            "- Do not begin the answer as if quoting the middle of a document "
+            "or section heading."
+        ),
+        (
+            "- Write as a helpful corporate assistant, not as a raw document "
+            "fragment."
+        ),
+        (
+            "- When listing items, include every item you can support from "
+            "the supplied context."
+        ),
+        (
+            "- Do not state a specific count such as '7 steps' unless the "
+            "supplied context explicitly and completely supports that exact "
+            "count."
+        ),
+        (
+            "- If the exact count is uncertain, use phrasing such as "
+            "'includes the following steps' without inventing a number."
+        ),
+    ]
+
+
 def _citation_rules_lines() -> list[str]:
     return [
         "",
@@ -170,6 +202,10 @@ def _output_format_lines() -> list[str]:
         "",
         "Field rules:",
         "- answer: concise but complete; directly answers the user's question.",
+        (
+            "- answer: the opening sentence must be natural and respond to "
+            "the question, not start like a document excerpt."
+        ),
         "- answer: must use the requested response language.",
         (
             "- answer: if sufficient_context is false, clearly say that the "
@@ -232,6 +268,7 @@ class KnowledgeAnswerPromptBuilder:
             ),
             "Your role is to answer employee questions using ONLY the supplied sources.",
             *_grounding_rules_lines(),
+            *_answer_quality_rules_lines(),
             *_language_instruction_lines(language),
             "",
             "Question:",
