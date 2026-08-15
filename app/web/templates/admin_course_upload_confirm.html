@@ -47,39 +47,39 @@
             </div>
             {% endif %}
             <div class="admin-upload-confirm-row">
-                <dt>Source Language</dt>
+                <dt>Язык исходного документа</dt>
                 <dd>{{ confirm.source_language_label }}</dd>
             </div>
             <div class="admin-upload-confirm-row">
-                <dt>Output Language</dt>
+                <dt>Язык курса</dt>
                 <dd>{{ confirm.output_language_label }}</dd>
             </div>
             <div class="admin-upload-confirm-row">
-                <dt>Lesson Count</dt>
+                <dt>Количество уроков</dt>
                 <dd>{{ confirm.lesson_count }}</dd>
             </div>
             <div class="admin-upload-confirm-row">
-                <dt>Lesson Size</dt>
+                <dt>Размер уроков</dt>
                 <dd>{{ confirm.lesson_size_label }}</dd>
             </div>
             <div class="admin-upload-confirm-row">
-                <dt>Difficulty</dt>
+                <dt>Уровень сложности</dt>
                 <dd>{{ confirm.difficulty_label }}</dd>
             </div>
         </dl>
 
         <ul class="admin-upload-confirm-options">
             {% if confirm.generate_quiz %}
-            <li>Generate Quiz</li>
+            <li>Создать тест</li>
             {% endif %}
             {% if confirm.include_practical_tasks %}
-            <li>Generate Practical Tasks</li>
+            <li>Практические задания</li>
             {% endif %}
             {% if confirm.include_checklists %}
-            <li>Generate Checklists</li>
+            <li>Чек-листы</li>
             {% endif %}
             {% if confirm.include_explanations %}
-            <li>Include Explanations</li>
+            <li>Пояснения</li>
             {% endif %}
         </ul>
     </div>

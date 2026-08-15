@@ -484,6 +484,14 @@ class AdminGenerationServiceUnitTests(unittest.TestCase):
             persist_call.kwargs["questions_per_lesson"],
             0,
         )
+        self.mock_text_service.generate_from_text.assert_called_once_with(
+            "Imported text",
+            output_language="ru",
+        )
+        self.assertEqual(
+            persist_call.kwargs["output_language"],
+            "ru",
+        )
 
     def test_web_form_uses_adaptive_quiz_not_fixed_three(self) -> None:
         upload_id, form_values = self._saved_upload()

@@ -243,22 +243,22 @@ def _web_form_to_generation_options(
     source_language = _parse_enum_value(
         Language,
         form_values.source_language,
-        "Source Language",
+        "Язык исходного документа",
     )
     output_language = _parse_enum_value(
         Language,
         form_values.output_language,
-        "Output Language",
+        "Язык курса",
     )
     lesson_size = _parse_enum_value(
         LessonSize,
         form_values.lesson_size,
-        "Lesson Size",
+        "Размер уроков",
     )
     difficulty = _parse_enum_value(
         DifficultyLevel,
         form_values.difficulty,
-        "Difficulty",
+        "Уровень сложности",
     )
     questions_per_lesson = (
         _ADAPTIVE_QUESTIONS_PER_LESSON

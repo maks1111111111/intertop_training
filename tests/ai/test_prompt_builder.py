@@ -419,6 +419,70 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("CORRECT ACTIONS", prompt)
         self.assertIn("follow the lesson content blueprint above", prompt)
 
+    def test_ru_output_language_requires_russian_generation(self) -> None:
+        request = LessonGenerationRequest(
+            lessons=[
+                LessonCandidate(title="Section 1", content="English source text."),
+            ],
+            output_language="ru",
+        )
+
+        prompt = self.builder.build_lesson_generation_prompt(request)
+
+        self.assertIn('Set "course.language" to "ru"', prompt)
+        self.assertIn("Output language (mandatory):", prompt)
+        self.assertIn("only in Russian", prompt)
+        self.assertIn(
+            "The language of the source material MUST NOT determine the output language.",
+            prompt,
+        )
+        self.assertIn('must be exactly "ru"', prompt)
+        self.assertNotIn("Detect the primary language of the material.", prompt)
+
+    def test_kk_output_language_requires_kazakh_generation(self) -> None:
+        request = LessonGenerationRequest(
+            lessons=[
+                LessonCandidate(title="Section 1", content="Source."),
+            ],
+            output_language="kk",
+        )
+
+        prompt = self.builder.build_lesson_generation_prompt(request)
+
+        self.assertIn('Set "course.language" to "kk"', prompt)
+        self.assertIn("only in Kazakh", prompt)
+
+    def test_en_output_language_requires_english_generation(self) -> None:
+        request = LessonGenerationRequest(
+            lessons=[
+                LessonCandidate(title="Section 1", content="Источник на русском."),
+            ],
+            output_language="en",
+        )
+
+        prompt = self.builder.build_lesson_generation_prompt(request)
+
+        self.assertIn('Set "course.language" to "en"', prompt)
+        self.assertIn("only in English", prompt)
+        self.assertIn(
+            "Do not write generated content in Russian or Kazakh",
+            prompt,
+        )
+
+    def test_source_language_different_from_output_language_does_not_override(self) -> None:
+        request = LessonGenerationRequest(
+            lessons=[
+                LessonCandidate(title="Section 1", content="English-only source."),
+            ],
+            output_language="ru",
+        )
+
+        prompt = self.builder.build_lesson_generation_prompt(request)
+
+        self.assertIn("output language is authoritative", prompt.lower())
+        self.assertIn('must be exactly "ru"', prompt)
+        self.assertIn("lesson title, summary, and content", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

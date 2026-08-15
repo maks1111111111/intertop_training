@@ -6,6 +6,8 @@ an analyzed course structure without coupling callers to pipeline internals.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from app.ai.interfaces import LessonGenerationResult
 from app.content.structure_analyzer import CourseStructure
 from app.services.course_generation_pipeline_service import (
@@ -22,13 +24,20 @@ class CourseGenerationFlowService:
     def generate(
         self,
         structure: CourseStructure,
+        *,
+        output_language: Optional[str] = None,
     ) -> LessonGenerationResult:
         """Generate lessons from an analyzed course structure via AI.
 
         Args:
             structure: Analyzed course structure from the import pipeline.
+            output_language: Optional ISO 639-1 code (ru, kk, en) for generated
+                human-readable content.
 
         Returns:
             The :class:`LessonGenerationResult` from the generation pipeline.
         """
-        return self._pipeline_service.generate_lessons(structure)
+        return self._pipeline_service.generate_lessons(
+            structure,
+            output_language=output_language,
+        )

@@ -30,15 +30,22 @@ class CourseGenerationPipelineService:
     def generate_lessons(
         self,
         structure: CourseStructure,
+        *,
+        output_language: Optional[str] = None,
     ) -> LessonGenerationResult:
         """Build lesson candidates from structure and refine them via AI.
 
         Args:
             structure: Analyzed course structure from the import pipeline.
+            output_language: Optional ISO 639-1 code (ru, kk, en) for generated
+                human-readable content.
 
         Returns:
             The :class:`LessonGenerationResult` from the configured AI service.
         """
         candidates = self._lesson_builder.build(structure)
-        request = LessonGenerationRequest(lessons=candidates)
+        request = LessonGenerationRequest(
+            lessons=candidates,
+            output_language=output_language,
+        )
         return self._generation_service.generate_lessons(request)

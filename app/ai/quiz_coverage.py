@@ -6,7 +6,7 @@ volume. Used by the quiz prompt builder and post-generation validation.
 
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 from app.ai.quiz_interfaces import QuizGenerationRequest
 from app.content.lesson_builder import LessonCandidate
@@ -110,6 +110,7 @@ def create_quiz_generation_request(
     lessons: Tuple[LessonCandidate, ...],
     *,
     questions_per_lesson: int = 0,
+    output_language: Optional[str] = None,
 ) -> QuizGenerationRequest:
     """Build a :class:`QuizGenerationRequest` with computed lesson targets."""
     targets = compute_lesson_question_targets(
@@ -120,4 +121,5 @@ def create_quiz_generation_request(
         lessons=lessons,
         questions_per_lesson=questions_per_lesson,
         lesson_question_targets=targets,
+        output_language=output_language,
     )

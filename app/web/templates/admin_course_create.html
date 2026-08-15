@@ -40,7 +40,7 @@
         <legend class="admin-form-section-title">Основная информация</legend>
 
         <div class="admin-form-field">
-            <label class="admin-form-label" for="course-title">Course title</label>
+            <label class="admin-form-label" for="course-title">Название курса</label>
             <input
                 class="admin-form-input"
                 type="text"
@@ -64,11 +64,15 @@
     </fieldset>
 
     <fieldset class="admin-form-section">
-        <legend class="admin-form-section-title">Source Language</legend>
+        <legend class="admin-form-section-title">Язык исходного документа</legend>
 
         <div class="admin-form-field">
-            <label class="admin-form-label" for="source-language">Source Language</label>
-            <select class="admin-form-select" id="source-language" name="source_language">
+            <select
+                class="admin-form-select"
+                id="source-language"
+                name="source_language"
+                aria-label="Язык исходного документа"
+            >
                 {% for option in create_view.source_language_options %}
                 <option value="{{ option.value }}">{{ option.label }}</option>
                 {% endfor %}
@@ -77,11 +81,15 @@
     </fieldset>
 
     <fieldset class="admin-form-section">
-        <legend class="admin-form-section-title">Output Language</legend>
+        <legend class="admin-form-section-title">Язык курса</legend>
 
         <div class="admin-form-field">
-            <label class="admin-form-label" for="output-language">Output Language</label>
-            <select class="admin-form-select" id="output-language" name="output_language">
+            <select
+                class="admin-form-select"
+                id="output-language"
+                name="output_language"
+                aria-label="Язык курса"
+            >
                 {% for option in create_view.output_language_options %}
                 <option value="{{ option.value }}">{{ option.label }}</option>
                 {% endfor %}
@@ -90,10 +98,10 @@
     </fieldset>
 
     <fieldset class="admin-form-section">
-        <legend class="admin-form-section-title">Generation</legend>
+        <legend class="admin-form-section-title">Параметры генерации</legend>
 
         <div class="admin-form-field">
-            <label class="admin-form-label" for="lesson-count">Lesson Count</label>
+            <label class="admin-form-label" for="lesson-count">Количество уроков</label>
             <input
                 class="admin-form-input"
                 type="number"
@@ -105,7 +113,7 @@
         </div>
 
         <div class="admin-form-field">
-            <label class="admin-form-label" for="lesson-size">Lesson Size</label>
+            <label class="admin-form-label" for="lesson-size">Размер уроков</label>
             <select class="admin-form-select" id="lesson-size" name="lesson_size">
                 {% for option in create_view.lesson_size_options %}
                 <option value="{{ option.value }}"{% if option.value == "medium" %} selected{% endif %}>{{ option.label }}</option>
@@ -114,7 +122,7 @@
         </div>
 
         <div class="admin-form-field">
-            <label class="admin-form-label" for="difficulty">Difficulty</label>
+            <label class="admin-form-label" for="difficulty">Уровень сложности</label>
             <select class="admin-form-select" id="difficulty" name="difficulty">
                 {% for option in create_view.difficulty_options %}
                 <option value="{{ option.value }}"{% if option.value == "beginner" %} selected{% endif %}>{{ option.label }}</option>
@@ -129,29 +137,29 @@
         <div class="admin-form-checkboxes">
             <div class="admin-form-checkbox">
                 <input type="checkbox" id="generate-quiz" name="generate_quiz" value="1">
-                <label for="generate-quiz">Generate Quiz</label>
+                <label for="generate-quiz">Создать тест</label>
             </div>
 
             <div class="admin-form-checkbox">
                 <input type="checkbox" id="generate-practical-tasks" name="include_practical_tasks" value="1">
-                <label for="generate-practical-tasks">Generate Practical Tasks</label>
+                <label for="generate-practical-tasks">Практические задания</label>
             </div>
 
             <div class="admin-form-checkbox">
                 <input type="checkbox" id="generate-checklists" name="include_checklists" value="1">
-                <label for="generate-checklists">Generate Checklists</label>
+                <label for="generate-checklists">Чек-листы</label>
             </div>
 
             <div class="admin-form-checkbox">
                 <input type="checkbox" id="include-explanations" name="include_explanations" value="1" checked>
-                <label for="include-explanations">Include Explanations</label>
+                <label for="include-explanations">Пояснения</label>
             </div>
         </div>
     </fieldset>
 
     <div class="admin-form-actions">
         <a class="button button-secondary" href="/admin">Назад</a>
-        <button class="button button-primary" type="submit">Continue →</button>
+        <button class="button button-primary" type="submit">Продолжить →</button>
     </div>
 </form>
 {% endblock %}

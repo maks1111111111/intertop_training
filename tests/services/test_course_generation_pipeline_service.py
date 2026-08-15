@@ -96,6 +96,26 @@ class CourseGenerationPipelineServiceTests(unittest.TestCase):
         expected_request = LessonGenerationRequest(lessons=self.candidates)
         mock_service.generate_lessons.assert_called_once_with(expected_request)
 
+    def test_output_language_forwarded_to_generation_request(self) -> None:
+        mock_builder = MagicMock(spec=LessonBuilder)
+        mock_builder.build.return_value = self.candidates
+        mock_service = MagicMock(spec=CourseGenerationService)
+        mock_service.generate_lessons.return_value = LessonGenerationResult(
+            lessons=self.candidates
+        )
+        service = CourseGenerationPipelineService(
+            generation_service=mock_service,
+            lesson_builder=mock_builder,
+        )
+
+        service.generate_lessons(self.structure, output_language="kk")
+
+        expected_request = LessonGenerationRequest(
+            lessons=self.candidates,
+            output_language="kk",
+        )
+        mock_service.generate_lessons.assert_called_once_with(expected_request)
+
     def test_returns_generation_service_result_unchanged(self) -> None:
         mock_builder = MagicMock(spec=LessonBuilder)
         mock_builder.build.return_value = self.candidates

@@ -6,6 +6,10 @@ No LLM calls or external dependencies are used here.
 
 from __future__ import annotations
 
+from app.ai.generation_language import (
+    build_generation_language_instruction_lines,
+    normalize_output_language,
+)
 from app.ai.interfaces import LessonGenerationRequest
 
 
@@ -28,12 +32,21 @@ class PromptBuilder:
         if not request.lessons:
             return ""
 
+        output_language = normalize_output_language(request.output_language)
+        if output_language is not None:
+            language_task_line = (
+                f'2. Set "course.language" to "{output_language}" and write ALL '
+                "human-readable generated text in that language."
+            )
+        else:
+            language_task_line = "2. Detect the primary language of the material."
+
         lines = [
             "Create a structured training course from the source material below.",
             "",
             "Your task:",
             "1. Infer a concise course title and description from the material.",
-            "2. Detect the primary language of the material.",
+            language_task_line,
             "3. Transform each source section into a training lesson.",
             "4. For every lesson provide a title, a brief summary, full",
             "   lesson content, learning objectives, a structured practical",
@@ -41,6 +54,13 @@ class PromptBuilder:
             "   completion time, a checklist, common mistakes, key takeaways,",
             "   and application tips.",
             "",
+        ]
+
+        if output_language is not None:
+            lines.extend(build_generation_language_instruction_lines(output_language))
+            lines.append("")
+
+        lines.extend([
             "Lesson content blueprint:",
             'Write each lesson\'s "content" as flowing training text. Do NOT',
             "insert section headings into the JSON. Instead, naturally cover:",
@@ -115,8 +135,25 @@ class PromptBuilder:
             "Field rules:",
             '- "course.title": short name for the entire course.',
             '- "course.description": brief overview of the course (2-4 sentences).',
-            '- "course.language": ISO 639-1 language code (e.g. "ru", "en").',
-            "  This field is required.",
+        ])
+
+        if output_language is not None:
+            lines.extend(
+                [
+                    f'- "course.language": must be exactly "{output_language}".',
+                    "  This field is required.",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    '- "course.language": ISO 639-1 language code (e.g. "ru", "en").',
+                    "  This field is required.",
+                ]
+            )
+
+        lines.extend(
+            [
             '- "lessons": one entry per source section, in the same order.',
             '- "title": lesson title.',
             '- "summary": brief description of the lesson (2-4 sentences).',
@@ -168,7 +205,8 @@ class PromptBuilder:
             "",
             "Source material:",
             "",
-        ]
+            ]
+        )
 
         for index, lesson in enumerate(request.lessons, start=1):
             lines.extend(

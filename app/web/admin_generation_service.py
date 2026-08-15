@@ -215,8 +215,12 @@ class AdminGenerationService:
         prepared = CourseGenerationWizard().prepare(options)
 
         text = self._importer.read_source(resolved.source_path)
+        output_language = prepared.output_language.value
         text_generation_service = self._resolve_text_generation_service()
-        lesson_result = text_generation_service.generate_from_text(text)
+        lesson_result = text_generation_service.generate_from_text(
+            text,
+            output_language=output_language,
+        )
         lesson_result = _apply_generation_overrides(
             lesson_result,
             prepared,
@@ -229,6 +233,7 @@ class AdminGenerationService:
             self._courses_dir,
             generate_quiz=prepared.generate_quiz,
             questions_per_lesson=prepared.questions_per_lesson,
+            output_language=output_language,
         )
 
         slug = _read_persisted_course_slug(workflow_result.course_directory)

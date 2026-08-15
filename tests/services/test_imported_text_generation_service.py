@@ -76,7 +76,27 @@ class ImportedTextGenerationServiceTests(unittest.TestCase):
 
         service.generate_from_text(self.text)
 
-        mock_flow_service.generate.assert_called_once_with(self.structure)
+        mock_flow_service.generate.assert_called_once_with(
+            self.structure,
+            output_language=None,
+        )
+
+    def test_output_language_forwarded_to_flow_service(self) -> None:
+        mock_analyzer = MagicMock(spec=StructureAnalyzer)
+        mock_analyzer.analyze.return_value = self.structure
+        mock_flow_service = MagicMock(spec=CourseGenerationFlowService)
+        mock_flow_service.generate.return_value = LessonGenerationResult(lessons=[])
+        service = ImportedTextGenerationService(
+            flow_service=mock_flow_service,
+            structure_analyzer=mock_analyzer,
+        )
+
+        service.generate_from_text(self.text, output_language="ru")
+
+        mock_flow_service.generate.assert_called_once_with(
+            self.structure,
+            output_language="ru",
+        )
 
     def test_flow_service_generate_called_once(self) -> None:
         mock_analyzer = MagicMock(spec=StructureAnalyzer)
@@ -129,7 +149,10 @@ class ImportedTextGenerationServiceTests(unittest.TestCase):
         result = service.generate_from_text("")
 
         mock_analyzer.analyze.assert_called_once_with("")
-        mock_flow_service.generate.assert_called_once_with(empty_structure)
+        mock_flow_service.generate.assert_called_once_with(
+            empty_structure,
+            output_language=None,
+        )
         self.assertIs(result, expected_result)
 
 

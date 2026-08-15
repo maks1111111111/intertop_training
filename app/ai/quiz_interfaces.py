@@ -7,7 +7,7 @@ must implement. No concrete providers are included here.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, Tuple
+from typing import Optional, Protocol, Tuple
 
 from app.content.lesson_builder import LessonCandidate
 
@@ -47,6 +47,7 @@ class QuizGenerationRequest:
     lessons: Tuple[LessonCandidate, ...]
     questions_per_lesson: int = 0
     lesson_question_targets: Tuple[int, ...] = ()
+    output_language: Optional[str] = None
 
 
 @dataclass(frozen=True)

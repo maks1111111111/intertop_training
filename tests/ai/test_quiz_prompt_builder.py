@@ -355,6 +355,33 @@ class QuizPromptBuilderTests(unittest.TestCase):
             prompt,
         )
 
+    def test_ru_output_language_requires_russian_quiz_content(self) -> None:
+        request = create_quiz_generation_request(
+            (LessonCandidate(title="Safety", content="English lesson content."),),
+            output_language="ru",
+        )
+
+        prompt = self.builder.build_quiz_generation_prompt(request)
+
+        self.assertIn("Output language (mandatory):", prompt)
+        self.assertIn('Language code: "ru"', prompt)
+        self.assertIn("only in Russian", prompt)
+        self.assertIn("quiz title", prompt)
+        self.assertIn("question text", prompt)
+
+    def test_quiz_uses_course_output_language_from_request(self) -> None:
+        request = QuizGenerationRequest(
+            lessons=(LessonCandidate(title="Lesson", content="Content."),),
+            questions_per_lesson=2,
+            lesson_question_targets=(2,),
+            output_language="kk",
+        )
+
+        prompt = self.builder.build_quiz_generation_prompt(request)
+
+        self.assertIn('Language code: "kk"', prompt)
+        self.assertIn("only in Kazakh", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

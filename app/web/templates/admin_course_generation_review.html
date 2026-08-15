@@ -55,42 +55,42 @@
             </div>
             {% endif %}
             <div class="admin-upload-confirm-row">
-                <dt>Source Language</dt>
+                <dt>Язык исходного документа</dt>
                 <dd>{{ review.source_language_label }}</dd>
             </div>
             <div class="admin-upload-confirm-row">
-                <dt>Output Language</dt>
+                <dt>Язык курса</dt>
                 <dd>{{ review.output_language_label }}</dd>
             </div>
             <div class="admin-upload-confirm-row">
-                <dt>Lesson Count</dt>
+                <dt>Количество уроков</dt>
                 <dd>{{ review.lesson_count }}</dd>
             </div>
             <div class="admin-upload-confirm-row">
-                <dt>Lesson Size</dt>
+                <dt>Размер уроков</dt>
                 <dd>{{ review.lesson_size_label }}</dd>
             </div>
             <div class="admin-upload-confirm-row">
-                <dt>Difficulty</dt>
+                <dt>Уровень сложности</dt>
                 <dd>{{ review.difficulty_label }}</dd>
             </div>
         </dl>
 
         <dl class="admin-generation-review-features">
             <div class="admin-generation-review-feature">
-                <dt>Generate Quiz</dt>
+                <dt>Создать тест</dt>
                 <dd>{% if review.generate_quiz %}Да{% else %}Нет{% endif %}</dd>
             </div>
             <div class="admin-generation-review-feature">
-                <dt>Generate Practical Tasks</dt>
+                <dt>Практические задания</dt>
                 <dd>{% if review.include_practical_tasks %}Да{% else %}Нет{% endif %}</dd>
             </div>
             <div class="admin-generation-review-feature">
-                <dt>Generate Checklists</dt>
+                <dt>Чек-листы</dt>
                 <dd>{% if review.include_checklists %}Да{% else %}Нет{% endif %}</dd>
             </div>
             <div class="admin-generation-review-feature">
-                <dt>Include Explanations</dt>
+                <dt>Пояснения</dt>
                 <dd>{% if review.include_explanations %}Да{% else %}Нет{% endif %}</dd>
             </div>
         </dl>

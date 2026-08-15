@@ -6,6 +6,10 @@ No LLM calls or external dependencies are used here.
 
 from __future__ import annotations
 
+from app.ai.generation_language import (
+    build_generation_language_instruction_lines,
+    normalize_output_language,
+)
 from app.ai.quiz_coverage import (
     lesson_slug_for_index,
     resolve_lesson_question_targets,
@@ -33,6 +37,7 @@ class QuizPromptBuilder:
         if not request.lessons:
             return ""
 
+        output_language = normalize_output_language(request.output_language)
         targets = resolve_lesson_question_targets(request)
         required_total = total_question_target(request)
 
@@ -48,15 +53,24 @@ class QuizPromptBuilder:
             "3. Use only information from the provided lesson material.",
             "4. Do not invent policies, facts, or procedures absent from the source.",
             "",
-            "Coverage requirements:",
-            f"- Total questions required: {required_total}.",
-            "- Do not create fewer questions than required.",
-            "- Do not skip any lesson.",
-            "- Each question must use the lesson slug shown for that lesson.",
-            "- Question identifiers must be unique across the whole quiz.",
-            "",
-            "Required questions per lesson:",
         ]
+
+        if output_language is not None:
+            lines.extend(build_generation_language_instruction_lines(output_language))
+            lines.append("")
+
+        lines.extend(
+            [
+                "Coverage requirements:",
+                f"- Total questions required: {required_total}.",
+                "- Do not create fewer questions than required.",
+                "- Do not skip any lesson.",
+                "- Each question must use the lesson slug shown for that lesson.",
+                "- Question identifiers must be unique across the whole quiz.",
+                "",
+                "Required questions per lesson:",
+            ]
+        )
 
         for lesson_index, required_count in enumerate(targets, start=1):
             lesson_slug = lesson_slug_for_index(lesson_index)

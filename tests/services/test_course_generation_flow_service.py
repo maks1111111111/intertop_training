@@ -36,7 +36,24 @@ class CourseGenerationFlowServiceTests(unittest.TestCase):
 
         flow_service.generate(self.structure)
 
-        pipeline_service.generate_lessons.assert_called_once_with(self.structure)
+        pipeline_service.generate_lessons.assert_called_once_with(
+            self.structure,
+            output_language=None,
+        )
+
+    def test_output_language_forwarded_to_pipeline(self) -> None:
+        pipeline_service = MagicMock(spec=CourseGenerationPipelineService)
+        pipeline_service.generate_lessons.return_value = LessonGenerationResult(
+            lessons=[]
+        )
+        flow_service = CourseGenerationFlowService(pipeline_service)
+
+        flow_service.generate(self.structure, output_language="en")
+
+        pipeline_service.generate_lessons.assert_called_once_with(
+            self.structure,
+            output_language="en",
+        )
 
     def test_generate_passes_structure_unchanged(self) -> None:
         pipeline_service = MagicMock(spec=CourseGenerationPipelineService)

@@ -37,19 +37,19 @@ class AdminCourseCreatePageTests(unittest.TestCase):
 
     def test_create_page_displays_course_title_field(self) -> None:
         response = self.client.get("/admin/courses/new")
-        self.assertIn("Course title", response.text)
+        self.assertIn("Название курса", response.text)
         self.assertIn('id="course-title"', response.text)
 
     def test_create_page_displays_lesson_count_field(self) -> None:
         response = self.client.get("/admin/courses/new")
-        self.assertIn("Lesson Count", response.text)
+        self.assertIn("Количество уроков", response.text)
         self.assertIn('id="lesson-count"', response.text)
         self.assertIn('type="number"', response.text)
 
     def test_create_page_has_source_language_selector(self) -> None:
         response = self.client.get("/admin/courses/new")
         self.assertIn('id="source-language"', response.text)
-        self.assertIn("Source Language", response.text)
+        self.assertIn("Язык исходного документа", response.text)
         self.assertIn("Авто", response.text)
         self.assertIn("Русский", response.text)
         self.assertIn("Қазақша", response.text)
@@ -58,7 +58,7 @@ class AdminCourseCreatePageTests(unittest.TestCase):
     def test_create_page_has_output_language_selector(self) -> None:
         response = self.client.get("/admin/courses/new")
         self.assertIn('id="output-language"', response.text)
-        self.assertIn("Output Language", response.text)
+        self.assertIn("Язык курса", response.text)
         output_section_start = response.text.index('id="output-language"')
         output_section = response.text[output_section_start : output_section_start + 500]
         self.assertNotIn('value="auto"', output_section)
@@ -66,34 +66,61 @@ class AdminCourseCreatePageTests(unittest.TestCase):
     def test_create_page_has_difficulty_selector(self) -> None:
         response = self.client.get("/admin/courses/new")
         self.assertIn('id="difficulty"', response.text)
-        self.assertIn("Difficulty", response.text)
-        self.assertIn("Beginner", response.text)
-        self.assertIn("Basic", response.text)
-        self.assertIn("Advanced", response.text)
-        self.assertIn("Expert", response.text)
+        self.assertIn("Уровень сложности", response.text)
+        self.assertIn("Начальный", response.text)
+        self.assertIn("Базовый", response.text)
+        self.assertIn("Продвинутый", response.text)
+        self.assertIn("Экспертный", response.text)
 
     def test_create_page_has_lesson_size_selector(self) -> None:
         response = self.client.get("/admin/courses/new")
         self.assertIn('id="lesson-size"', response.text)
-        self.assertIn("Lesson Size", response.text)
-        self.assertIn("Short", response.text)
-        self.assertIn("Medium", response.text)
-        self.assertIn("Long", response.text)
+        self.assertIn("Размер уроков", response.text)
+        self.assertIn("Короткий", response.text)
+        self.assertIn("Средний", response.text)
+        self.assertIn("Длинный", response.text)
 
     def test_create_page_has_generation_checkboxes(self) -> None:
         response = self.client.get("/admin/courses/new")
         self.assertIn('id="generate-quiz"', response.text)
-        self.assertIn("Generate Quiz", response.text)
+        self.assertIn("Создать тест", response.text)
         self.assertIn('id="generate-practical-tasks"', response.text)
-        self.assertIn("Generate Practical Tasks", response.text)
+        self.assertIn("Практические задания", response.text)
         self.assertIn('id="generate-checklists"', response.text)
-        self.assertIn("Generate Checklists", response.text)
+        self.assertIn("Чек-листы", response.text)
         self.assertIn('id="include-explanations"', response.text)
-        self.assertIn("Include Explanations", response.text)
+        self.assertIn("Пояснения", response.text)
 
     def test_create_page_has_continue_button(self) -> None:
         response = self.client.get("/admin/courses/new")
-        self.assertIn("Continue →", response.text)
+        self.assertIn("Продолжить →", response.text)
+
+    def test_create_page_does_not_render_accidental_english_labels(self) -> None:
+        response = self.client.get("/admin/courses/new")
+        html = response.text
+        accidental_labels = (
+            "Course title",
+            "Source Language",
+            "Output Language",
+            "Generation",
+            "Lesson Count",
+            "Lesson Size",
+            "Difficulty",
+            "Generate Quiz",
+            "Generate Practical Tasks",
+            "Generate Checklists",
+            "Include Explanations",
+            "Continue →",
+            "Beginner",
+            "Basic",
+            "Advanced",
+            "Expert",
+            "Short",
+            "Medium",
+            "Long",
+        )
+        for label in accidental_labels:
+            self.assertNotIn(label, html, f"Accidental English label found: {label!r}")
 
     def test_create_page_has_source_file_input(self) -> None:
         response = self.client.get("/admin/courses/new")

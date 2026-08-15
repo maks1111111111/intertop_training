@@ -43,19 +43,19 @@ def _language_label(language: Language) -> str:
 
 def _difficulty_label(difficulty: DifficultyLevel) -> str:
     labels = {
-        DifficultyLevel.BEGINNER: "Beginner",
-        DifficultyLevel.BASIC: "Basic",
-        DifficultyLevel.ADVANCED: "Advanced",
-        DifficultyLevel.EXPERT: "Expert",
+        DifficultyLevel.BEGINNER: "Начальный",
+        DifficultyLevel.BASIC: "Базовый",
+        DifficultyLevel.ADVANCED: "Продвинутый",
+        DifficultyLevel.EXPERT: "Экспертный",
     }
     return labels[difficulty]
 
 
 def _lesson_size_label(lesson_size: LessonSize) -> str:
     labels = {
-        LessonSize.SHORT: "Short",
-        LessonSize.MEDIUM: "Medium",
-        LessonSize.LONG: "Long",
+        LessonSize.SHORT: "Короткий",
+        LessonSize.MEDIUM: "Средний",
+        LessonSize.LONG: "Длинный",
     }
     return labels[lesson_size]
 

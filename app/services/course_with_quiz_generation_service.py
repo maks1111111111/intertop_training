@@ -84,6 +84,7 @@ class CourseWithQuizGenerationService:
         *,
         generate_quiz: bool = True,
         questions_per_lesson: int = 0,
+        output_language: Optional[str] = None,
     ) -> CourseWithQuizGenerationResult:
         """Persist a course, optionally generate a quiz, and save quiz.json.
 
@@ -122,6 +123,7 @@ class CourseWithQuizGenerationService:
             quiz_request = create_quiz_generation_request(
                 tuple(lesson_result.lessons),
                 questions_per_lesson=questions_per_lesson,
+                output_language=output_language,
             )
             quiz_result = self._quiz_generation_service.generate_quiz(quiz_request)
             quiz_path = self._quiz_persistence_service.persist(

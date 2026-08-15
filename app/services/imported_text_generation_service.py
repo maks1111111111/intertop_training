@@ -33,14 +33,21 @@ class ImportedTextGenerationService:
     def generate_from_text(
         self,
         text: str,
+        *,
+        output_language: Optional[str] = None,
     ) -> LessonGenerationResult:
         """Analyze imported text and generate lessons via the AI flow.
 
         Args:
             text: Aggregated text from imported documents.
+            output_language: Optional ISO 639-1 code (ru, kk, en) for generated
+                human-readable content.
 
         Returns:
             The :class:`LessonGenerationResult` from the generation flow.
         """
         structure = self._structure_analyzer.analyze(text)
-        return self._flow_service.generate(structure)
+        return self._flow_service.generate(
+            structure,
+            output_language=output_language,
+        )

@@ -26,6 +26,7 @@ class LessonGenerationRequest:
     """Input for AI lesson generation."""
 
     lessons: list[LessonCandidate]
+    output_language: Optional[str] = None
 
 
 @dataclass(frozen=True)
