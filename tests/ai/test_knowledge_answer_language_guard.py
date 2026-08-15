@@ -147,6 +147,49 @@ class NeedsLanguageRewriteTests(unittest.TestCase):
         )
         self.assertTrue(needs_language_rewrite(answer, "kk"))
 
+    def test_kazakh_with_isolated_russian_business_term_triggers_rewrite(
+        self,
+    ) -> None:
+        answer = "Клиентпен ненавязчиво қарым-қатынас жасау маңызды."
+        self.assertTrue(needs_language_rewrite(answer, "kk"))
+
+    def test_clean_rewritten_kazakh_answer_no_rewrite(self) -> None:
+        answer = (
+            "Клиентке қызмет көрсетудің негізгі қағидалары қызмет сапасын, "
+            "сыпайылық пен түсінікті қамтамасыз ететін клиентпен "
+            "қарым-қатынастың ережелері мен нормаларын қамтиды. Оларға "
+            "клиентті дұрыс қарсы алу, сұрақтар қою, қажетті өнімдер мен "
+            "қызметтерді ұсыну, төлемді дұрыс жасау және клиентке алғыс "
+            "білдіру кезеңдері кіреді. Қызмет көрсету барысында маман "
+            "клиентпен сенімді түрде «Сіз» деп сөйлесуі, қолжетімді "
+            "болуы, әдепті әрі ұқыпты қарым-қатынас орнатуы тиіс. "
+            "Клиенттің қажеттілігін анықтау үшін ашық және нақты "
+            "сұрақтар қолданылып, қажетті өнімдерді көрсету арқылы "
+            "көмектесу маңызды. Сонымен қатар, егер бірнеше клиентпен "
+            "қатар жұмыс істесеңіз, уақытылы басқа сатушыға бағыттау "
+            "қажет. Бұл қағидалар клиентпен тиімді әрі сыйластық "
+            "қатынас құруға мүмкіндік береді."
+        )
+        self.assertFalse(needs_language_rewrite(answer, "kk"))
+
+    def test_kazakh_shared_cyrillic_words_without_kazakh_letters_no_rewrite(
+        self,
+    ) -> None:
+        answer = (
+            "Қызмет көрсету барысында маман клиентпен сенімді түрде "
+            "қарым-қатынас орнатуы тиіс."
+        )
+        self.assertFalse(needs_language_rewrite(answer, "kk"))
+
+    def test_kazakh_with_russian_function_word_sequence_triggers_rewrite(
+        self,
+    ) -> None:
+        answer = (
+            "Клиентке қызмет көрсету барысында необходимо обратиться "
+            "к менеджеру."
+        )
+        self.assertTrue(needs_language_rewrite(answer, "kk"))
+
     def test_kazakh_with_legitimate_latin_brand_name_no_rewrite(self) -> None:
         answer = (
             "Intertop дүкенінде сатып алуды 14 күн ішінде рәсімдеуге болады."
@@ -194,6 +237,51 @@ class BuildLanguageRewritePromptTests(unittest.TestCase):
         self.assertIn("Return ONLY the rewritten answer text.", prompt)
         self.assertIn("Do not return JSON", prompt)
 
+    def test_kazakh_prompt_forbids_ordinary_russian_leakage(self) -> None:
+        prompt = build_language_rewrite_prompt("Answer text.", "kk")
+        self.assertIn("Write the entire answer in natural Kazakh.", prompt)
+        self.assertIn(
+            "Do not leave ordinary Russian words, Russian adverbs, "
+            "Russian workflow terms, Russian business terminology, or "
+            "Russian explanatory phrases in the answer.",
+            prompt,
+        )
+        self.assertIn("ненавязчиво", prompt)
+        self.assertIn("спрашивай", prompt)
+        self.assertIn("благодари", prompt)
+        self.assertIn("возврат", prompt)
+        self.assertIn("оформление", prompt)
+
+    def test_kazakh_prompt_requires_translating_ordinary_russian_terms(self) -> None:
+        prompt = build_language_rewrite_prompt("Answer text.", "kk")
+        self.assertIn(
+            "Translate such terms into natural Kazakh equivalents.",
+            prompt,
+        )
+        self.assertIn(
+            "Do not copy Russian text from source documents merely because "
+            "it appears in the source.",
+            prompt,
+        )
+
+    def test_kazakh_prompt_requires_final_review_for_leakage(self) -> None:
+        prompt = build_language_rewrite_prompt("Answer text.", "kk")
+        self.assertIn(
+            "Before returning, internally review the rewritten answer "
+            "and remove any remaining ordinary Russian or English words.",
+            prompt,
+        )
+
+    def test_russian_prompt_does_not_include_kazakh_specific_rules(self) -> None:
+        prompt = build_language_rewrite_prompt("Answer text.", "ru")
+        self.assertNotIn("Write the entire answer in natural Kazakh.", prompt)
+        self.assertNotIn("ненавязчиво", prompt)
+
+    def test_english_prompt_does_not_include_kazakh_specific_rules(self) -> None:
+        prompt = build_language_rewrite_prompt("Answer text.", "en")
+        self.assertNotIn("Write the entire answer in natural Kazakh.", prompt)
+        self.assertNotIn("ненавязчиво", prompt)
+
 
 class KnowledgeAnswerLanguageGuardTests(unittest.TestCase):
     """Tests for guard enforcement behavior."""
@@ -224,7 +312,9 @@ class KnowledgeAnswerLanguageGuardTests(unittest.TestCase):
 
     def test_violation_triggers_single_rewrite(self) -> None:
         provider = MagicMock()
-        provider.generate.return_value = "Rewritten Kazakh answer."
+        provider.generate.return_value = (
+            "Қайтаруды рәсімдеу үшін басшыға хабарласыңыз."
+        )
         guard = KnowledgeAnswerLanguageGuard(provider)
         original = _result(
             "Необходимо обратиться к менеджеру для оформления возврата."
@@ -233,13 +323,18 @@ class KnowledgeAnswerLanguageGuardTests(unittest.TestCase):
         enforced = guard.enforce(original, "kk")
 
         provider.generate.assert_called_once()
-        self.assertEqual(enforced.answer, "Rewritten Kazakh answer.")
+        self.assertEqual(
+            enforced.answer,
+            "Қайтаруды рәсімдеу үшін басшыға хабарласыңыз.",
+        )
         self.assertEqual(enforced.citations, original.citations)
         self.assertEqual(enforced.sufficient_context, original.sufficient_context)
 
     def test_rewrite_preserves_citations_and_sufficient_context(self) -> None:
         provider = MagicMock()
-        provider.generate.return_value = "English-only answer."
+        provider.generate.return_value = (
+            "Клиент должен немедленно обратиться к менеджеру."
+        )
         guard = KnowledgeAnswerLanguageGuard(provider)
         original = KnowledgeAnswerResult(
             answer="Клиент должен contact manager immediately.",
@@ -254,6 +349,27 @@ class KnowledgeAnswerLanguageGuardTests(unittest.TestCase):
 
         self.assertEqual(enforced.citations, original.citations)
         self.assertTrue(enforced.sufficient_context)
+
+    def test_non_compliant_rewrite_raises_error_without_second_rewrite(
+        self,
+    ) -> None:
+        provider = MagicMock()
+        provider.generate.return_value = (
+            "Клиентпен ненавязчиво қарым-қатынас жасау маңызды."
+        )
+        guard = KnowledgeAnswerLanguageGuard(provider)
+        original = _result(
+            "Необходимо обратиться к менеджеру для оформления возврата."
+        )
+
+        with self.assertRaises(KnowledgeAnswerLanguageRewriteError) as context:
+            guard.enforce(original, "kk")
+
+        self.assertEqual(
+            context.exception.message,
+            "Failed to rewrite knowledge answer for language compliance.",
+        )
+        provider.generate.assert_called_once()
 
     def test_rewrite_provider_failure_raises_rewrite_error(self) -> None:
         provider = MagicMock()
@@ -304,9 +420,12 @@ class KnowledgeAnswerServiceLanguageGuardIntegrationTests(unittest.TestCase):
 
     def test_language_violation_calls_provider_twice(self) -> None:
         provider = MagicMock()
+        compliant_kazakh = (
+            "Қайтаруды рәсімдеу үшін басшыға хабарласыңыз."
+        )
         provider.generate.side_effect = [
             '{"answer":"ok"}',
-            "Rewritten Kazakh answer.",
+            compliant_kazakh,
         ]
         service = KnowledgeAnswerService(provider=provider)
         violating = _result(
@@ -320,9 +439,33 @@ class KnowledgeAnswerServiceLanguageGuardIntegrationTests(unittest.TestCase):
         result = service.answer(self._request(language="kk"))
 
         self.assertEqual(provider.generate.call_count, 2)
-        self.assertEqual(result.answer, "Rewritten Kazakh answer.")
+        self.assertEqual(result.answer, compliant_kazakh)
         self.assertEqual(result.citations, violating.citations)
         self.assertTrue(result.sufficient_context)
+
+    def test_non_compliant_rewrite_wrapped_as_generation_error(self) -> None:
+        provider = MagicMock()
+        provider.generate.side_effect = [
+            '{"answer":"ok"}',
+            "Клиентпен ненавязчиво қарым-қатынас жасау маңызды.",
+        ]
+        service = KnowledgeAnswerService(provider=provider)
+        violating = _result(
+            "Необходимо обратиться к менеджеру для оформления возврата."
+        )
+        service._response_parser = MagicMock(
+            parse=MagicMock(return_value=violating)
+        )
+        service._validator = MagicMock(validate=MagicMock(return_value=violating))
+
+        with self.assertRaises(KnowledgeAnswerGenerationError) as context:
+            service.answer(self._request(language="kk"))
+
+        self.assertEqual(
+            context.exception.message,
+            "Failed to rewrite knowledge answer for language compliance.",
+        )
+        self.assertEqual(provider.generate.call_count, 2)
 
     def test_rewrite_failure_wrapped_as_generation_error(self) -> None:
         provider = MagicMock()

@@ -33,6 +33,15 @@ _LANGUAGE_LABELS = {
 _RUSSIAN_INDICATOR_LETTERS = frozenset("ыэщъёЫЭЩЪЁ")
 _STRONG_RUSSIAN_INDICATOR_LETTERS = frozenset("эщъёЭЩЪЁ")
 
+# High-confidence Russian adverb/adjective suffixes (not domain-specific).
+_RUSSIAN_LEAKAGE_SUFFIXES = (
+    "иво",
+    "ово",
+    "енно",
+    "ески",
+    "ично",
+)
+
 # High-confidence Russian function words (grammatical, not domain-specific).
 _RUSSIAN_FUNCTION_WORDS = frozenset(
     {
@@ -232,16 +241,34 @@ def _is_russian_function_word(word: str) -> bool:
     return _normalized_word_key(word) in _RUSSIAN_FUNCTION_WORDS
 
 
+def _is_high_confidence_russian_leakage_word(word: str) -> bool:
+    """Return True when *word* is very likely ordinary Russian, not shared Cyrillic."""
+    if _is_russian_function_word(word):
+        return True
+    if _word_has_strong_russian_indicator_letters(word):
+        return True
+
+    key = _normalized_word_key(word)
+    if len(key) < 4:
+        return False
+    if any(key.endswith(suffix) for suffix in _RUSSIAN_LEAKAGE_SUFFIXES):
+        return True
+    if key.endswith(("тся", "ться")):
+        return True
+    return False
+
+
 def _run_indicates_russian_leakage(run: Tuple[str, ...]) -> bool:
     if len(run) < 2:
         return False
 
-    if any(_word_has_strong_russian_indicator_letters(word) for word in run):
+    if any(_is_high_confidence_russian_leakage_word(word) for word in run):
         return True
-    if any(_is_russian_function_word(word) for word in run):
+
+    function_words = sum(1 for word in run if _is_russian_function_word(word))
+    if function_words >= 2:
         return True
-    if any(_alpha_length(word) >= 8 for word in run):
-        return True
+
     return False
 
 
@@ -281,14 +308,13 @@ def _segment_has_russian_only_leakage(segment: str) -> bool:
     if not russian_only_words:
         return False
 
-    if any(_word_has_strong_russian_indicator_letters(word) for word in russian_only_words):
+    if any(_is_high_confidence_russian_leakage_word(word) for word in russian_only_words):
         return True
-    if any(_is_russian_function_word(word) for word in russian_only_words):
-        return True
-    if len(russian_only_words) >= 2:
-        return True
+
+    # Quoted spans often preserve untranslated Russian source terminology.
     if any(_alpha_length(word) >= 5 for word in russian_only_words):
         return True
+
     return False
 
 
@@ -315,9 +341,7 @@ def _detect_isolated_russian_token_in_kazakh(
             continue
         if _is_likely_proper_noun(word):
             continue
-        if _alpha_length(word) >= 8:
-            return True
-        if _word_has_strong_russian_indicator_letters(word):
+        if _is_high_confidence_russian_leakage_word(word):
             return True
     return False
 
@@ -381,6 +405,39 @@ def needs_language_rewrite(answer: str, requested_language: str) -> bool:
     return False
 
 
+def _language_specific_rewrite_rules(language: str) -> Tuple[str, ...]:
+    """Return additional rewrite instructions for *language*."""
+    if language == "kk":
+        return (
+            "- Write the entire answer in natural Kazakh.",
+            (
+                "- Do not leave ordinary Russian words, Russian adverbs, "
+                "Russian workflow terms, Russian business terminology, or "
+                "Russian explanatory phrases in the answer."
+            ),
+            (
+                "- Examples of unacceptable leakage when they are ordinary "
+                "business or process terms: ненавязчиво, спрашивай, благодари, "
+                "возврат, оформление."
+            ),
+            (
+                "- Translate such terms into natural Kazakh equivalents. "
+                "Do not copy Russian text from source documents merely because "
+                "it appears in the source."
+            ),
+            (
+                "- Preserve only genuine proper nouns such as company names, "
+                "brand names, trademarks, product names, filenames, and "
+                "document titles."
+            ),
+            (
+                "- Before returning, internally review the rewritten answer "
+                "and remove any remaining ordinary Russian or English words."
+            ),
+        )
+    return ()
+
+
 def build_language_rewrite_prompt(answer: str, requested_language: str) -> str:
     """Build a deterministic rewrite prompt for language compliance."""
     language = normalize_review_language(requested_language)
@@ -388,35 +445,39 @@ def build_language_rewrite_prompt(answer: str, requested_language: str) -> str:
         raise ValueError("Unsupported response language.")
 
     label = _LANGUAGE_LABELS[language]
-    return "\n".join(
+    lines = [
+        "Rewrite the following corporate Knowledge Base answer for language compliance.",
+        "",
+        "Rules:",
+        f"- Write ONLY in {label} (language code: {language}).",
+        "- Preserve every factual claim and meaning exactly.",
+        "- Do not add, remove, infer, or change facts.",
+        (
+            "- Translate ordinary business terminology, headings, workflow "
+            "stage names, process names, rules, instructions, and employee "
+            f"actions into {label}."
+        ),
+        (
+            "- Only genuine proper nouns may remain in another language: "
+            "company names, brand names, trademarks, product names, "
+            "filenames, and document titles."
+        ),
+        "- Return ONLY the rewritten answer text.",
+        "- Do not return JSON, Markdown, code fences, or commentary.",
+        (
+            "- Do not mix Latin and Cyrillic letters inside the same word. "
+            "Use one consistent alphabet per word."
+        ),
+    ]
+    lines.extend(_language_specific_rewrite_rules(language))
+    lines.extend(
         [
-            "Rewrite the following corporate Knowledge Base answer for language compliance.",
-            "",
-            "Rules:",
-            f"- Write ONLY in {label} (language code: {language}).",
-            "- Preserve every factual claim and meaning exactly.",
-            "- Do not add, remove, or change facts.",
-            (
-                "- Translate ordinary business terminology, headings, workflow "
-                "stage names, process names, rules, instructions, and employee "
-                f"actions into {label}."
-            ),
-            (
-                "- Only genuine proper nouns may remain in another language: "
-                "company names, brand names, trademarks, product names, "
-                "filenames, and document titles."
-            ),
-            "- Return ONLY the rewritten answer text.",
-            "- Do not return JSON, Markdown, code fences, or commentary.",
-            (
-                "- Do not mix Latin and Cyrillic letters inside the same word. "
-                "Use one consistent alphabet per word."
-            ),
             "",
             "Answer to rewrite:",
             answer.strip(),
         ]
-    ).rstrip("\n")
+    )
+    return "\n".join(lines).rstrip("\n")
 
 
 class KnowledgeAnswerLanguageGuard:
@@ -468,6 +529,11 @@ class KnowledgeAnswerLanguageGuard:
             )
 
         if has_unfixable_mixed_alphabet(normalized, requested_language):
+            raise KnowledgeAnswerLanguageRewriteError(
+                "Failed to rewrite knowledge answer for language compliance."
+            )
+
+        if needs_language_rewrite(normalized, requested_language):
             raise KnowledgeAnswerLanguageRewriteError(
                 "Failed to rewrite knowledge answer for language compliance."
             )
