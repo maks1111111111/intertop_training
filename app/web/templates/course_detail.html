@@ -3,8 +3,16 @@
 {% block title %}{{ course.title }} — Intertop Training{% endblock %}
 
 {% block content %}
+{% if preview %}
+{% include "preview_banner.html" %}
+{% endif %}
+
 <section class="page-header course-detail-header">
+    {% if preview %}
+    <a class="text-link course-detail-back" href="{{ preview.admin_url }}">← К управлению курсом</a>
+    {% else %}
     <a class="text-link course-detail-back" href="/courses">← К курсам</a>
+    {% endif %}
 
     <div class="course-detail-header-body">
         <h1 class="page-title">{{ course.title }}</h1>
@@ -18,6 +26,23 @@
 
     {% if progress.total_count > 0 %}
     <div class="course-detail-overview">
+        {% if preview %}
+        <div class="course-detail-progress-panel course-detail-progress-panel--preview">
+            <p class="course-detail-preview-note">
+                В режиме предпросмотра прогресс не сохраняется. Все {{ progress.total_count }} уроков доступны для просмотра.
+            </p>
+        </div>
+        {% if progress.lesson_rows %}
+        <div class="course-detail-continue">
+            <a
+                class="button button-primary course-detail-continue-btn"
+                href="{{ preview.lesson_url(progress.lesson_rows[0].id) }}"
+            >
+                Начать предпросмотр
+            </a>
+        </div>
+        {% endif %}
+        {% else %}
         <div class="course-detail-progress-panel">
             <div class="course-detail-progress-top">
                 <span class="course-detail-progress-heading">Прогресс</span>
@@ -57,6 +82,7 @@
         </div>
         {% endif %}
         {% endif %}
+        {% endif %}
     </div>
     {% endif %}
 </section>
@@ -84,12 +110,14 @@
             <div class="lesson-list-action">
                 <a
                     class="button button-secondary lesson-open-btn"
-                    href="/courses/{{ course.slug }}/lessons/{{ row.id }}"
+                    href="{% if preview %}{{ preview.lesson_url(row.id) }}{% else %}/courses/{{ course.slug }}/lessons/{{ row.id }}{% endif %}"
                 >
                     {% if row.status == 'completed' %}
                     Открыть
                     {% elif row.status == 'current' %}
                     Продолжить
+                    {% elif row.status == 'preview' %}
+                    Открыть
                     {% else %}
                     Начать
                     {% endif %}
@@ -114,7 +142,7 @@
             <span class="course-quiz-meta-item">Вопросов: {{ quiz.questions_count }}</span>
             <span class="course-quiz-meta-item">Проходной балл: {{ quiz.passing_score }}%</span>
         </div>
-        <a class="button button-primary" href="/courses/{{ course.slug }}/quiz">Начать тест</a>
+        <a class="button button-primary" href="{% if preview %}{{ preview.quiz_url }}{% else %}/courses/{{ course.slug }}/quiz{% endif %}">Начать тест</a>
     </div>
 </section>
 {% endif %}

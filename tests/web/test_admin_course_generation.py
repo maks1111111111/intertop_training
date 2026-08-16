@@ -119,12 +119,22 @@ class AdminCourseGenerationReviewFormTests(unittest.TestCase):
     def test_review_page_contains_generation_form(self) -> None:
         html, _review_data = self._post_upload()
 
-        self.assertIn('action="/admin/courses/new/generate"', html)
+        self.assertIn('action="/admin/courses/new/loading"', html)
         self.assertIn('name="upload_id"', html)
         self.assertIn('type="submit"', html)
         self.assertIn("Создать курс", html)
         self.assertNotIn('aria-disabled="true"', html)
         self.assertNotIn("disabled", html.split("Создать курс")[0][-120:])
+
+    def test_review_page_generation_form_posts_to_loading_endpoint(self) -> None:
+        html, _review_data = self._post_upload()
+
+        self.assertIn('id="admin-generation-form"', html)
+        self.assertIn('method="post"', html)
+        self.assertIn('action="/admin/courses/new/loading"', html)
+        self.assertIn('name="upload_id"', html)
+        self.assertIn('id="admin-generate-submit"', html)
+        self.assertNotIn('action="/admin/courses/new/generate"', html)
 
 
 class AdminCourseGenerationHttpTests(unittest.TestCase):
@@ -314,6 +324,23 @@ class AdminCourseGenerationHttpTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("Курс создан", response.text)
         self.assertEqual(list(self.courses_dir.iterdir()), [])
+
+    def test_generation_error_renders_review_page_with_loading_state_reset(self) -> None:
+        upload_service = AdminUploadService(self.upload_dir)
+        saved = upload_service.save_upload("source.pdf", b"%PDF-1.4 test")
+        self.mock_generation_service.generate_course.side_effect = AdminGenerationError(
+            "Не удалось создать курс. Проверьте исходный файл и параметры и попробуйте снова."
+        )
+
+        response = self.client.post(
+            "/admin/courses/new/generate",
+            data=self._generation_form_data(saved.upload_id),
+        )
+
+        html = response.text
+        self.assertIn("Не удалось создать курс", html)
+        self.assertIn('action="/admin/courses/new/loading"', html)
+        self.assertIn("Создать курс", html)
 
     def test_no_source_path_in_generation_html(self) -> None:
         upload_service = AdminUploadService(self.upload_dir)

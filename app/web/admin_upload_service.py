@@ -128,10 +128,21 @@ class AdminGenerationReviewView:
     include_checklists: bool
     include_explanations: bool
     back_url: str
+    loading_url: str
     generate_url: str
     status_message: str
     generation_note: str
     error_message: str = ""
+
+
+@dataclass(frozen=True)
+class AdminGenerationLoadingView:
+    """View model for the AI course generation loading step."""
+
+    upload_id: str
+    original_filename: str
+    form_values: AdminCourseFormValues
+    generate_url: str
 
 
 def _safe_filename(name: str) -> str:
@@ -340,12 +351,35 @@ def build_generation_review_view(
         include_checklists=form_values.include_checklists,
         include_explanations=form_values.include_explanations,
         back_url="/admin/courses/new",
+        loading_url="/admin/courses/new/loading",
         generate_url="/admin/courses/new/generate",
         status_message="Материал готов к созданию курса",
         generation_note=(
             "Проверьте параметры и нажмите «Создать курс» для запуска генерации."
         ),
         error_message=error_message,
+    )
+
+
+def build_generation_loading_view(
+    upload_service: AdminUploadService,
+    upload_id: str,
+    form_values: AdminCourseFormValues,
+    *,
+    original_filename: str,
+) -> AdminGenerationLoadingView:
+    """Validate upload and wizard options, then build the loading page view."""
+    review_view = build_generation_review_view(
+        upload_service,
+        upload_id,
+        form_values,
+        original_filename=original_filename,
+    )
+    return AdminGenerationLoadingView(
+        upload_id=review_view.upload_id,
+        original_filename=review_view.original_filename,
+        form_values=review_view.form_values,
+        generate_url=review_view.generate_url,
     )
 
 

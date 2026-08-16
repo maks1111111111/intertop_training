@@ -3,10 +3,20 @@
 {% block title %}{{ lesson.title }} — {{ course.title }}{% endblock %}
 
 {% block content %}
+{% if preview %}
+{% include "preview_banner.html" %}
+{% endif %}
+
 <nav class="breadcrumb" aria-label="Навигация">
+    {% if preview %}
+    <a href="{{ preview.admin_url }}">Админ</a>
+    <span aria-hidden="true">/</span>
+    <a href="{{ preview.base_url }}">{{ course.title }}</a>
+    {% else %}
     <a href="/courses">Курсы</a>
     <span aria-hidden="true">/</span>
     <a href="/courses/{{ course.slug }}">{{ course.title }}</a>
+    {% endif %}
     <span aria-hidden="true">/</span>
     <span>{{ lesson.title }}</span>
 </nav>
@@ -15,7 +25,7 @@
     <article class="lesson-article">
         <header class="lesson-header">
             <p class="lesson-header-course">
-                <a href="/courses/{{ course.slug }}">{{ course.title }}</a>
+                <a href="{% if preview %}{{ preview.base_url }}{% else %}/courses/{{ course.slug }}{% endif %}">{{ course.title }}</a>
             </p>
             <p class="lesson-header-meta">Урок {{ lesson.order }} из {{ course.lessons|length }}</p>
             <h1 class="lesson-title">{{ lesson.title }}</h1>
@@ -83,14 +93,14 @@
                 {% if lesson.previous_lesson_id %}
                 <a
                     class="button button-secondary lesson-nav-btn"
-                    href="/courses/{{ course.slug }}/lessons/{{ lesson.previous_lesson_id }}"
+                    href="{% if preview %}{{ preview.lesson_url(lesson.previous_lesson_id) }}{% else %}/courses/{{ course.slug }}/lessons/{{ lesson.previous_lesson_id }}{% endif %}"
                 >
                     ← Предыдущий урок
                 </a>
                 {% endif %}
             </div>
             <div class="lesson-nav-center">
-                <a class="text-link lesson-nav-course-link" href="/courses/{{ course.slug }}">
+                <a class="text-link lesson-nav-course-link" href="{% if preview %}{{ preview.base_url }}{% else %}/courses/{{ course.slug }}{% endif %}">
                     К списку уроков
                 </a>
             </div>
@@ -98,12 +108,21 @@
                 {% if lesson.next_lesson_id %}
                 <a
                     class="button button-primary lesson-nav-btn"
-                    href="/courses/{{ course.slug }}/lessons/{{ lesson.next_lesson_id }}"
+                    href="{% if preview %}{{ preview.lesson_url(lesson.next_lesson_id) }}{% else %}/courses/{{ course.slug }}/lessons/{{ lesson.next_lesson_id }}{% endif %}"
                 >
                     Следующий урок →
                 </a>
                 {% elif lesson.is_last %}
-                <span class="lesson-complete-label">✓ Завершить курс</span>
+                    {% if preview and course_has_quiz %}
+                    <a
+                        class="button button-primary lesson-nav-btn"
+                        href="{{ preview.quiz_url }}"
+                    >
+                        Перейти к итоговому тесту →
+                    </a>
+                    {% elif not preview %}
+                    <span class="lesson-complete-label">✓ Завершить курс</span>
+                    {% endif %}
                 {% endif %}
             </div>
         </nav>
@@ -117,7 +136,7 @@
             <li class="lesson-sidebar-item{% if item.id == lesson.id %} lesson-sidebar-item--current{% endif %}">
                 <a
                     class="lesson-sidebar-link"
-                    href="/courses/{{ course.slug }}/lessons/{{ item.id }}"
+                    href="{% if preview %}{{ preview.lesson_url(item.id) }}{% else %}/courses/{{ course.slug }}/lessons/{{ item.id }}{% endif %}"
                     {% if item.id == lesson.id %}aria-current="page"{% endif %}
                 >
                     <span class="lesson-sidebar-order">{{ item.order }}</span>

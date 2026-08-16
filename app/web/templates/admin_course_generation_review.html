@@ -20,7 +20,8 @@
 <div class="admin-form-error" role="alert">{{ review.error_message }}</div>
 {% endif %}
 
-<section class="admin-generation-review">
+<section class="admin-generation-review" id="admin-generation-review">
+    <div class="admin-generation-review-panel" id="admin-generation-review-panel">
     <div class="admin-generation-review-status" role="status">
         {{ review.status_message }}
     </div>
@@ -101,7 +102,7 @@
     <form
         class="admin-generation-form"
         method="post"
-        action="{{ review.generate_url }}"
+        action="{{ review.loading_url }}"
         id="admin-generation-form"
     >
         <input type="hidden" name="upload_id" value="{{ review.upload_id }}">
@@ -127,7 +128,13 @@
         {% endif %}
 
         <div class="admin-form-actions admin-generation-review-actions">
-            <a class="button button-secondary" href="{{ review.back_url }}">Назад</a>
+            <a
+                class="button button-secondary admin-generation-back-link"
+                href="{{ review.back_url }}"
+                id="admin-generation-back-link"
+            >
+                Назад
+            </a>
             <button
                 class="button button-primary"
                 type="submit"
@@ -137,20 +144,6 @@
             </button>
         </div>
     </form>
+    </div>
 </section>
-
-<script>
-(function () {
-    var form = document.getElementById("admin-generation-form");
-    var submit = document.getElementById("admin-generate-submit");
-    if (!form || !submit) {
-        return;
-    }
-    form.addEventListener("submit", function () {
-        submit.disabled = true;
-        submit.setAttribute("aria-disabled", "true");
-        submit.textContent = "Создание курса…";
-    });
-})();
-</script>
 {% endblock %}

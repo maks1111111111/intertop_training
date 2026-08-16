@@ -208,7 +208,8 @@ class AdminService:
                     has_key_takeaways=bool(lesson.key_takeaways),
                     has_application_tips=bool(lesson.application_tips),
                     preview_url=(
-                        f"/courses/{course.slug}/lessons/{lesson.path.name}"
+                        f"/admin/courses/{course.slug}/preview/lessons/"
+                        f"{lesson.path.name}"
                     ),
                 )
             )
@@ -236,7 +237,7 @@ class AdminService:
             lessons_count=len(course.lessons),
             lessons=tuple(lessons),
             quiz=quiz,
-            preview_url=f"/courses/{course.slug}",
+            preview_url=f"/admin/courses/{course.slug}/preview",
             admin_url="/admin",
         )
 

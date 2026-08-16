@@ -3,10 +3,20 @@
 {% block title %}{{ quiz.title }} — {{ course.title }}{% endblock %}
 
 {% block content %}
+{% if preview %}
+{% include "preview_banner.html" %}
+{% endif %}
+
 <nav class="breadcrumb" aria-label="Навигация">
+    {% if preview %}
+    <a href="{{ preview.admin_url }}">Админ</a>
+    <span aria-hidden="true">/</span>
+    <a href="{{ preview.base_url }}">{{ course.title }}</a>
+    {% else %}
     <a href="/courses">Курсы</a>
     <span aria-hidden="true">/</span>
     <a href="/courses/{{ course.slug }}">{{ course.title }}</a>
+    {% endif %}
     <span aria-hidden="true">/</span>
     <span>{{ quiz.title }}</span>
 </nav>
@@ -23,7 +33,7 @@
     </div>
 </header>
 
-<form class="quiz-form" method="post" action="/courses/{{ course.slug }}/quiz">
+<form class="quiz-form" method="post" action="{% if preview %}{{ preview.quiz_url }}{% else %}/courses/{{ course.slug }}/quiz{% endif %}">
     {% for question in quiz.questions %}
     <section class="quiz-question-card" aria-labelledby="quiz-q-{{ question.id }}">
         <div class="quiz-question-header">
@@ -48,7 +58,7 @@
 
     <div class="quiz-actions">
         <button class="button button-primary quiz-submit-btn" type="submit">Завершить тест</button>
-        <a class="button button-secondary" href="/courses/{{ course.slug }}">Вернуться к курсу</a>
+        <a class="button button-secondary" href="{% if preview %}{{ preview.base_url }}{% else %}/courses/{{ course.slug }}{% endif %}">Вернуться к курсу</a>
     </div>
 </form>
 {% endblock %}

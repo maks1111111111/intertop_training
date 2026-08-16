@@ -3,10 +3,20 @@
 {% block title %}Результат теста — {{ course.title }}{% endblock %}
 
 {% block content %}
+{% if preview %}
+{% include "preview_banner.html" %}
+{% endif %}
+
 <nav class="breadcrumb" aria-label="Навигация">
+    {% if preview %}
+    <a href="{{ preview.admin_url }}">Админ</a>
+    <span aria-hidden="true">/</span>
+    <a href="{{ preview.base_url }}">{{ course.title }}</a>
+    {% else %}
     <a href="/courses">Курсы</a>
     <span aria-hidden="true">/</span>
     <a href="/courses/{{ course.slug }}">{{ course.title }}</a>
+    {% endif %}
     <span aria-hidden="true">/</span>
     <span>Результат теста</span>
 </nav>
@@ -14,8 +24,16 @@
 <section class="quiz-result{% if passed %} quiz-result--passed{% else %} quiz-result--failed{% endif %}">
     <header class="quiz-result-header">
         <p class="quiz-result-course">{{ course.title }}</p>
+        {% if preview %}
+        <h1 class="quiz-result-title">Предпросмотр результата</h1>
+        {% else %}
         <h1 class="quiz-result-title">Результат теста</h1>
-        {% if passed %}
+        {% endif %}
+        {% if preview %}
+        <p class="quiz-result-preview-note" role="status">
+            Это только режим предпросмотра. Результаты не сохранены.
+        </p>
+        {% elif passed %}
         <p class="quiz-result-status quiz-result-status-passed" role="status">Тест пройден</p>
         {% else %}
         <p class="quiz-result-status quiz-result-status-failed" role="status">Тест не пройден</p>
@@ -37,6 +55,16 @@
             <span class="quiz-result-metric-value">{{ passing_score }}%</span>
         </div>
     </div>
+
+    {% if preview %}
+    <p class="quiz-result-preview-verdict" role="status">
+        {% if passed %}
+        Тест считается пройденным.
+        {% else %}
+        Тест не пройден.
+        {% endif %}
+    </p>
+    {% endif %}
 
     {% if reviews %}
     <section class="quiz-review">
@@ -62,8 +90,14 @@
     {% endif %}
 
     <div class="quiz-actions quiz-result-actions">
+        {% if preview %}
+        <a class="button button-primary" href="{{ preview.admin_url }}">Вернуться в админку</a>
+        <a class="button button-secondary" href="/admin/courses/{{ course.slug }}/edit">Редактировать курс</a>
+        <a class="button button-secondary" href="{{ preview.quiz_url }}">Пройти ещё раз</a>
+        {% else %}
         <a class="button button-primary" href="/courses/{{ course.slug }}/quiz">Пройти ещё раз</a>
         <a class="button button-secondary" href="/courses/{{ course.slug }}">Вернуться к курсу</a>
+        {% endif %}
     </div>
 </section>
 {% endblock %}

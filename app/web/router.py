@@ -78,6 +78,7 @@ from app.web.admin_quiz_question_reorder_service import (
     AdminQuizQuestionReorderService,
 )
 from app.web.admin_service import AdminService
+from app.web.admin_preview_service import PreviewContext, build_preview_progress_view
 from app.web.admin_generation_service import (
     AdminGenerationError,
     AdminGenerationRequest,
@@ -89,6 +90,7 @@ from app.web.admin_upload_service import (
     AdminUploadError,
     AdminUploadService,
     build_generation_review_view,
+    build_generation_loading_view,
     build_upload_confirm_view,
     parse_admin_course_form,
 )
@@ -823,6 +825,53 @@ async def admin_course_generation_review(
     )
 
 
+@router.post(
+    "/admin/courses/new/loading",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def admin_course_generation_loading(
+    request: Request,
+    admin_service: AdminService = Depends(get_admin_service),
+    upload_service: AdminUploadService = Depends(get_upload_service),
+) -> HTMLResponse:
+    """Show the AI generation loading screen before starting course generation."""
+    form = await request.form()
+    form_values = parse_admin_course_form(form)
+    upload_id = str(form.get("upload_id") or "").strip()
+    original_filename = str(form.get("original_filename") or "").strip()
+
+    if not upload_id:
+        return _render_admin_course_create_page(
+            request,
+            admin_service,
+            error_message="Не указан загруженный файл. Загрузите файл заново.",
+        )
+
+    try:
+        loading_view = build_generation_loading_view(
+            upload_service,
+            upload_id,
+            form_values,
+            original_filename=original_filename,
+        )
+    except AdminReviewError as exc:
+        return _render_admin_course_create_page(
+            request,
+            admin_service,
+            error_message=exc.message,
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "admin_course_generation_loading.html",
+        {
+            "active_nav": "admin",
+            "loading": loading_view,
+        },
+    )
+
+
 def _render_admin_generation_review_error(
     request: Request,
     admin_service: AdminService,
@@ -978,6 +1027,194 @@ def admin_course_detail_page(
         )
 
     return _render_admin_course_detail_page(request, detail)
+
+
+def _get_preview_course_or_not_found(
+    request: Request,
+    slug: str,
+    content_runtime: ContentRuntime,
+):
+    """Return a course for preview or a 404 response."""
+    course = content_runtime.get_course(slug)
+    if course is None:
+        return None, templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+    return course, None
+
+
+@router.get(
+    "/admin/courses/{slug}/preview",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_course_preview_page(
+    slug: str,
+    request: Request,
+    content_runtime: ContentRuntime = Depends(get_content_runtime),
+) -> HTMLResponse:
+    """Render a course as employees will see it without saving progress."""
+    course, not_found = _get_preview_course_or_not_found(request, slug, content_runtime)
+    if not_found is not None:
+        return not_found
+
+    course_detail = course_mapper.to_detail(course)
+    preview = PreviewContext.for_course(slug)
+    progress = build_preview_progress_view(
+        course_detail.lessons,
+        has_quiz=course.quiz is not None,
+    )
+    quiz_summary = None
+    if course.quiz is not None:
+        quiz_summary = build_quiz_summary_view(course.quiz)
+    return templates.TemplateResponse(
+        request,
+        "course_detail.html",
+        {
+            "course": course_detail,
+            "progress": progress,
+            "quiz": quiz_summary,
+            "preview": preview,
+            "active_nav": "admin",
+        },
+    )
+
+
+@router.get(
+    "/admin/courses/{slug}/preview/lessons/{lesson_id}",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_lesson_preview_page(
+    slug: str,
+    lesson_id: str,
+    request: Request,
+    content_runtime: ContentRuntime = Depends(get_content_runtime),
+) -> HTMLResponse:
+    """Render one lesson in admin preview mode without recording progress."""
+    course, not_found = _get_preview_course_or_not_found(request, slug, content_runtime)
+    if not_found is not None:
+        return not_found
+
+    preview = PreviewContext.for_course(slug)
+    for lesson in course.lessons:
+        if lesson.path.name == lesson_id:
+            lesson_detail = course_mapper.to_lesson_detail(course, lesson)
+            return templates.TemplateResponse(
+                request,
+                "lesson_detail.html",
+                {
+                    "course": course_mapper.to_detail(course),
+                    "lesson": lesson_detail,
+                    "preview": preview,
+                    "course_has_quiz": course.quiz is not None,
+                    "active_nav": "admin",
+                },
+            )
+
+    return templates.TemplateResponse(
+        request,
+        "not_found.html",
+        {
+            "title": "Урок не найден",
+            "message": "Запрошенный урок недоступен или не существует.",
+        },
+        status_code=404,
+    )
+
+
+@router.get(
+    "/admin/courses/{slug}/preview/quiz",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_quiz_preview_page(
+    slug: str,
+    request: Request,
+    content_runtime: ContentRuntime = Depends(get_content_runtime),
+) -> HTMLResponse:
+    """Render the course quiz in admin preview mode."""
+    course, not_found = _get_preview_course_or_not_found(request, slug, content_runtime)
+    if not_found is not None:
+        return not_found
+
+    if course.quiz is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Тест недоступен",
+                "message": "Для этого курса итоговый тест пока недоступен.",
+            },
+            status_code=404,
+        )
+
+    preview = PreviewContext.for_course(slug)
+    quiz = build_quiz_page_view(course.quiz)
+    return templates.TemplateResponse(
+        request,
+        "quiz.html",
+        {
+            "course": course_mapper.to_detail(course),
+            "quiz": quiz,
+            "preview": preview,
+            "active_nav": "admin",
+        },
+    )
+
+
+@router.post(
+    "/admin/courses/{slug}/preview/quiz",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def admin_quiz_preview_submit_page(
+    slug: str,
+    request: Request,
+    content_runtime: ContentRuntime = Depends(get_content_runtime),
+) -> HTMLResponse:
+    """Score a preview quiz submission without persisting attempts."""
+    course, not_found = _get_preview_course_or_not_found(request, slug, content_runtime)
+    if not_found is not None:
+        return not_found
+
+    if course.quiz is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Тест недоступен",
+                "message": "Для этого курса итоговый тест пока недоступен.",
+            },
+            status_code=404,
+        )
+
+    form_data = await request.form()
+    answers = _parse_quiz_answers(form_data)
+    result = score_web_quiz(course.quiz, answers)
+    preview = PreviewContext.for_course(slug)
+
+    return templates.TemplateResponse(
+        request,
+        "quiz_result.html",
+        {
+            "course": course_mapper.to_detail(course),
+            "score_percent": format_score_percent(result.score_percent),
+            "correct_answers": result.correct_answers,
+            "questions_count": result.questions_count,
+            "passing_score": result.passing_score,
+            "passed": result.passed,
+            "reviews": result.reviews,
+            "preview": preview,
+            "active_nav": "admin",
+        },
+    )
 
 
 def _render_admin_course_edit_page(

@@ -101,7 +101,170 @@ class AdminCourseGenerationReviewTests(unittest.TestCase):
         self.assertNotIn("Include Explanations", html)
         self.assertIn("Создать курс", html)
         self.assertIn("Проверьте параметры и нажмите «Создать курс»", html)
+        self.assertIn('action="/admin/courses/new/loading"', html)
+
+    def _review_page_html(self) -> str:
+        _confirm_html, review_data = self._upload_and_extract_state()
+        response = self.client.post("/admin/courses/new/review", data=review_data)
+        self.assertEqual(response.status_code, 200)
+        return response.text
+
+    def test_review_page_posts_to_loading_endpoint(self) -> None:
+        html = self._review_page_html()
+
+        self.assertIn('id="admin-generation-form"', html)
+        self.assertIn('method="post"', html)
+        self.assertIn('action="/admin/courses/new/loading"', html)
+        self.assertIn('name="upload_id"', html)
+        self.assertIn('id="admin-generate-submit"', html)
+        self.assertNotIn('action="/admin/courses/new/generate"', html)
+
+    def _loading_page_html(self) -> str:
+        _confirm_html, review_data = self._upload_and_extract_state()
+        response = self.client.post("/admin/courses/new/loading", data=review_data)
+        self.assertEqual(response.status_code, 200)
+        return response.text
+
+    def test_loading_page_contains_ai_generation_state(self) -> None:
+        html = self._loading_page_html()
+
+        self.assertIn('id="admin-ai-generation-loading"', html)
+        self.assertIn("AI создаёт ваш курс", html)
+        self.assertIn(
+            "Анализируем документ и формируем структуру обучения",
+            html,
+        )
+        self.assertIn("admin-ai-generation-orbit", html)
+        self.assertIn("admin-ai-generation-loading-page", html)
+        self.assertIn('id="admin-ai-generation-status"', html)
+        self.assertIn("admin-ai-generation-stepper", html)
+        self.assertIn("admin-ai-generation-card", html)
+        self.assertIn("admin-ai-generation-hero", html)
+        self.assertIn("admin-ai-generation-progress", html)
+        self.assertIn("admin-ai-generation-ellipsis", html)
+
+    def test_loading_page_shows_generation_stages(self) -> None:
+        html = self._loading_page_html()
+
+        self.assertIn("Анализ документа", html)
+        self.assertIn("Построение структуры", html)
+        self.assertIn("Создание уроков", html)
+        self.assertIn("Практические задания", html)
+        self.assertIn("Создание теста", html)
+        self.assertIn("Финальная проверка", html)
+        self.assertIn("admin-ai-generation-step--active", html)
+        self.assertIn("admin-ai-generation-step--pending", html)
+        self.assertIn(
+            "AI анализирует содержание документа",
+            html,
+        )
+        self.assertIn(
+            "Не закрывайте страницу. После завершения курс откроется автоматически.",
+            html,
+        )
+        self.assertNotIn("Что происходит?", html)
+        self.assertNotIn("admin-ai-generation-step-desc", html)
+
+    def test_loading_page_skips_optional_steps_when_disabled(self) -> None:
+        html = self._loading_page_html()
+
+        self.assertIn('data-generation-step="practical"', html)
+        self.assertIn('data-generation-step="quiz"', html)
+        self.assertIn("admin-ai-generation-step--skipped", html)
+        self.assertIn('data-include-practical-tasks="false"', html)
+        self.assertIn('data-generate-quiz="false"', html)
+
+    def test_loading_page_progress_starts_at_twelve_percent(self) -> None:
+        html = self._loading_page_html()
+
+        self.assertIn('aria-valuenow="12"', html)
+        self.assertIn(">12%</span>", html)
+        self.assertNotIn("завершено", html)
+        self.assertIn('style="width: 12%;"', html)
+        self.assertIn("data-generation-step=", html)
+        self.assertIn("setProgress(95)", html)
+        self.assertIn("showGenerationSuccess(", html)
+        self.assertIn("setProgress(100, true)", html)
+        self.assertNotRegex(html, r"setProgress\(100\)(?!,\s*true)")
+        self.assertIn("Формируем оптимальную структуру курса", html)
+        self.assertIn("Создаём уроки и учебные материалы", html)
+        self.assertIn("Выполняем финальную проверку и сохранение", html)
+
+    def test_loading_page_includes_optional_steps_when_enabled(self) -> None:
+        _confirm_html, review_data = self._upload_and_extract_state()
+        review_data["generate_quiz"] = "1"
+        review_data["include_practical_tasks"] = "1"
+        response = self.client.post("/admin/courses/new/loading", data=review_data)
+        self.assertEqual(response.status_code, 200)
+        html = response.text
+
+        self.assertIn('data-include-practical-tasks="true"', html)
+        self.assertIn('data-generate-quiz="true"', html)
+        self.assertIn('name="generate_quiz"', html)
+        self.assertIn('name="include_practical_tasks"', html)
+        self.assertNotIn(
+            'data-generation-step="practical" class="admin-ai-generation-step admin-ai-generation-step--skipped"',
+            html,
+        )
+
+    def test_loading_page_uses_vertical_stepper_not_numbered_list(self) -> None:
+        html = self._loading_page_html()
+
+        self.assertIn("admin-ai-generation-step-label", html)
+        self.assertNotRegex(html, r"<ol[^>]*>\s*<li>\s*1\.")
+        self.assertNotIn('type="1"', html)
+
+    def test_loading_page_shows_decorative_progress_bar(self) -> None:
+        html = self._loading_page_html()
+
+        self.assertIn("admin-ai-generation-progress-bar", html)
+        self.assertIn("admin-ai-generation-progress-track", html)
+        self.assertIn('role="progressbar"', html)
+        self.assertIn('aria-valuenow="12"', html)
+        self.assertIn("function setProgress(percent, allowComplete)", html)
+
+    def test_loading_page_starts_async_fetch_generation(self) -> None:
+        html = self._loading_page_html()
+
         self.assertIn('action="/admin/courses/new/generate"', html)
+        self.assertIn('name="upload_id"', html)
+        self.assertIn('name="original_filename"', html)
+        self.assertIn('name="course_title"', html)
+        self.assertIn("fetch(", html)
+        self.assertIn("new FormData(form)", html)
+        self.assertIn("response.redirected", html)
+        self.assertIn("showGenerationSuccess(response.url)", html)
+        self.assertIn("Курс успешно создан", html)
+        self.assertIn("admin-ai-generation-progress-bar--success", html)
+        self.assertIn("window.setTimeout(function ()", html)
+        self.assertNotIn("window.location.assign(response.url);", html)
+        self.assertNotIn("form.submit()", html)
+        self.assertIn("generationStarted", html)
+        self.assertIn("startGeneration()", html)
+        self.assertIn(
+            "Не удалось завершить создание курса. Проверьте соединение и попробуйте снова.",
+            html,
+        )
+        self.assertIn("document.open()", html)
+
+    def test_loading_page_preserves_all_hidden_form_fields(self) -> None:
+        html = self._loading_page_html()
+
+        self.assertIn('name="source_language"', html)
+        self.assertIn('name="output_language"', html)
+        self.assertIn('name="lesson_count"', html)
+        self.assertIn('name="lesson_size"', html)
+        self.assertIn('name="difficulty"', html)
+        self.assertIn('name="include_explanations"', html)
+
+    def test_invalid_upload_id_on_loading_is_rejected(self) -> None:
+        _confirm_html, review_data = self._upload_and_extract_state()
+        review_data["upload_id"] = "a" * 32
+
+        response = self.client.post("/admin/courses/new/loading", data=review_data)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Создание курса", response.text)
+        self.assertIn("Загруженный файл не найден", response.text)
 
     def test_review_resolves_upload_by_upload_id(self) -> None:
         _confirm_html, review_data = self._upload_and_extract_state()
