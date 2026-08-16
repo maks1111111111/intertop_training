@@ -12,7 +12,11 @@ from fastapi.templating import Jinja2Templates
 from app.api.mappers import course_mapper
 from app.content.runtime import ContentRuntime
 from app.repositories import quiz_repository
+from app.repositories.company_membership_repository import CompanyMembershipRepository
+from app.repositories.company_repository import CompanyRepository
 from app.repositories.progress_repository import ProgressRepository
+from app.repositories.user_repository import UserRepository
+from app.services.tenant_context_service import TenantContextService
 from app.web.admin_course_edit_service import (
     AdminCourseEditError,
     AdminCourseEditRequest,
@@ -123,6 +127,7 @@ from app.web.admin_knowledge_upload_service import (
 )
 from app.web.dashboard_service import DashboardService
 from app.web.progress_service import WebProgressService
+from app.web.web_identity_service import WebIdentityService
 from app.web.quiz_scoring import (
     build_quiz_page_view,
     build_quiz_summary_view,
@@ -146,16 +151,46 @@ def get_db_path(request: Request) -> Path:
     return request.app.state.db_path
 
 
-# TODO: Replace with authenticated web user identity when auth is implemented.
+# Temporary web identity placeholders until authentication is implemented.
 _WEB_DASHBOARD_TELEGRAM_ID = 1
+_WEB_ADMIN_COMPANY_ID = "intertop"
 
 
-def get_progress_service(db_path: Path = Depends(get_db_path)) -> WebProgressService:
+def get_web_identity_service() -> WebIdentityService:
+    """Return the web identity service for the current application."""
+    return WebIdentityService(
+        UserRepository(),
+        TenantContextService(
+            CompanyRepository(),
+            CompanyMembershipRepository(),
+        ),
+    )
+
+
+def _resolve_dashboard_telegram_id(
+    db_path: Path,
+    web_identity_service: WebIdentityService,
+) -> int:
+    """Return the telegram id used for learner dashboard and progress queries."""
+    identity = web_identity_service.resolve(
+        db_path,
+        _WEB_DASHBOARD_TELEGRAM_ID,
+        _WEB_ADMIN_COMPANY_ID,
+    )
+    if identity is None:
+        return _WEB_DASHBOARD_TELEGRAM_ID
+    return identity.telegram_id
+
+
+def get_progress_service(
+    db_path: Path = Depends(get_db_path),
+    web_identity_service: WebIdentityService = Depends(get_web_identity_service),
+) -> WebProgressService:
     """Return the Web progress service for the current database."""
     return WebProgressService(
         db_path,
         ProgressRepository(),
-        _WEB_DASHBOARD_TELEGRAM_ID,
+        _resolve_dashboard_telegram_id(db_path, web_identity_service),
     )
 
 
@@ -409,10 +444,6 @@ def get_admin_quiz_create_service(
     return AdminQuizCreateService(runtime.base_dir, runtime)
 
 
-# TODO: Replace with authenticated tenant/company identity when auth is implemented.
-_WEB_ADMIN_COMPANY_ID = "intertop"
-
-
 def _parse_quiz_answers(form_data) -> dict[str, str]:
     """Extract question answers from submitted form fields."""
     answers: dict[str, str] = {}
@@ -433,9 +464,12 @@ def root() -> RedirectResponse:
 def dashboard_page(
     request: Request,
     dashboard_service: DashboardService = Depends(get_dashboard_service),
+    db_path: Path = Depends(get_db_path),
+    web_identity_service: WebIdentityService = Depends(get_web_identity_service),
 ) -> HTMLResponse:
     """Render the student dashboard with course progress and quiz stats."""
-    courses = dashboard_service.get_courses_for_user(_WEB_DASHBOARD_TELEGRAM_ID)
+    telegram_id = _resolve_dashboard_telegram_id(db_path, web_identity_service)
+    courses = dashboard_service.get_courses_for_user(telegram_id)
     return templates.TemplateResponse(
         request,
         "dashboard.html",
