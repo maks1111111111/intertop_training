@@ -11,8 +11,13 @@ from fastapi.testclient import TestClient
 
 from app.api.app import create_app
 from app.content.runtime import ContentRuntime
-from app.database.db import get_connection, initialize_database
-from app.web.progress_service import WEB_DEMO_USER_ID, WebProgressService
+from app.database.db import get_connection, initialize_database, upsert_telegram_user
+from app.repositories.progress_repository import ProgressRepository
+from app.services.course_sync import sync_courses
+from app.web.progress_service import WebProgressService
+
+# Matches app.web.router._WEB_DASHBOARD_TELEGRAM_ID
+_WEB_TEST_TELEGRAM_ID = 1
 
 
 def _write_course(
@@ -149,6 +154,14 @@ def _create_test_app(courses_dir: Path) -> tuple:
     db_tmp = tempfile.TemporaryDirectory()
     db_path = Path(db_tmp.name) / "test.db"
     initialize_database(db_path)
+    sync_courses(courses_dir, db_path)
+    upsert_telegram_user(
+        db_path,
+        telegram_id=_WEB_TEST_TELEGRAM_ID,
+        username="web-demo",
+        first_name="Web",
+        last_name="Demo",
+    )
     upload_tmp = tempfile.TemporaryDirectory()
     upload_dir = Path(upload_tmp.name)
     app = create_app()
@@ -381,7 +394,11 @@ class WebProgressUiTests(unittest.TestCase):
             self.courses_dir
         )
         self.client = TestClient(self.app)
-        self.progress = WebProgressService(self.db_path)
+        self.progress = WebProgressService(
+            self.db_path,
+            ProgressRepository(),
+            _WEB_TEST_TELEGRAM_ID,
+        )
 
     def tearDown(self) -> None:
         self.upload_tmp.cleanup()
@@ -444,10 +461,15 @@ class WebProgressUiTests(unittest.TestCase):
             row_count = connection.execute(
                 """
                 SELECT COUNT(*)
-                FROM web_lesson_progress
-                WHERE user_id = ? AND course_slug = ? AND lesson_id = ?
+                FROM lesson_progress
+                JOIN users ON users.id = lesson_progress.user_id
+                JOIN lessons ON lessons.id = lesson_progress.lesson_id
+                JOIN courses ON courses.id = lessons.course_id
+                WHERE users.telegram_id = ?
+                  AND courses.slug = ?
+                  AND lessons.slug = ?
                 """,
-                (WEB_DEMO_USER_ID, "progress-course", "lesson_01"),
+                (_WEB_TEST_TELEGRAM_ID, "progress-course", "lesson_01"),
             ).fetchone()[0]
         self.assertEqual(row_count, 1)
 
@@ -498,7 +520,11 @@ class WebProgressUiTests(unittest.TestCase):
             _write_course(courses_dir, "solo", title="Solo Course")
             app, db_tmp, db_path, upload_tmp = _create_test_app(courses_dir)
             client = TestClient(app)
-            progress = WebProgressService(db_path)
+            progress = WebProgressService(
+                db_path,
+                ProgressRepository(),
+                _WEB_TEST_TELEGRAM_ID,
+            )
 
             before = client.get("/courses/solo")
             self.assertIn("Текущий", before.text)

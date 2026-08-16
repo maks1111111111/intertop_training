@@ -146,9 +146,17 @@ def get_db_path(request: Request) -> Path:
     return request.app.state.db_path
 
 
+# TODO: Replace with authenticated web user identity when auth is implemented.
+_WEB_DASHBOARD_TELEGRAM_ID = 1
+
+
 def get_progress_service(db_path: Path = Depends(get_db_path)) -> WebProgressService:
     """Return the Web progress service for the current database."""
-    return WebProgressService(db_path)
+    return WebProgressService(
+        db_path,
+        ProgressRepository(),
+        _WEB_DASHBOARD_TELEGRAM_ID,
+    )
 
 
 def get_dashboard_service(
@@ -400,9 +408,6 @@ def get_admin_quiz_create_service(
     """Return the admin quiz create service for the current application."""
     return AdminQuizCreateService(runtime.base_dir, runtime)
 
-
-# TODO: Replace with authenticated web user identity when auth is implemented.
-_WEB_DASHBOARD_TELEGRAM_ID = 1
 
 # TODO: Replace with authenticated tenant/company identity when auth is implemented.
 _WEB_ADMIN_COMPANY_ID = "intertop"

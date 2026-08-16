@@ -7,8 +7,7 @@ from pathlib import Path
 from typing import Collection, Optional
 
 from app.database.db import get_connection
-
-WEB_DEMO_USER_ID = "web-demo-user"
+from app.repositories.progress_repository import ProgressRepository
 
 
 @dataclass(frozen=True)
@@ -34,63 +33,108 @@ class CourseProgressView:
     lesson_rows: tuple[LessonProgressRow, ...]
 
 
+def _validate_telegram_id(telegram_id: int) -> int:
+    """Reject invalid Web progress user identifiers."""
+    if isinstance(telegram_id, bool) or not isinstance(telegram_id, int):
+        raise ValueError("telegram_id must be an integer")
+    if telegram_id <= 0:
+        raise ValueError("telegram_id must be positive")
+    return telegram_id
+
+
 class WebProgressService:
-    """Persist and read Web lesson completion in SQLite."""
+    """Persist and read Web lesson completion through canonical progress tables."""
 
     def __init__(
         self,
         db_path: Path,
-        user_id: str = WEB_DEMO_USER_ID,
+        progress_repository: ProgressRepository,
+        telegram_id: int,
     ) -> None:
         self._db_path = db_path
-        self._user_id = user_id
+        self._progress_repository = progress_repository
+        self._telegram_id = _validate_telegram_id(telegram_id)
 
     def mark_lesson_completed(self, course_slug: str, lesson_id: str) -> None:
         """Record one completed lesson without creating duplicates."""
-        with get_connection(self._db_path) as connection:
-            connection.execute(
-                """
-                INSERT OR IGNORE INTO web_lesson_progress (
-                    user_id,
-                    course_slug,
-                    lesson_id
-                )
-                VALUES (?, ?, ?)
-                """,
-                (self._user_id, course_slug, lesson_id),
-            )
-            connection.commit()
+        if not self._user_exists():
+            return
+
+        self._progress_repository.start_course(
+            self._db_path,
+            self._telegram_id,
+            course_slug,
+        )
+        self._progress_repository.complete_lesson(
+            self._db_path,
+            self._telegram_id,
+            course_slug,
+            lesson_id,
+        )
 
     def is_lesson_completed(self, course_slug: str, lesson_id: str) -> bool:
         """Return whether the lesson is marked completed for the current user."""
+        if not self._user_exists():
+            return False
+
         with get_connection(self._db_path) as connection:
             row = connection.execute(
                 """
                 SELECT 1
-                FROM web_lesson_progress
-                WHERE user_id = ?
-                  AND course_slug = ?
-                  AND lesson_id = ?
+                FROM lesson_progress
+                JOIN users
+                    ON users.id = lesson_progress.user_id
+                JOIN lessons
+                    ON lessons.id = lesson_progress.lesson_id
+                JOIN courses
+                    ON courses.id = lessons.course_id
+                WHERE users.telegram_id = ?
+                  AND courses.slug = ?
+                  AND lessons.slug = ?
+                  AND lesson_progress.status = 'completed'
                 LIMIT 1
                 """,
-                (self._user_id, course_slug, lesson_id),
+                (self._telegram_id, course_slug, lesson_id),
             ).fetchone()
         return row is not None
 
     def completed_lessons(self, course_slug: str) -> set[str]:
         """Return lesson ids completed by the current user in one course."""
+        if not self._user_exists():
+            return set()
+
         with get_connection(self._db_path) as connection:
             rows = connection.execute(
                 """
-                SELECT lesson_id
-                FROM web_lesson_progress
-                WHERE user_id = ?
-                  AND course_slug = ?
-                ORDER BY lesson_id
+                SELECT lessons.slug
+                FROM lesson_progress
+                JOIN users
+                    ON users.id = lesson_progress.user_id
+                JOIN lessons
+                    ON lessons.id = lesson_progress.lesson_id
+                JOIN courses
+                    ON courses.id = lessons.course_id
+                WHERE users.telegram_id = ?
+                  AND courses.slug = ?
+                  AND lesson_progress.status = 'completed'
+                ORDER BY lessons.slug
                 """,
-                (self._user_id, course_slug),
+                (self._telegram_id, course_slug),
             ).fetchall()
-        return {str(row["lesson_id"]) for row in rows}
+        return {str(row["slug"]) for row in rows}
+
+    def _user_exists(self) -> bool:
+        with get_connection(self._db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT 1
+                FROM users
+                WHERE telegram_id = ?
+                LIMIT 1
+                """,
+                (self._telegram_id,),
+            ).fetchone()
+        return row is not None
 
     def _completed_count_for_lessons(
         self,

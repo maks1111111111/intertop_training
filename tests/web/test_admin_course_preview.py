@@ -9,23 +9,29 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.database.db import get_connection
-from app.web.progress_service import WEB_DEMO_USER_ID, WebProgressService
+from app.repositories.progress_repository import ProgressRepository
+from app.web.progress_service import WebProgressService
 from tests.web.test_web_ui import (
+    _WEB_TEST_TELEGRAM_ID,
     _create_test_app,
     _write_course_with_quiz,
     _write_multi_lesson_course,
 )
 
 
-def _progress_row_count(db_path: Path, course_slug: str) -> int:
+def _canonical_progress_row_count(db_path: Path, course_slug: str) -> int:
     with get_connection(db_path) as connection:
         row = connection.execute(
             """
             SELECT COUNT(*)
-            FROM web_lesson_progress
-            WHERE user_id = ? AND course_slug = ?
+            FROM lesson_progress
+            JOIN users ON users.id = lesson_progress.user_id
+            JOIN lessons ON lessons.id = lesson_progress.lesson_id
+            JOIN courses ON courses.id = lessons.course_id
+            WHERE users.telegram_id = ?
+              AND courses.slug = ?
             """,
-            (WEB_DEMO_USER_ID, course_slug),
+            (_WEB_TEST_TELEGRAM_ID, course_slug),
         ).fetchone()
     return int(row[0])
 
@@ -41,7 +47,11 @@ class AdminCoursePreviewTests(unittest.TestCase):
             self.courses_dir
         )
         self.client = TestClient(self.app)
-        self.progress = WebProgressService(self.db_path)
+        self.progress = WebProgressService(
+            self.db_path,
+            ProgressRepository(),
+            _WEB_TEST_TELEGRAM_ID,
+        )
 
     def tearDown(self) -> None:
         self.upload_tmp.cleanup()
@@ -77,7 +87,7 @@ class AdminCoursePreviewTests(unittest.TestCase):
     def test_preview_lesson_does_not_record_progress(self) -> None:
         self.client.get("/admin/courses/preview-course/preview/lessons/lesson_01")
 
-        self.assertEqual(_progress_row_count(self.db_path, "preview-course"), 0)
+        self.assertEqual(_canonical_progress_row_count(self.db_path, "preview-course"), 0)
         self.assertFalse(
             self.progress.is_lesson_completed("preview-course", "lesson_01")
         )
