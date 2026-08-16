@@ -221,7 +221,7 @@ def build_upload_confirm_view(
         include_practical_tasks=form_values.include_practical_tasks,
         include_checklists=form_values.include_checklists,
         include_explanations=form_values.include_explanations,
-        edit_url="/admin/courses/new",
+        edit_url="/admin/courses/new/ai",
         review_url="/admin/courses/new/review",
     )
 
@@ -350,7 +350,7 @@ def build_generation_review_view(
         include_practical_tasks=form_values.include_practical_tasks,
         include_checklists=form_values.include_checklists,
         include_explanations=form_values.include_explanations,
-        back_url="/admin/courses/new",
+        back_url="/admin/courses/new/ai",
         loading_url="/admin/courses/new/loading",
         generate_url="/admin/courses/new/generate",
         status_message="Материал готов к созданию курса",

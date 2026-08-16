@@ -15,6 +15,7 @@ from app.web.admin_quiz_edit_service import (
     AdminQuizEditError,
     _load_quiz_json_payload,
     _resolve_quiz_json_path,
+    quiz_json_exists,
 )
 from app.web.admin_quiz_question_edit_service import (
     AdminQuizLessonOption,
@@ -164,7 +165,9 @@ class AdminQuizQuestionCreateService:
     def get_create_view(self, slug: str) -> Optional[AdminQuizQuestionCreateView]:
         """Return the create form view for one course quiz, or ``None`` if missing."""
         course = self._runtime.get_course(slug)
-        if course is None or course.quiz is None:
+        if course is None:
+            return None
+        if not quiz_json_exists(self._courses_dir, slug):
             return None
 
         return self._build_create_view(course)
@@ -173,6 +176,8 @@ class AdminQuizQuestionCreateService:
         """Return a create view for validation errors even when runtime quiz is stale."""
         course = self._runtime.get_course(slug)
         if course is None:
+            return None
+        if not quiz_json_exists(self._courses_dir, slug):
             return None
         return self._build_create_view(course)
 

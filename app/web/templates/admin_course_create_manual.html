@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Создание курса вручную — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/admin">Админ</a>
+    <span aria-hidden="true">/</span>
+    <a href="/admin/courses/new">Создание курса</a>
+    <span aria-hidden="true">/</span>
+    <span>Вручную</span>
+</nav>
+
+<section class="page-header admin-create-page-header">
+    <h1 class="page-title">Создание курса вручную</h1>
+    <p class="page-lead">Создайте пустой курс и добавьте уроки, задания и тест самостоятельно.</p>
+</section>
+
+{% if error_message %}
+<div class="admin-form-error" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<form
+    class="admin-create-form"
+    action="/admin/courses/new/manual"
+    method="post"
+    aria-label="Форма ручного создания курса"
+>
+    <fieldset class="admin-form-section">
+        <legend class="admin-form-section-title">Основная информация</legend>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="course-title">Название курса</label>
+            <input
+                class="admin-form-input"
+                type="text"
+                id="course-title"
+                name="title"
+                value="{{ form_title }}"
+                required
+                autocomplete="off"
+            >
+        </div>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="course-description">Описание</label>
+            <textarea
+                class="admin-form-textarea"
+                id="course-description"
+                name="description"
+                rows="4"
+            >{{ form_description }}</textarea>
+        </div>
+
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="course-language">Язык курса</label>
+            <select class="admin-form-select" id="course-language" name="language">
+                {% for option in create_view.language_options %}
+                <option value="{{ option.value }}"{% if option.value == form_language %} selected{% endif %}>
+                    {{ option.label }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+    </fieldset>
+
+    <div class="admin-form-actions">
+        <a class="button button-secondary" href="/admin/courses/new">Назад</a>
+        <button class="button button-primary" type="submit">Создать курс</button>
+    </div>
+</form>
+{% endblock %}

@@ -428,6 +428,29 @@ class RuntimeLoaderFailClosedTests(unittest.TestCase):
         assert course is not None
         self.assertIsNone(course.quiz)
 
+    def test_quiz_with_empty_questions_is_not_exposed_in_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = _write_minimal_course(courses_dir, "empty-quiz", with_quiz=False)
+            _write_quiz(
+                course_dir,
+                {
+                    "id": "empty-quiz_quiz",
+                    "title": "Draft quiz",
+                    "passing_score": 80,
+                    "version": 1,
+                    "randomize_questions": True,
+                    "randomize_options": True,
+                    "questions": [],
+                },
+            )
+
+            course = get_course(courses_dir, "empty-quiz")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertIsNone(course.quiz)
+
     def test_valid_quiz_still_loads_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             courses_dir = Path(tmp)

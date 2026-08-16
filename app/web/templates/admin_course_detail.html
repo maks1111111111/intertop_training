@@ -124,6 +124,9 @@
     </div>
     {% else %}
     <p class="admin-course-detail-empty">Для этого курса итоговый тест не создан.</p>
+    <form class="admin-quiz-create-form" action="/admin/courses/{{ detail.slug }}/quiz/create" method="post">
+        <button class="button button-primary button-small" type="submit">Создать итоговый тест</button>
+    </form>
     {% endif %}
 </section>
 {% endblock %}

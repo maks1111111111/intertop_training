@@ -121,7 +121,11 @@ class AdminCourseUploadTests(unittest.TestCase):
         response = self.client.get("/admin/courses/new")
         self.assertEqual(response.status_code, 200)
         self.assertIn("Создание курса", response.text)
-        self.assertIn('name="source_file"', response.text)
+        self.assertIn("Создать с AI", response.text)
+
+        ai_response = self.client.get("/admin/courses/new/ai")
+        self.assertEqual(ai_response.status_code, 200)
+        self.assertIn('name="source_file"', ai_response.text)
 
     def test_no_course_is_generated(self) -> None:
         before = list(self.courses_dir.iterdir())
@@ -155,7 +159,7 @@ class AdminCourseUploadTests(unittest.TestCase):
 
     def test_confirm_page_has_edit_and_continue_actions(self) -> None:
         response = self._post_upload("source.pdf", b"%PDF-1.4 test")
-        self.assertIn('href="/admin/courses/new"', response.text)
+        self.assertIn('href="/admin/courses/new/ai"', response.text)
         self.assertIn("Назад к редактированию", response.text)
         self.assertIn("Продолжить", response.text)
         self.assertIn('action="/admin/courses/new/review"', response.text)

@@ -6,7 +6,9 @@
 <nav class="breadcrumb" aria-label="Навигация">
     <a href="/admin">Админ</a>
     <span aria-hidden="true">/</span>
-    <span>Создание курса</span>
+    <a href="/admin/courses/new">Создание курса</a>
+    <span aria-hidden="true">/</span>
+    <span>С AI</span>
 </nav>
 
 <section class="page-header admin-create-page-header">
@@ -18,7 +20,7 @@
 <div class="admin-form-error" role="alert">{{ error_message }}</div>
 {% endif %}
 
-<form class="admin-create-form" action="/admin/courses/new" method="post" enctype="multipart/form-data" aria-label="Форма создания курса">
+<form class="admin-create-form" action="/admin/courses/new/ai" method="post" enctype="multipart/form-data" aria-label="Форма создания курса">
     <fieldset class="admin-form-section">
         <legend class="admin-form-section-title">Исходный файл</legend>
 

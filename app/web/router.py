@@ -84,6 +84,15 @@ from app.web.admin_generation_service import (
     AdminGenerationRequest,
     AdminGenerationService,
 )
+from app.web.admin_manual_course_create_service import (
+    AdminManualCourseCreateError,
+    AdminManualCourseCreateRequest,
+    AdminManualCourseCreateService,
+)
+from app.web.admin_quiz_create_service import (
+    AdminQuizCreateError,
+    AdminQuizCreateService,
+)
 from app.web.admin_upload_service import (
     AdminCourseFormValues,
     AdminReviewError,
@@ -376,6 +385,20 @@ def get_admin_quiz_question_reorder_service(
 ) -> AdminQuizQuestionReorderService:
     """Return the admin quiz question reorder service for the current application."""
     return AdminQuizQuestionReorderService(runtime.base_dir, runtime)
+
+
+def get_admin_manual_course_create_service(
+    runtime: ContentRuntime = Depends(get_content_runtime),
+) -> AdminManualCourseCreateService:
+    """Return the admin manual course create service for the current application."""
+    return AdminManualCourseCreateService(runtime.base_dir, runtime)
+
+
+def get_admin_quiz_create_service(
+    runtime: ContentRuntime = Depends(get_content_runtime),
+) -> AdminQuizCreateService:
+    """Return the admin quiz create service for the current application."""
+    return AdminQuizCreateService(runtime.base_dir, runtime)
 
 
 # TODO: Replace with authenticated web user identity when auth is implemented.
@@ -726,16 +749,32 @@ def _render_admin_course_create_page(
     response_class=HTMLResponse,
     include_in_schema=False,
 )
+def admin_course_create_mode_page(request: Request) -> HTMLResponse:
+    """Render the course creation mode selection page."""
+    return templates.TemplateResponse(
+        request,
+        "admin_course_create_mode.html",
+        {
+            "active_nav": "admin",
+        },
+    )
+
+
+@router.get(
+    "/admin/courses/new/ai",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
 def admin_course_create_page(
     request: Request,
     admin_service: AdminService = Depends(get_admin_service),
 ) -> HTMLResponse:
-    """Render the first step of the course creation wizard."""
+    """Render the AI course creation wizard form."""
     return _render_admin_course_create_page(request, admin_service)
 
 
 @router.post(
-    "/admin/courses/new",
+    "/admin/courses/new/ai",
     response_class=HTMLResponse,
     include_in_schema=False,
 )
@@ -775,6 +814,100 @@ async def admin_course_create_submit(
             "active_nav": "admin",
             "confirm": confirm_view,
         },
+    )
+
+
+@router.post(
+    "/admin/courses/new",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def admin_course_create_submit_legacy(
+    request: Request,
+    admin_service: AdminService = Depends(get_admin_service),
+    upload_service: AdminUploadService = Depends(get_upload_service),
+) -> HTMLResponse:
+    """Legacy alias for the AI course creation upload endpoint."""
+    return await admin_course_create_submit(request, admin_service, upload_service)
+
+
+def _render_admin_manual_course_create_page(
+    request: Request,
+    create_service: AdminManualCourseCreateService,
+    *,
+    error_message: str = "",
+    form_title: str = "",
+    form_description: str = "",
+    form_language: str = "ru",
+) -> HTMLResponse:
+    """Render the manual course creation form."""
+    create_view = create_service.get_create_view()
+    return templates.TemplateResponse(
+        request,
+        "admin_course_create_manual.html",
+        {
+            "active_nav": "admin",
+            "create_view": create_view,
+            "error_message": error_message,
+            "form_title": form_title,
+            "form_description": form_description,
+            "form_language": form_language,
+        },
+    )
+
+
+@router.get(
+    "/admin/courses/new/manual",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_manual_course_create_page(
+    request: Request,
+    create_service: AdminManualCourseCreateService = Depends(
+        get_admin_manual_course_create_service
+    ),
+) -> HTMLResponse:
+    """Render the manual course creation form."""
+    return _render_admin_manual_course_create_page(request, create_service)
+
+
+@router.post(
+    "/admin/courses/new/manual",
+    include_in_schema=False,
+)
+async def admin_manual_course_create_submit(
+    request: Request,
+    create_service: AdminManualCourseCreateService = Depends(
+        get_admin_manual_course_create_service
+    ),
+):
+    """Create an empty course manually and redirect to admin detail."""
+    form = await request.form()
+    title = str(form.get("title") or "")
+    description = str(form.get("description") or "")
+    language = str(form.get("language") or "ru")
+
+    try:
+        result = create_service.create_course(
+            AdminManualCourseCreateRequest(
+                title=title,
+                description=description,
+                language=language,
+            )
+        )
+    except AdminManualCourseCreateError as exc:
+        return _render_admin_manual_course_create_page(
+            request,
+            create_service,
+            error_message=exc.message,
+            form_title=title.strip(),
+            form_description=description,
+            form_language=language.strip() or "ru",
+        )
+
+    return RedirectResponse(
+        url=result.detail_url,
+        status_code=303,
     )
 
 
@@ -1867,6 +2000,41 @@ def admin_lesson_create(
     return RedirectResponse(url=result.edit_url, status_code=303)
 
 
+@router.post(
+    "/admin/courses/{slug}/quiz/create",
+    include_in_schema=False,
+)
+def admin_quiz_create_submit(
+    slug: str,
+    request: Request,
+    admin_service: AdminService = Depends(get_admin_service),
+    quiz_create_service: AdminQuizCreateService = Depends(get_admin_quiz_create_service),
+):
+    """Create an empty final quiz for one course and redirect to quiz edit."""
+    detail = admin_service.get_course_detail(slug)
+    if detail is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    try:
+        result = quiz_create_service.create_quiz(slug)
+    except AdminQuizCreateError as exc:
+        return _render_admin_course_detail_page(
+            request,
+            detail,
+            error_message=exc.message,
+        )
+
+    return RedirectResponse(url=result.edit_url, status_code=303)
+
+
 def _render_admin_quiz_edit_page(
     request: Request,
     edit_view,
@@ -2266,16 +2434,6 @@ def admin_quiz_question_create_page(
             {
                 "title": "Курс не найден",
                 "message": "Запрошенный курс недоступен или не существует.",
-            },
-            status_code=404,
-        )
-    if course.quiz is None:
-        return templates.TemplateResponse(
-            request,
-            "not_found.html",
-            {
-                "title": "Тест не найден",
-                "message": "Для этого курса итоговый тест не создан.",
             },
             status_code=404,
         )

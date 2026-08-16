@@ -408,6 +408,37 @@ class AdminQuizEditServiceTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
+    def test_get_edit_view_reads_empty_draft_quiz_from_disk(self) -> None:
+        _write_empty_course(self.courses_dir, "draft-quiz")
+        quiz_path = self.courses_dir / "draft-quiz" / "quiz.json"
+        quiz_path.write_text(
+            json.dumps(
+                {
+                    "id": "draft-quiz_quiz",
+                    "title": "Итоговый тест",
+                    "passing_score": 80,
+                    "version": 1,
+                    "randomize_questions": True,
+                    "randomize_options": True,
+                    "questions": [],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        self.runtime.get_courses()
+
+        course = self.runtime.get_course("draft-quiz")
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertIsNone(course.quiz)
+
+        edit_view = self.service.get_edit_view("draft-quiz")
+        self.assertIsNotNone(edit_view)
+        assert edit_view is not None
+        self.assertEqual(edit_view.questions_count, 0)
+        self.assertEqual(edit_view.title, "Итоговый тест")
+
     def test_traversal_slug_rejected(self) -> None:
         with self.assertRaises(AdminQuizEditError):
             _resolve_quiz_json_path(self.courses_dir, "../escape")

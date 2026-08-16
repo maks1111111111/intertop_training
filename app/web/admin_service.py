@@ -6,9 +6,12 @@ No database access is performed in this step.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
+from app.content.contract import QUIZ_JSON_FILENAME
 from app.content.course_generation_wizard import DifficultyLevel, Language, LessonSize
 from app.content.runtime import ContentRuntime
 
@@ -148,6 +151,40 @@ class AdminCourseQuizSummary:
     passing_score: int
 
 
+def _admin_quiz_json_exists(courses_dir: Path, slug: str) -> bool:
+    """Return ``True`` when a course has a persisted admin ``quiz.json`` on disk."""
+    from app.web.admin_quiz_edit_service import quiz_json_exists
+
+    return quiz_json_exists(courses_dir, slug)
+
+
+def _load_draft_quiz_summary(courses_dir, slug: str) -> AdminCourseQuizSummary:
+    """Load quiz summary from an on-disk admin draft when runtime quiz is absent."""
+    quiz_path = courses_dir / slug / QUIZ_JSON_FILENAME
+    try:
+        payload = json.loads(quiz_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return AdminCourseQuizSummary(exists=True, questions_count=0, passing_score=80)
+
+    if not isinstance(payload, dict):
+        return AdminCourseQuizSummary(exists=True, questions_count=0, passing_score=80)
+
+    raw_questions = payload.get("questions")
+    questions_count = len(raw_questions) if isinstance(raw_questions, list) else 0
+    try:
+        passing_score = int(payload.get("passing_score", 80))
+    except (TypeError, ValueError):
+        passing_score = 80
+    if passing_score < 1 or passing_score > 100:
+        passing_score = 80
+
+    return AdminCourseQuizSummary(
+        exists=True,
+        questions_count=questions_count,
+        passing_score=passing_score,
+    )
+
+
 @dataclass(frozen=True)
 class AdminCourseDetailView:
     """Read-only admin overview for one published course."""
@@ -220,6 +257,8 @@ class AdminService:
                 questions_count=len(course.quiz.questions),
                 passing_score=course.quiz.passing_score,
             )
+        elif _admin_quiz_json_exists(self._runtime.base_dir, course.slug):
+            quiz = _load_draft_quiz_summary(self._runtime.base_dir, course.slug)
         else:
             quiz = AdminCourseQuizSummary(
                 exists=False,

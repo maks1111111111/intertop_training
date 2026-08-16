@@ -28,26 +28,26 @@ class AdminCourseCreatePageTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_create_page_returns_200(self) -> None:
-        response = self.client.get("/admin/courses/new")
+        response = self.client.get("/admin/courses/new/ai")
         self.assertEqual(response.status_code, 200)
 
     def test_create_page_contains_heading(self) -> None:
-        response = self.client.get("/admin/courses/new")
+        response = self.client.get("/admin/courses/new/ai")
         self.assertIn("Создание курса", response.text)
 
     def test_create_page_displays_course_title_field(self) -> None:
-        response = self.client.get("/admin/courses/new")
+        response = self.client.get("/admin/courses/new/ai")
         self.assertIn("Название курса", response.text)
         self.assertIn('id="course-title"', response.text)
 
     def test_create_page_displays_lesson_count_field(self) -> None:
-        response = self.client.get("/admin/courses/new")
+        response = self.client.get("/admin/courses/new/ai")
         self.assertIn("Количество уроков", response.text)
         self.assertIn('id="lesson-count"', response.text)
         self.assertIn('type="number"', response.text)
 
     def test_create_page_has_source_language_selector(self) -> None:
-        response = self.client.get("/admin/courses/new")
+        response = self.client.get("/admin/courses/new/ai")
         self.assertIn('id="source-language"', response.text)
         self.assertIn("Язык исходного документа", response.text)
         self.assertIn("Авто", response.text)
@@ -56,7 +56,7 @@ class AdminCourseCreatePageTests(unittest.TestCase):
         self.assertIn("English", response.text)
 
     def test_create_page_has_output_language_selector(self) -> None:
-        response = self.client.get("/admin/courses/new")
+        response = self.client.get("/admin/courses/new/ai")
         self.assertIn('id="output-language"', response.text)
         self.assertIn("Язык курса", response.text)
         output_section_start = response.text.index('id="output-language"')
@@ -64,7 +64,7 @@ class AdminCourseCreatePageTests(unittest.TestCase):
         self.assertNotIn('value="auto"', output_section)
 
     def test_create_page_has_difficulty_selector(self) -> None:
-        response = self.client.get("/admin/courses/new")
+        response = self.client.get("/admin/courses/new/ai")
         self.assertIn('id="difficulty"', response.text)
         self.assertIn("Уровень сложности", response.text)
         self.assertIn("Начальный", response.text)
@@ -73,7 +73,7 @@ class AdminCourseCreatePageTests(unittest.TestCase):
         self.assertIn("Экспертный", response.text)
 
     def test_create_page_has_lesson_size_selector(self) -> None:
-        response = self.client.get("/admin/courses/new")
+        response = self.client.get("/admin/courses/new/ai")
         self.assertIn('id="lesson-size"', response.text)
         self.assertIn("Размер уроков", response.text)
         self.assertIn("Короткий", response.text)
@@ -81,7 +81,7 @@ class AdminCourseCreatePageTests(unittest.TestCase):
         self.assertIn("Длинный", response.text)
 
     def test_create_page_has_generation_checkboxes(self) -> None:
-        response = self.client.get("/admin/courses/new")
+        response = self.client.get("/admin/courses/new/ai")
         self.assertIn('id="generate-quiz"', response.text)
         self.assertIn("Создать тест", response.text)
         self.assertIn('id="generate-practical-tasks"', response.text)
@@ -92,11 +92,11 @@ class AdminCourseCreatePageTests(unittest.TestCase):
         self.assertIn("Пояснения", response.text)
 
     def test_create_page_has_continue_button(self) -> None:
-        response = self.client.get("/admin/courses/new")
+        response = self.client.get("/admin/courses/new/ai")
         self.assertIn("Продолжить →", response.text)
 
     def test_create_page_does_not_render_accidental_english_labels(self) -> None:
-        response = self.client.get("/admin/courses/new")
+        response = self.client.get("/admin/courses/new/ai")
         html = response.text
         accidental_labels = (
             "Course title",
@@ -123,14 +123,14 @@ class AdminCourseCreatePageTests(unittest.TestCase):
             self.assertNotIn(label, html, f"Accidental English label found: {label!r}")
 
     def test_create_page_has_source_file_input(self) -> None:
-        response = self.client.get("/admin/courses/new")
+        response = self.client.get("/admin/courses/new/ai")
         self.assertIn('name="source_file"', response.text)
         self.assertIn('enctype="multipart/form-data"', response.text)
         self.assertIn('method="post"', response.text)
-        self.assertIn('action="/admin/courses/new"', response.text)
+        self.assertIn('action="/admin/courses/new/ai"', response.text)
 
     def test_create_page_back_button_points_to_admin(self) -> None:
-        response = self.client.get("/admin/courses/new")
+        response = self.client.get("/admin/courses/new/ai")
         self.assertIn('href="/admin"', response.text)
         self.assertIn("Назад", response.text)
 

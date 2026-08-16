@@ -176,6 +176,127 @@ def _build_question_views(quiz) -> tuple[AdminQuizQuestionView, ...]:
     return tuple(questions)
 
 
+def quiz_json_exists(courses_dir: Path, slug: str) -> bool:
+    """Return ``True`` when a course has a persisted ``quiz.json`` on disk."""
+    try:
+        _resolve_quiz_json_path(courses_dir, slug)
+    except AdminQuizEditError:
+        return False
+    return True
+
+
+def _coerce_bool(value: object, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    return default
+
+
+def _coerce_passing_score(value: object) -> int:
+    try:
+        passing_score = int(value)
+    except (TypeError, ValueError):
+        return 80
+    if passing_score < 1 or passing_score > 100:
+        return 80
+    return passing_score
+
+
+def _build_question_views_from_payload(
+    raw_questions: object,
+) -> tuple[AdminQuizQuestionView, ...]:
+    if not isinstance(raw_questions, list):
+        return ()
+
+    questions: list[AdminQuizQuestionView] = []
+    for raw_question in raw_questions:
+        if not isinstance(raw_question, dict):
+            continue
+
+        question_id = str(raw_question.get("id") or "").strip()
+        question_text = str(raw_question.get("text") or "").strip()
+        question_type = str(raw_question.get("type") or "single_choice").strip()
+        lesson = str(raw_question.get("lesson") or "").strip()
+        explanation = str(raw_question.get("explanation") or "").strip()
+        try:
+            difficulty = int(raw_question.get("difficulty", 0))
+        except (TypeError, ValueError):
+            difficulty = 0
+
+        raw_tags = raw_question.get("tags")
+        if isinstance(raw_tags, list):
+            tags = tuple(str(tag).strip() for tag in raw_tags if str(tag).strip())
+        else:
+            tags = ()
+
+        correct_ids = raw_question.get("correct_option_ids")
+        correct_id_set = {
+            str(item).strip()
+            for item in correct_ids
+            if isinstance(correct_ids, list) and str(item).strip()
+        }
+
+        raw_options = raw_question.get("options")
+        options: list[AdminQuizOptionView] = []
+        if isinstance(raw_options, list):
+            for raw_option in raw_options:
+                if not isinstance(raw_option, dict):
+                    continue
+                option_id = str(raw_option.get("id") or "").strip()
+                option_text = str(raw_option.get("text") or "").strip()
+                if not option_id:
+                    continue
+                options.append(
+                    AdminQuizOptionView(
+                        id=option_id,
+                        text=option_text,
+                        is_correct=option_id in correct_id_set,
+                    )
+                )
+
+        if not question_id:
+            continue
+
+        questions.append(
+            AdminQuizQuestionView(
+                id=question_id,
+                text=question_text,
+                question_type=question_type or "single_choice",
+                lesson=lesson,
+                difficulty=difficulty,
+                explanation=explanation,
+                tags=tags,
+                options=tuple(options),
+            )
+        )
+    return tuple(questions)
+
+
+def _build_edit_view_from_payload(
+    course,
+    payload: dict,
+) -> AdminQuizEditView:
+    quiz_id = str(payload.get("id") or "").strip() or f"{course.slug}_quiz"
+    title = str(payload.get("title") or "").strip() or "Итоговый тест"
+    passing_score = _coerce_passing_score(payload.get("passing_score"))
+    randomize_questions = _coerce_bool(payload.get("randomize_questions"), True)
+    randomize_options = _coerce_bool(payload.get("randomize_options"), True)
+    questions = _build_question_views_from_payload(payload.get("questions"))
+
+    return AdminQuizEditView(
+        slug=course.slug,
+        course_title=course.title,
+        quiz_id=quiz_id,
+        title=title,
+        passing_score=passing_score,
+        randomize_questions=randomize_questions,
+        randomize_options=randomize_options,
+        questions_count=len(questions),
+        questions=questions,
+        detail_url=f"/admin/courses/{course.slug}",
+        cancel_url=f"/admin/courses/{course.slug}",
+    )
+
+
 class AdminQuizEditService:
     """Update quiz settings in ``quiz.json`` and refresh runtime."""
 
@@ -186,23 +307,20 @@ class AdminQuizEditService:
     def get_edit_view(self, slug: str) -> Optional[AdminQuizEditView]:
         """Return the edit form view for one course quiz, or ``None`` if missing."""
         course = self._runtime.get_course(slug)
-        if course is None or course.quiz is None:
+        if course is None:
             return None
 
-        quiz = course.quiz
-        return AdminQuizEditView(
-            slug=course.slug,
-            course_title=course.title,
-            quiz_id=quiz.id,
-            title=quiz.title,
-            passing_score=quiz.passing_score,
-            randomize_questions=quiz.randomize_questions,
-            randomize_options=quiz.randomize_options,
-            questions_count=len(quiz.questions),
-            questions=_build_question_views(quiz),
-            detail_url=f"/admin/courses/{course.slug}",
-            cancel_url=f"/admin/courses/{course.slug}",
-        )
+        try:
+            quiz_json_path = _resolve_quiz_json_path(self._courses_dir, slug)
+        except AdminQuizEditError:
+            return None
+
+        try:
+            payload = _load_quiz_json_payload(quiz_json_path, slug)
+        except AdminQuizEditError:
+            return None
+
+        return _build_edit_view_from_payload(course, payload)
 
     def update_quiz(self, request: AdminQuizEditRequest) -> AdminQuizEditResult:
         """Validate, persist, and refresh one course quiz's settings."""

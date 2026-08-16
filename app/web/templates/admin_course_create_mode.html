@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Создание курса — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/admin">Админ</a>
+    <span aria-hidden="true">/</span>
+    <span>Создание курса</span>
+</nav>
+
+<section class="page-header admin-create-page-header">
+    <h1 class="page-title">Создание курса</h1>
+    <p class="page-lead">Выберите способ создания нового курса.</p>
+</section>
+
+<div class="admin-create-mode-grid">
+    <article class="admin-create-mode-card">
+        <h2 class="admin-create-mode-title">Создать с AI</h2>
+        <p class="admin-create-mode-description">
+            Загрузите документ или материал — AI подготовит структуру, уроки и тест.
+        </p>
+        <a class="button button-primary admin-create-mode-action" href="/admin/courses/new/ai">
+            Создать с AI
+        </a>
+    </article>
+
+    <article class="admin-create-mode-card">
+        <h2 class="admin-create-mode-title">Создать вручную</h2>
+        <p class="admin-create-mode-description">
+            Создайте пустой курс и заполните уроки, задания и тест самостоятельно.
+        </p>
+        <a class="button button-secondary admin-create-mode-action" href="/admin/courses/new/manual">
+            Создать вручную
+        </a>
+    </article>
+</div>
+
+<div class="admin-form-actions">
+    <a class="button button-secondary" href="/admin">Назад</a>
+</div>
+{% endblock %}
