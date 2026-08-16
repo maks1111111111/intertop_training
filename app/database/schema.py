@@ -226,5 +226,41 @@ def create_tables(connection: sqlite3.Connection) -> None:
 
         CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_document_chunks_company_document_index
             ON knowledge_document_chunks(company_id, document_id, chunk_index);
+
+        CREATE TABLE IF NOT EXISTS companies (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS company_memberships (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            role TEXT NOT NULL DEFAULT 'student',
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(company_id, user_id),
+            FOREIGN KEY (company_id)
+                REFERENCES companies(id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (user_id)
+                REFERENCES users(id)
+                ON DELETE CASCADE,
+            CHECK (role IN ('student', 'manager', 'admin')),
+            CHECK (is_active IN (0, 1))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_company_memberships_company_id
+            ON company_memberships(company_id);
+
+        CREATE INDEX IF NOT EXISTS idx_company_memberships_user_id
+            ON company_memberships(user_id);
+
+        CREATE INDEX IF NOT EXISTS idx_company_memberships_company_role
+            ON company_memberships(company_id, role);
         """
     )
