@@ -64,10 +64,17 @@ class WebProgressServiceTests(unittest.TestCase):
         )
         _seed_course(self.db_path, "beta", ("lesson_01",))
         self.progress_repository = ProgressRepository()
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                "SELECT id FROM users WHERE telegram_id = ?",
+                (TELEGRAM_ID,),
+            ).fetchone()
+        assert row is not None
+        self.user_id = int(row["id"])
         self.service = WebProgressService(
             self.db_path,
             self.progress_repository,
-            TELEGRAM_ID,
+            self.user_id,
         )
 
     def tearDown(self) -> None:
@@ -84,7 +91,7 @@ class WebProgressServiceTests(unittest.TestCase):
         source = inspect.getsource(WebProgressService)
         self.assertNotIn("web_lesson_progress", source)
 
-    def test_invalid_telegram_id_rejected(self) -> None:
+    def test_invalid_user_id_rejected(self) -> None:
         with self.assertRaises(ValueError):
             WebProgressService(self.db_path, self.progress_repository, 0)
         with self.assertRaises(ValueError):
@@ -96,7 +103,7 @@ class WebProgressServiceTests(unittest.TestCase):
         unknown_service = WebProgressService(
             self.db_path,
             self.progress_repository,
-            OTHER_TELEGRAM_ID,
+            999999,
         )
         self.assertFalse(unknown_service.is_lesson_completed("alpha", "lesson_01"))
         self.assertEqual(unknown_service.completed_lessons("alpha"), set())
@@ -105,7 +112,7 @@ class WebProgressServiceTests(unittest.TestCase):
         unknown_service = WebProgressService(
             self.db_path,
             self.progress_repository,
-            OTHER_TELEGRAM_ID,
+            999999,
         )
         unknown_service.mark_lesson_completed("alpha", "lesson_01")
 
@@ -290,6 +297,65 @@ class WebProgressServiceTests(unittest.TestCase):
         self.assertEqual(self.service.completed_lessons("alpha"), {"lesson_01"})
         self.assertEqual(self.service.completed_lessons("beta"), {"lesson_01"})
 
+    def test_password_only_user_can_persist_web_lesson_progress(self) -> None:
+        with get_connection(self.db_path) as connection:
+            password_user_id = int(
+                connection.execute(
+                    """
+                    INSERT INTO users (
+                        telegram_id,
+                        username,
+                        first_name,
+                        last_name
+                    )
+                    VALUES (NULL, ?, ?, ?)
+                    """,
+                    ("password-only", "Password", "Learner"),
+                ).lastrowid
+            )
+
+        service = WebProgressService(
+            self.db_path,
+            self.progress_repository,
+            password_user_id,
+        )
+
+        service.mark_lesson_completed("alpha", "lesson_01")
+
+        self.assertTrue(
+            service.is_lesson_completed(
+                "alpha",
+                "lesson_01",
+            )
+        )
+        self.assertEqual(
+            service.completed_lessons("alpha"),
+            {"lesson_01"},
+        )
+
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM lesson_progress
+                JOIN lessons
+                    ON lessons.id = lesson_progress.lesson_id
+                JOIN courses
+                    ON courses.id = lessons.course_id
+                WHERE lesson_progress.user_id = ?
+                  AND courses.slug = ?
+                  AND lessons.slug = ?
+                """,
+                (
+                    password_user_id,
+                    "alpha",
+                    "lesson_01",
+                ),
+            ).fetchone()
+
+        assert row is not None
+        self.assertEqual(int(row[0]), 1)
+
     def test_rows_are_isolated_by_user(self) -> None:
         upsert_telegram_user(
             self.db_path,
@@ -298,10 +364,18 @@ class WebProgressServiceTests(unittest.TestCase):
             first_name="Other",
             last_name="User",
         )
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                "SELECT id FROM users WHERE telegram_id = ?",
+                (OTHER_TELEGRAM_ID,),
+            ).fetchone()
+        assert row is not None
+        other_user_id = int(row["id"])
+
         other_service = WebProgressService(
             self.db_path,
             self.progress_repository,
-            OTHER_TELEGRAM_ID,
+            other_user_id,
         )
         self.service.mark_lesson_completed("alpha", "lesson_01")
         other_service.mark_lesson_completed("alpha", "lesson_02")

@@ -197,21 +197,6 @@ def require_web_management_identity(
     return identity
 
 
-def _resolve_dashboard_telegram_id(
-    db_path: Path,
-    web_identity_service: WebIdentityService,
-) -> int:
-    """Return the temporary Telegram identity used by legacy Web progress."""
-    identity = web_identity_service.resolve(
-        db_path,
-        _WEB_DASHBOARD_TELEGRAM_ID,
-        _WEB_ADMIN_COMPANY_ID,
-    )
-    if identity is None or identity.telegram_id is None:
-        return _WEB_DASHBOARD_TELEGRAM_ID
-    return identity.telegram_id
-
-
 def _resolve_dashboard_user_id(
     db_path: Path,
     web_identity_service: WebIdentityService,
@@ -253,11 +238,17 @@ def get_progress_service(
     db_path: Path = Depends(get_db_path),
     web_identity_service: WebIdentityService = Depends(get_web_identity_service),
 ) -> WebProgressService:
-    """Return the Web progress service for the current database."""
+    """Return canonical-user Web progress for the current database."""
+    user_id = _resolve_dashboard_user_id(
+        db_path,
+        web_identity_service,
+    )
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
     return WebProgressService(
         db_path,
         ProgressRepository(),
-        _resolve_dashboard_telegram_id(db_path, web_identity_service),
+        user_id,
     )
 
 
