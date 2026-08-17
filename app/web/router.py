@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional, Union
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -127,7 +127,8 @@ from app.web.admin_knowledge_upload_service import (
 )
 from app.web.dashboard_service import DashboardService
 from app.web.progress_service import WebProgressService
-from app.web.web_identity_service import WebIdentityService
+from app.web.web_authorization_service import WebAuthorizationService
+from app.web.web_identity_service import WebIdentity, WebIdentityService
 from app.web.quiz_scoring import (
     build_quiz_page_view,
     build_quiz_summary_view,
@@ -165,6 +166,35 @@ def get_web_identity_service() -> WebIdentityService:
             CompanyMembershipRepository(),
         ),
     )
+
+
+def get_web_authorization_service() -> WebAuthorizationService:
+    """Return the role-based Web authorization service."""
+    return WebAuthorizationService()
+
+
+def get_current_web_identity(
+    db_path: Path = Depends(get_db_path),
+    web_identity_service: WebIdentityService = Depends(get_web_identity_service),
+) -> Optional[WebIdentity]:
+    """Resolve the current bootstrap Web identity until authentication exists."""
+    return web_identity_service.resolve(
+        db_path,
+        _WEB_DASHBOARD_TELEGRAM_ID,
+        _WEB_ADMIN_COMPANY_ID,
+    )
+
+
+def require_web_management_identity(
+    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
+    authorization_service: WebAuthorizationService = Depends(
+        get_web_authorization_service
+    ),
+) -> WebIdentity:
+    """Require manager/admin permission for a resolved Web identity."""
+    if identity is None or not authorization_service.can_manage_learning(identity):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return identity
 
 
 def _resolve_dashboard_telegram_id(
