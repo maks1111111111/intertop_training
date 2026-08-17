@@ -51,6 +51,22 @@ def upsert_telegram_user(
         )
 
 
+
+def get_user_by_id(
+    db_path: Path,
+    user_id: int,
+) -> Optional[sqlite3.Row]:
+    with get_connection(db_path) as connection:
+        return connection.execute(
+            """
+            SELECT *
+            FROM users
+            WHERE id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+
+
 def get_user_by_telegram_id(
     db_path: Path,
     telegram_id: int,

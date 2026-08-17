@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.database.db import (
+    get_user_by_id,
     get_user_by_telegram_id,
     upsert_telegram_user,
 )
@@ -9,6 +10,16 @@ from app.database.db import (
 
 class UserRepository:
     """Отвечает за работу с данными пользователей."""
+
+    def get_by_id(
+        self,
+        db_path: Path,
+        user_id: int,
+    ):
+        return get_user_by_id(
+            db_path=db_path,
+            user_id=user_id,
+        )
 
     def get_by_telegram_id(
         self,

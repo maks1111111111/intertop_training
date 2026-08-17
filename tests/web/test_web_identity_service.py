@@ -223,6 +223,106 @@ class WebIdentityServiceTests(unittest.TestCase):
         self.assertEqual(identity_a.role, "student")
         self.assertEqual(identity_b.role, "admin")
 
+    def test_resolve_user_supports_password_only_user(self) -> None:
+        self._create_company("intertop", "Intertop Retail")
+
+        with get_connection(self.db_path) as connection:
+            user_id = int(
+                connection.execute(
+                    """
+                    INSERT INTO users (
+                        telegram_id,
+                        username,
+                        first_name,
+                        last_name
+                    )
+                    VALUES (NULL, ?, ?, ?)
+                    """,
+                    ("web-only", "Web", "Only"),
+                ).lastrowid
+            )
+
+        self._add_membership(
+            "intertop",
+            user_id,
+            role="manager",
+        )
+
+        identity = self.service.resolve_user(
+            self.db_path,
+            user_id,
+            "intertop",
+        )
+
+        self.assertIsNotNone(identity)
+        assert identity is not None
+        self.assertEqual(identity.user_id, user_id)
+        self.assertIsNone(identity.telegram_id)
+        self.assertEqual(identity.company_id, "intertop")
+        self.assertEqual(identity.role, "manager")
+
+    def test_resolve_user_existing_telegram_user_preserves_telegram_id(self) -> None:
+        self._create_company("intertop", "Intertop Retail")
+        user_id = self._create_user(telegram_id=3013)
+        self._add_membership("intertop", user_id, role="student")
+
+        identity = self.service.resolve_user(
+            self.db_path,
+            user_id,
+            "intertop",
+        )
+
+        self.assertIsNotNone(identity)
+        assert identity is not None
+        self.assertEqual(identity.user_id, user_id)
+        self.assertEqual(identity.telegram_id, 3013)
+
+    def test_resolve_user_unknown_user_returns_none(self) -> None:
+        self._create_company("intertop", "Intertop Retail")
+
+        self.assertIsNone(
+            self.service.resolve_user(
+                self.db_path,
+                999999,
+                "intertop",
+            )
+        )
+
+    def test_resolve_user_inactive_user_returns_none(self) -> None:
+        self._create_company("intertop", "Intertop Retail")
+        user_id = self._create_user(telegram_id=3014, active=False)
+        self._add_membership("intertop", user_id)
+
+        self.assertIsNone(
+            self.service.resolve_user(
+                self.db_path,
+                user_id,
+                "intertop",
+            )
+        )
+
+    def test_resolve_user_missing_membership_returns_none(self) -> None:
+        self._create_company("intertop", "Intertop Retail")
+        user_id = self._create_user(telegram_id=3015)
+
+        self.assertIsNone(
+            self.service.resolve_user(
+                self.db_path,
+                user_id,
+                "intertop",
+            )
+        )
+
+    def test_resolve_user_invalid_ids_rejected(self) -> None:
+        for invalid in (0, -1, True, "1"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    self.service.resolve_user(
+                        self.db_path,
+                        invalid,  # type: ignore[arg-type]
+                        "intertop",
+                    )
+
     def test_membership_role_overrides_global_users_role(self) -> None:
         self._create_company("intertop", "Intertop Retail")
         user_id = self._create_user(telegram_id=3009, global_role="admin")
