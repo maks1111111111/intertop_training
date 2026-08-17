@@ -685,6 +685,146 @@ class WebQuizUiTests(unittest.TestCase):
         self.assertIn("Тест не пройден", html)
         self.assertIn("Ответ не выбран", html)
 
+    def test_quiz_submission_persists_canonical_user_attempt(self) -> None:
+        response = self.client.post(
+            "/courses/quiz-course/quiz",
+            data={"answer_q1": "b", "answer_q2": "d"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        with get_connection(self.db_path) as connection:
+            user = connection.execute(
+                """
+                SELECT id
+                FROM users
+                WHERE telegram_id = ?
+                """,
+                (_WEB_TEST_TELEGRAM_ID,),
+            ).fetchone()
+            self.assertIsNotNone(user)
+            assert user is not None
+
+            attempt = connection.execute(
+                """
+                SELECT *
+                FROM quiz_attempts
+                WHERE user_id = ?
+                  AND course_slug = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (int(user["id"]), "quiz-course"),
+            ).fetchone()
+
+            self.assertIsNotNone(attempt)
+            assert attempt is not None
+            self.assertIsNotNone(attempt["finished_at"])
+            self.assertEqual(int(attempt["questions_count"]), 2)
+            self.assertEqual(int(attempt["correct_answers"]), 2)
+            self.assertEqual(float(attempt["score_percent"]), 100.0)
+            self.assertEqual(int(attempt["passed"]), 1)
+
+            answers = connection.execute(
+                """
+                SELECT question_id, selected_option_id, is_correct
+                FROM quiz_answers
+                WHERE attempt_id = ?
+                ORDER BY question_id
+                """,
+                (int(attempt["id"]),),
+            ).fetchall()
+
+        self.assertEqual(len(answers), 2)
+        self.assertEqual(
+            [
+                (
+                    str(row["question_id"]),
+                    str(row["selected_option_id"]),
+                    int(row["is_correct"]),
+                )
+                for row in answers
+            ],
+            [
+                ("q1", "b", 1),
+                ("q2", "d", 1),
+            ],
+        )
+
+    def test_quiz_submission_persists_unanswered_as_wrong_via_attempt_total(self) -> None:
+        response = self.client.post(
+            "/courses/quiz-course/quiz",
+            data={"answer_q1": "b"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        with get_connection(self.db_path) as connection:
+            attempt = connection.execute(
+                """
+                SELECT quiz_attempts.*
+                FROM quiz_attempts
+                JOIN users
+                    ON users.id = quiz_attempts.user_id
+                WHERE users.telegram_id = ?
+                  AND quiz_attempts.course_slug = ?
+                ORDER BY quiz_attempts.id DESC
+                LIMIT 1
+                """,
+                (_WEB_TEST_TELEGRAM_ID, "quiz-course"),
+            ).fetchone()
+
+            self.assertIsNotNone(attempt)
+            assert attempt is not None
+
+            answer_count = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM quiz_answers
+                WHERE attempt_id = ?
+                """,
+                (int(attempt["id"]),),
+            ).fetchone()[0]
+
+        self.assertEqual(int(answer_count), 1)
+        self.assertEqual(int(attempt["questions_count"]), 2)
+        self.assertEqual(int(attempt["correct_answers"]), 1)
+        self.assertEqual(float(attempt["score_percent"]), 50.0)
+        self.assertEqual(int(attempt["passed"]), 0)
+
+    def test_fake_option_is_persisted_as_incorrect(self) -> None:
+        response = self.client.post(
+            "/courses/quiz-course/quiz",
+            data={"answer_q1": "fake", "answer_q2": "d"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    quiz_answers.selected_option_id,
+                    quiz_answers.is_correct
+                FROM quiz_answers
+                JOIN quiz_attempts
+                    ON quiz_attempts.id = quiz_answers.attempt_id
+                JOIN users
+                    ON users.id = quiz_attempts.user_id
+                WHERE users.telegram_id = ?
+                  AND quiz_attempts.course_slug = ?
+                  AND quiz_answers.question_id = ?
+                ORDER BY quiz_attempts.id DESC
+                LIMIT 1
+                """,
+                (_WEB_TEST_TELEGRAM_ID, "quiz-course", "q1"),
+            ).fetchone()
+
+        self.assertIsNotNone(row)
+        assert row is not None
+        self.assertEqual(str(row["selected_option_id"]), "fake")
+        self.assertEqual(int(row["is_correct"]), 0)
+
     def test_unknown_course_quiz_returns_html_404(self) -> None:
         response = self.client.get("/courses/missing/quiz")
 

@@ -2982,6 +2982,8 @@ async def quiz_submit_page(
     slug: str,
     request: Request,
     content_runtime: ContentRuntime = Depends(get_content_runtime),
+    db_path: Path = Depends(get_db_path),
+    web_identity_service: WebIdentityService = Depends(get_web_identity_service),
 ) -> HTMLResponse:
     """Score submitted quiz answers and render the result page."""
     course = content_runtime.get_course(slug)
@@ -3010,6 +3012,40 @@ async def quiz_submit_page(
     form_data = await request.form()
     answers = _parse_quiz_answers(form_data)
     result = score_web_quiz(course.quiz, answers)
+
+    user_id = _resolve_dashboard_user_id(
+        db_path,
+        web_identity_service,
+    )
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    attempt_id = quiz_repository.create_attempt_for_user(
+        db_path,
+        user_id=user_id,
+        course_slug=course.slug,
+        quiz_version=course.quiz.version,
+        questions_count=result.questions_count,
+    )
+    if attempt_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    for review in result.reviews:
+        if review.selected_option_id is None:
+            continue
+        quiz_repository.save_answer(
+            db_path,
+            attempt_id=attempt_id,
+            question_id=review.question_id,
+            selected_option_id=review.selected_option_id,
+            is_correct=review.is_correct,
+        )
+
+    quiz_repository.finish_attempt(
+        db_path,
+        attempt_id,
+        passing_score=result.passing_score,
+    )
 
     return templates.TemplateResponse(
         request,

@@ -38,9 +38,11 @@ class QuizPageView:
 
 @dataclass(frozen=True)
 class QuizQuestionReviewView:
-    """Per-question review shown after submission."""
+    """Per-question review shown after submission and used for persistence."""
 
+    question_id: str
     question_text: str
+    selected_option_id: Optional[str]
     selected_option_text: Optional[str]
     is_correct: bool
 
@@ -166,7 +168,9 @@ def score_web_quiz(quiz: Quiz, answers: dict[str, str]) -> WebQuizResult:
 
         reviews.append(
             QuizQuestionReviewView(
+                question_id=question.id,
                 question_text=question.text,
+                selected_option_id=selected_option_id,
                 selected_option_text=selected_text,
                 is_correct=is_correct,
             )
