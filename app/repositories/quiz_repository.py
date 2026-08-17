@@ -305,3 +305,197 @@ def get_course_quiz_stats(
         latest_passed=bool(latest["passed"]),
         ever_passed=bool(aggregate["ever_passed"]),
     )
+def _validate_user_id(user_id: int) -> int:
+    """Validate a canonical database user id."""
+    if not isinstance(user_id, int) or isinstance(user_id, bool):
+        raise ValueError("user_id must be an integer")
+    if user_id <= 0:
+        raise ValueError("user_id must be a positive integer")
+    return user_id
+
+
+def create_attempt_for_user(
+    db_path: Path,
+    user_id: int,
+    course_slug: str,
+    quiz_version: int,
+    questions_count: int,
+) -> Optional[int]:
+    """Create or return the active quiz attempt for a canonical user."""
+    normalized_user_id = _validate_user_id(user_id)
+
+    with get_connection(db_path) as connection:
+        active_attempt = connection.execute(
+            """
+            SELECT id
+            FROM quiz_attempts
+            WHERE user_id = ?
+              AND course_slug = ?
+              AND finished_at IS NULL
+            ORDER BY started_at DESC, id DESC
+            LIMIT 1
+            """,
+            (
+                normalized_user_id,
+                course_slug,
+            ),
+        ).fetchone()
+
+        if active_attempt is not None:
+            return int(active_attempt["id"])
+
+        cursor = connection.execute(
+            """
+            INSERT INTO quiz_attempts (
+                user_id,
+                course_slug,
+                quiz_version,
+                started_at,
+                questions_count
+            )
+            SELECT
+                users.id,
+                ?,
+                ?,
+                CURRENT_TIMESTAMP,
+                ?
+            FROM users
+            WHERE users.id = ?
+            """,
+            (
+                course_slug,
+                quiz_version,
+                questions_count,
+                normalized_user_id,
+            ),
+        )
+
+        if cursor.rowcount == 0:
+            return None
+
+        return int(cursor.lastrowid)
+
+
+def get_active_attempt_for_user(
+    db_path: Path,
+    user_id: int,
+    course_slug: str,
+) -> Optional[sqlite3.Row]:
+    """Return the active quiz attempt for a canonical user."""
+    normalized_user_id = _validate_user_id(user_id)
+
+    with get_connection(db_path) as connection:
+        return connection.execute(
+            """
+            SELECT *
+            FROM quiz_attempts
+            WHERE user_id = ?
+              AND course_slug = ?
+              AND finished_at IS NULL
+            ORDER BY started_at DESC, id DESC
+            LIMIT 1
+            """,
+            (
+                normalized_user_id,
+                course_slug,
+            ),
+        ).fetchone()
+
+
+def get_finished_attempts_for_user(
+    db_path: Path,
+    user_id: int,
+    course_slug: str,
+    limit: int = 10,
+) -> list[sqlite3.Row]:
+    """Return finished quiz attempts for a canonical user."""
+    normalized_user_id = _validate_user_id(user_id)
+
+    if limit <= 0:
+        return []
+
+    with get_connection(db_path) as connection:
+        return connection.execute(
+            """
+            SELECT *
+            FROM quiz_attempts
+            WHERE user_id = ?
+              AND course_slug = ?
+              AND finished_at IS NOT NULL
+            ORDER BY finished_at DESC, id DESC
+            LIMIT ?
+            """,
+            (
+                normalized_user_id,
+                course_slug,
+                limit,
+            ),
+        ).fetchall()
+
+
+def get_course_quiz_stats_for_user(
+    db_path: Path,
+    user_id: int,
+    course_slug: str,
+) -> CourseQuizStats:
+    """Return quiz statistics for one canonical user and course."""
+    normalized_user_id = _validate_user_id(user_id)
+    params = (
+        normalized_user_id,
+        course_slug,
+    )
+
+    with get_connection(db_path) as connection:
+        aggregate = connection.execute(
+            """
+            SELECT
+                COUNT(*) AS attempts_count,
+                MAX(score_percent) AS best_score_percent,
+                AVG(score_percent) AS average_score_percent,
+                MAX(passed) AS ever_passed
+            FROM quiz_attempts
+            WHERE user_id = ?
+              AND course_slug = ?
+              AND finished_at IS NOT NULL
+            """,
+            params,
+        ).fetchone()
+
+        latest = connection.execute(
+            """
+            SELECT
+                score_percent,
+                finished_at,
+                passed
+            FROM quiz_attempts
+            WHERE user_id = ?
+              AND course_slug = ?
+              AND finished_at IS NOT NULL
+            ORDER BY finished_at DESC, id DESC
+            LIMIT 1
+            """,
+            params,
+        ).fetchone()
+
+    attempts_count = int(aggregate["attempts_count"])
+
+    if attempts_count == 0:
+        return CourseQuizStats(
+            attempts_count=0,
+            best_score_percent=None,
+            average_score_percent=None,
+            latest_score_percent=None,
+            latest_finished_at=None,
+            latest_passed=False,
+            ever_passed=False,
+        )
+
+    return CourseQuizStats(
+        attempts_count=attempts_count,
+        best_score_percent=float(aggregate["best_score_percent"]),
+        average_score_percent=float(aggregate["average_score_percent"]),
+        latest_score_percent=float(latest["score_percent"]),
+        latest_finished_at=str(latest["finished_at"]),
+        latest_passed=bool(latest["passed"]),
+        ever_passed=bool(aggregate["ever_passed"]),
+    )
