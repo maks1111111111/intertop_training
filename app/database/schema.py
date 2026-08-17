@@ -8,7 +8,7 @@ def create_tables(connection: sqlite3.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            telegram_id INTEGER NOT NULL UNIQUE,
+            telegram_id INTEGER UNIQUE,
             username TEXT,
             first_name TEXT,
             last_name TEXT,

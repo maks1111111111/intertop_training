@@ -13,8 +13,107 @@ def _get_table_columns(
     return {row["name"]: row for row in rows}
 
 
+def _rebuild_users_with_optional_telegram_id(
+    connection: sqlite3.Connection,
+    columns: Dict[str, sqlite3.Row],
+) -> None:
+    """Rebuild legacy users while preserving canonical ids and foreign keys."""
+    foreign_keys_enabled = bool(
+        connection.execute("PRAGMA foreign_keys").fetchone()[0]
+    )
+    if connection.in_transaction:
+        raise RuntimeError("users migration requires no active transaction")
+
+    if foreign_keys_enabled:
+        connection.execute("PRAGMA foreign_keys = OFF")
+
+    def source(
+        column_name: str,
+        fallback_sql: str,
+        *,
+        coalesce: bool = False,
+    ) -> str:
+        if column_name not in columns:
+            return fallback_sql
+        if coalesce:
+            return f"COALESCE({column_name}, {fallback_sql})"
+        return column_name
+
+    try:
+        connection.execute("BEGIN")
+        connection.execute(
+            """
+            CREATE TABLE users_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER UNIQUE,
+                username TEXT,
+                first_name TEXT,
+                last_name TEXT,
+                role TEXT NOT NULL DEFAULT 'student',
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.execute(
+            f"""
+            INSERT INTO users_new (
+                id,
+                telegram_id,
+                username,
+                first_name,
+                last_name,
+                role,
+                is_active,
+                created_at,
+                updated_at
+            )
+            SELECT
+                id,
+                telegram_id,
+                {source("username", "NULL")},
+                {source("first_name", "NULL")},
+                {source("last_name", "NULL")},
+                {source("role", "'student'", coalesce=True)},
+                {source("is_active", "1", coalesce=True)},
+                {source("created_at", "CURRENT_TIMESTAMP", coalesce=True)},
+                {source("updated_at", "CURRENT_TIMESTAMP", coalesce=True)}
+            FROM users
+            """
+        )
+        connection.execute("DROP TABLE users")
+        connection.execute("ALTER TABLE users_new RENAME TO users")
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_users_telegram_id
+            ON users(telegram_id)
+            """
+        )
+
+        violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            raise RuntimeError(
+                "users migration produced foreign key violations"
+            )
+
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        if foreign_keys_enabled:
+            connection.execute("PRAGMA foreign_keys = ON")
+
+
 def migrate_users_table(connection: sqlite3.Connection) -> None:
+    """Make users channel-agnostic while preserving legacy Telegram users."""
     columns = _get_table_columns(connection, "users")
+    telegram_id_column = columns.get("telegram_id")
+
+    if telegram_id_column is not None and bool(telegram_id_column["notnull"]):
+        _rebuild_users_with_optional_telegram_id(connection, columns)
+        return
 
     if "role" not in columns:
         connection.execute(
@@ -39,6 +138,13 @@ def migrate_users_table(connection: sqlite3.Connection) -> None:
             ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             """
         )
+
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_users_telegram_id
+        ON users(telegram_id)
+        """
+    )
 
 
 def migrate_lessons_table(connection: sqlite3.Connection) -> None:
