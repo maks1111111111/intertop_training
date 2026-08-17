@@ -48,24 +48,30 @@ class DashboardService:
         self._quiz_repository = quiz_repository
         self._db_path = db_path
 
-    def get_courses_for_user(self, telegram_id: int) -> tuple[CourseDashboardItem, ...]:
-        """Return dashboard rows for *telegram_id*."""
+    def get_courses_for_user(self, user_id: int) -> tuple[CourseDashboardItem, ...]:
+        """Return dashboard rows for one canonical user id."""
+        normalized_user_id = _validate_user_id(user_id)
+
         items: list[CourseDashboardItem] = []
         for course in self._runtime.get_courses():
-            status, progress_percent = self._progress_repository.get_course_progress(
+            status, progress_percent = (
+                self._progress_repository.get_course_progress_for_user(
+                    self._db_path,
+                    normalized_user_id,
+                    course.slug,
+                )
+            )
+            quiz_stats = self._quiz_repository.get_course_quiz_stats_for_user(
                 self._db_path,
-                telegram_id,
+                normalized_user_id,
                 course.slug,
             )
-            quiz_stats = self._quiz_repository.get_course_quiz_stats(
-                self._db_path,
-                telegram_id,
-                course.slug,
-            )
-            resume_lesson_index = self._progress_repository.get_resume_lesson_index(
-                self._db_path,
-                telegram_id,
-                course.slug,
+            resume_lesson_index = (
+                self._progress_repository.get_resume_lesson_index_for_user(
+                    self._db_path,
+                    normalized_user_id,
+                    course.slug,
+                )
             )
 
             items.append(
@@ -88,6 +94,15 @@ class DashboardService:
 
         return tuple(items)
 
+
+
+def _validate_user_id(user_id: int) -> int:
+    """Validate a canonical database user id."""
+    if not isinstance(user_id, int) or isinstance(user_id, bool):
+        raise ValueError("user_id must be an integer")
+    if user_id <= 0:
+        raise ValueError("user_id must be a positive integer")
+    return user_id
 
 def _last_lesson_title(course: Course, resume_lesson_index: int) -> str:
     """Return the title of the last completed lesson, if any."""

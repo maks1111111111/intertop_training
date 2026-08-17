@@ -201,15 +201,37 @@ def _resolve_dashboard_telegram_id(
     db_path: Path,
     web_identity_service: WebIdentityService,
 ) -> int:
-    """Return the telegram id used for learner dashboard and progress queries."""
+    """Return the temporary Telegram identity used by legacy Web progress."""
     identity = web_identity_service.resolve(
         db_path,
         _WEB_DASHBOARD_TELEGRAM_ID,
         _WEB_ADMIN_COMPANY_ID,
     )
-    if identity is None:
+    if identity is None or identity.telegram_id is None:
         return _WEB_DASHBOARD_TELEGRAM_ID
     return identity.telegram_id
+
+
+def _resolve_dashboard_user_id(
+    db_path: Path,
+    web_identity_service: WebIdentityService,
+) -> Optional[int]:
+    """Return the canonical user id for the current bootstrap Web identity."""
+    identity = web_identity_service.resolve(
+        db_path,
+        _WEB_DASHBOARD_TELEGRAM_ID,
+        _WEB_ADMIN_COMPANY_ID,
+    )
+    if identity is not None:
+        return identity.user_id
+
+    user = UserRepository().get_by_telegram_id(
+        db_path,
+        _WEB_DASHBOARD_TELEGRAM_ID,
+    )
+    if user is None:
+        return None
+    return int(user["id"])
 
 
 def get_web_company_id(
@@ -513,8 +535,12 @@ def dashboard_page(
     web_identity_service: WebIdentityService = Depends(get_web_identity_service),
 ) -> HTMLResponse:
     """Render the student dashboard with course progress and quiz stats."""
-    telegram_id = _resolve_dashboard_telegram_id(db_path, web_identity_service)
-    courses = dashboard_service.get_courses_for_user(telegram_id)
+    user_id = _resolve_dashboard_user_id(db_path, web_identity_service)
+    courses = (
+        dashboard_service.get_courses_for_user(user_id)
+        if user_id is not None
+        else ()
+    )
     return templates.TemplateResponse(
         request,
         "dashboard.html",

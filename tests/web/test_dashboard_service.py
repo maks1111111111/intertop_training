@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from app.content.runtime import ContentRuntime
-from app.database.db import initialize_database, upsert_telegram_user
+from app.database.db import get_connection, initialize_database, upsert_telegram_user
 from app.repositories import quiz_repository
 from app.repositories.progress_repository import ProgressRepository
 from app.services.course_sync import sync_courses
@@ -122,6 +122,16 @@ class CourseDashboardItemTests(unittest.TestCase):
 
 
 class DashboardServiceTests(unittest.TestCase):
+    def _canonical_user_id(self, db_path: Path, telegram_id: int = TELEGRAM_ID) -> int:
+        with get_connection(db_path) as connection:
+            row = connection.execute(
+                "SELECT id FROM users WHERE telegram_id = ?",
+                (telegram_id,),
+            ).fetchone()
+        self.assertIsNotNone(row)
+        assert row is not None
+        return int(row["id"])
+
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
         self.courses_dir = Path(self._tmpdir.name) / "courses"
@@ -145,6 +155,7 @@ class DashboardServiceTests(unittest.TestCase):
 
     def test_get_courses_for_user_empty_runtime(self) -> None:
         db_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(db_tmp.cleanup)
         db_path = Path(db_tmp.name) / "test.db"
         initialize_database(db_path)
         courses_dir = Path(db_tmp.name) / "courses"
@@ -157,16 +168,16 @@ class DashboardServiceTests(unittest.TestCase):
             db_path,
         )
 
-        items = service.get_courses_for_user(telegram_id=TELEGRAM_ID)
+        items = service.get_courses_for_user(user_id=1)
 
         self.assertEqual(items, ())
-        db_tmp.cleanup()
 
     def test_get_courses_for_user_not_started_course(self) -> None:
         _write_minimal_course(self.courses_dir, "alpha")
-        service, _, _ = self._make_service()
+        service, db_path, _ = self._make_service()
+        user_id = self._canonical_user_id(db_path)
 
-        items = service.get_courses_for_user(telegram_id=TELEGRAM_ID)
+        items = service.get_courses_for_user(user_id=user_id)
 
         self.assertEqual(len(items), 1)
         item = items[0]
@@ -182,12 +193,73 @@ class DashboardServiceTests(unittest.TestCase):
 
     def test_get_courses_for_user_returns_dashboard_items(self) -> None:
         _write_minimal_course(self.courses_dir, "alpha")
-        service, _, _ = self._make_service()
+        service, db_path, _ = self._make_service()
+        user_id = self._canonical_user_id(db_path)
 
-        items = service.get_courses_for_user(telegram_id=TELEGRAM_ID)
+        items = service.get_courses_for_user(user_id=user_id)
 
         self.assertEqual(len(items), 1)
         self.assertIsInstance(items[0], CourseDashboardItem)
+
+    def test_password_only_user_dashboard_does_not_require_telegram_id(self) -> None:
+        _write_minimal_course(self.courses_dir, "alpha")
+
+        db_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(db_tmp.cleanup)
+        db_path = Path(db_tmp.name) / "test.db"
+        initialize_database(db_path)
+        sync_courses(self.courses_dir, db_path)
+
+        with get_connection(db_path) as connection:
+            user_id = int(
+                connection.execute(
+                    """
+                    INSERT INTO users (
+                        telegram_id,
+                        username,
+                        first_name,
+                        last_name
+                    )
+                    VALUES (NULL, ?, ?, ?)
+                    """,
+                    ("web-only", "Web", "Only"),
+                ).lastrowid
+            )
+
+        service = DashboardService(
+            ContentRuntime(self.courses_dir),
+            ProgressRepository(),
+            quiz_repository,
+            db_path,
+        )
+
+        items = service.get_courses_for_user(user_id)
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].slug, "alpha")
+        self.assertEqual(items[0].status, "not_started")
+        self.assertEqual(items[0].progress_percent, 0)
+
+    def test_invalid_canonical_user_id_is_rejected(self) -> None:
+        db_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(db_tmp.cleanup)
+        db_path = Path(db_tmp.name) / "test.db"
+        initialize_database(db_path)
+
+        service = DashboardService(
+            ContentRuntime(self.courses_dir),
+            ProgressRepository(),
+            quiz_repository,
+            db_path,
+        )
+
+        for invalid in (0, -1, True, "1"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    service.get_courses_for_user(
+                        invalid  # type: ignore[arg-type]
+                    )
+
 
     def test_service_stores_dependencies(self) -> None:
         runtime = MagicMock(spec=ContentRuntime)
@@ -204,6 +276,16 @@ class DashboardServiceTests(unittest.TestCase):
 
 
 class DashboardServiceIntegrationTests(unittest.TestCase):
+    def _canonical_user_id(self, db_path: Path, telegram_id: int = TELEGRAM_ID) -> int:
+        with get_connection(db_path) as connection:
+            row = connection.execute(
+                "SELECT id FROM users WHERE telegram_id = ?",
+                (telegram_id,),
+            ).fetchone()
+        self.assertIsNotNone(row)
+        assert row is not None
+        return int(row["id"])
+
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
         self.courses_dir = Path(self._tmpdir.name) / "courses"
@@ -236,7 +318,7 @@ class DashboardServiceIntegrationTests(unittest.TestCase):
             "lesson_01",
         )
 
-        item = service.get_courses_for_user(TELEGRAM_ID)[0]
+        item = service.get_courses_for_user(self._canonical_user_id(db_path))[0]
 
         self.assertEqual(item.status, "in_progress")
         self.assertEqual(item.progress_percent, 33)
@@ -295,7 +377,7 @@ class DashboardServiceIntegrationTests(unittest.TestCase):
         )
         quiz_repository.finish_attempt(db_path, int(second_attempt_id))
 
-        item = service.get_courses_for_user(TELEGRAM_ID)[0]
+        item = service.get_courses_for_user(self._canonical_user_id(db_path))[0]
 
         self.assertEqual(item.best_quiz_score, 100.0)
         self.assertEqual(item.last_quiz_score, 100.0)
@@ -304,11 +386,11 @@ class DashboardServiceIntegrationTests(unittest.TestCase):
         _write_multi_lesson_course(self.courses_dir, "alpha")
         service, db_path, progress_repository = self._make_service()
 
-        before = service.get_courses_for_user(TELEGRAM_ID)[0]
+        before = service.get_courses_for_user(self._canonical_user_id(db_path))[0]
         self.assertEqual(before.continue_url, "/courses/alpha")
 
         progress_repository.start_course(db_path, TELEGRAM_ID, "alpha")
-        after_start = service.get_courses_for_user(TELEGRAM_ID)[0]
+        after_start = service.get_courses_for_user(self._canonical_user_id(db_path))[0]
         self.assertEqual(after_start.continue_url, "/courses/alpha/lessons/lesson_01")
 
         progress_repository.complete_lesson(
@@ -317,7 +399,7 @@ class DashboardServiceIntegrationTests(unittest.TestCase):
             "alpha",
             "lesson_01",
         )
-        after_lesson = service.get_courses_for_user(TELEGRAM_ID)[0]
+        after_lesson = service.get_courses_for_user(self._canonical_user_id(db_path))[0]
         self.assertEqual(after_lesson.continue_url, "/courses/alpha/lessons/lesson_02")
 
     def test_completed_course_is_rendered_correctly(self) -> None:
@@ -334,7 +416,7 @@ class DashboardServiceIntegrationTests(unittest.TestCase):
             )
         progress_repository.complete_course(db_path, TELEGRAM_ID, "alpha")
 
-        item = service.get_courses_for_user(TELEGRAM_ID)[0]
+        item = service.get_courses_for_user(self._canonical_user_id(db_path))[0]
 
         self.assertEqual(item.status, "completed")
         self.assertEqual(item.progress_percent, 100)
