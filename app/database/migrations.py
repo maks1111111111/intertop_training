@@ -311,6 +311,37 @@ def migrate_knowledge_document_chunks_table(connection: sqlite3.Connection) -> N
     )
 
 
+def migrate_user_password_credentials_table(
+    connection: sqlite3.Connection,
+) -> None:
+    """Ensure password credentials storage exists for canonical users."""
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS user_password_credentials (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE,
+            email TEXT NOT NULL COLLATE NOCASE UNIQUE,
+            password_hash TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id)
+                REFERENCES users(id)
+                ON DELETE CASCADE,
+            CHECK (length(trim(email)) > 0),
+            CHECK (length(trim(password_hash)) > 0),
+            CHECK (is_active IN (0, 1))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_user_password_credentials_user_id
+            ON user_password_credentials(user_id);
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_user_password_credentials_email
+            ON user_password_credentials(email COLLATE NOCASE);
+        """
+    )
+
+
 def migrate_companies_table(connection: sqlite3.Connection) -> None:
     """Ensure companies and company_memberships tables exist for legacy databases."""
     connection.executescript(
@@ -360,4 +391,5 @@ def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_quiz_answers_unique_question(connection)
     migrate_knowledge_documents_table(connection)
     migrate_knowledge_document_chunks_table(connection)
+    migrate_user_password_credentials_table(connection)
     migrate_companies_table(connection)
