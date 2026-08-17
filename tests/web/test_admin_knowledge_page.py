@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from app.database.db import initialize_database
 from app.knowledge.models import KnowledgeDocumentStatus, KnowledgeSourceType
 from app.repositories import knowledge_document_repository
+from app.web.router import get_web_company_id
 from tests.web.test_web_ui import _create_test_app
 
 
@@ -165,6 +166,20 @@ class AdminKnowledgePageTests(unittest.TestCase):
 
         self.assertIn("Visible Doc", response.text)
         self.assertNotIn("Hidden Doc", response.text)
+
+    def test_knowledge_page_uses_resolved_web_company(self) -> None:
+        self._create_document(company_id="intertop", title="Intertop Doc")
+        self._create_document(company_id="company-b", title="Company B Doc")
+        self.app.dependency_overrides[get_web_company_id] = lambda: "company-b"
+
+        try:
+            response = self.client.get("/admin/knowledge")
+        finally:
+            self.app.dependency_overrides.pop(get_web_company_id, None)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Company B Doc", response.text)
+        self.assertNotIn("Intertop Doc", response.text)
 
     def test_admin_dashboard_links_to_knowledge_page(self) -> None:
         response = self.client.get("/admin")

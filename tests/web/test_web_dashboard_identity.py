@@ -14,7 +14,7 @@ from app.database.db import get_connection
 from app.repositories.company_membership_repository import CompanyMembershipRepository
 from app.repositories.company_repository import CompanyRepository
 from app.repositories.progress_repository import ProgressRepository
-from app.web.router import get_web_identity_service
+from app.web.router import get_web_company_id, get_web_identity_service
 from app.web.web_identity_service import WebIdentity, WebIdentityService
 from tests.web.test_web_ui import (
     _WEB_TEST_TELEGRAM_ID,
@@ -144,6 +144,33 @@ class WebDashboardIdentityRouterTests(unittest.TestCase):
         service = get_web_identity_service()
 
         self.assertIsInstance(service, WebIdentityService)
+
+    def test_web_company_id_uses_resolved_identity_tenant(self) -> None:
+        fake_service = MagicMock(spec=WebIdentityService)
+        fake_service.resolve.return_value = WebIdentity(
+            user_id=10,
+            telegram_id=_WEB_TEST_TELEGRAM_ID,
+            company_id="company-b",
+            company_name="Company B",
+            role="admin",
+        )
+
+        company_id = get_web_company_id(self.db_path, fake_service)
+
+        self.assertEqual(company_id, "company-b")
+        fake_service.resolve.assert_called_once_with(
+            self.db_path,
+            _WEB_TEST_TELEGRAM_ID,
+            "intertop",
+        )
+
+    def test_web_company_id_falls_back_until_web_authentication_exists(self) -> None:
+        fake_service = MagicMock(spec=WebIdentityService)
+        fake_service.resolve.return_value = None
+
+        company_id = get_web_company_id(self.db_path, fake_service)
+
+        self.assertEqual(company_id, "intertop")
 
 
 class WebDashboardIdentityMembershipTests(unittest.TestCase):

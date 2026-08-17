@@ -182,6 +182,21 @@ def _resolve_dashboard_telegram_id(
     return identity.telegram_id
 
 
+def get_web_company_id(
+    db_path: Path = Depends(get_db_path),
+    web_identity_service: WebIdentityService = Depends(get_web_identity_service),
+) -> str:
+    """Return the tenant company id for the current Web identity."""
+    identity = web_identity_service.resolve(
+        db_path,
+        _WEB_DASHBOARD_TELEGRAM_ID,
+        _WEB_ADMIN_COMPANY_ID,
+    )
+    if identity is None:
+        return _WEB_ADMIN_COMPANY_ID
+    return identity.company_id
+
+
 def get_progress_service(
     db_path: Path = Depends(get_db_path),
     web_identity_service: WebIdentityService = Depends(get_web_identity_service),
@@ -502,11 +517,12 @@ def admin_dashboard_page(
 def _render_admin_knowledge_page(
     request: Request,
     knowledge_service: AdminKnowledgeService,
+    company_id: str,
     *,
     error_message: str = "",
 ) -> HTMLResponse:
     """Render the admin Knowledge Base document list."""
-    documents = knowledge_service.get_documents(_WEB_ADMIN_COMPANY_ID)
+    documents = knowledge_service.get_documents(company_id)
     return templates.TemplateResponse(
         request,
         "admin_knowledge.html",
@@ -523,9 +539,10 @@ def _render_admin_knowledge_page(
 def admin_knowledge_page(
     request: Request,
     knowledge_service: AdminKnowledgeService = Depends(get_admin_knowledge_service),
+    company_id: str = Depends(get_web_company_id),
 ) -> HTMLResponse:
     """Render the admin Knowledge Base document list."""
-    return _render_admin_knowledge_page(request, knowledge_service)
+    return _render_admin_knowledge_page(request, knowledge_service, company_id)
 
 
 @router.post(
@@ -540,14 +557,16 @@ def admin_knowledge_publish(
     lifecycle_service: AdminKnowledgeLifecycleService = Depends(
         get_admin_knowledge_lifecycle_service
     ),
+    company_id: str = Depends(get_web_company_id),
 ) -> HTMLResponse:
     """Publish one Knowledge Base document."""
     try:
-        lifecycle_service.publish(_WEB_ADMIN_COMPANY_ID, document_id)
+        lifecycle_service.publish(company_id, document_id)
     except AdminKnowledgeLifecycleError as exc:
         return _render_admin_knowledge_page(
             request,
             knowledge_service,
+            company_id,
             error_message=exc.message,
         )
 
@@ -566,14 +585,16 @@ def admin_knowledge_archive(
     lifecycle_service: AdminKnowledgeLifecycleService = Depends(
         get_admin_knowledge_lifecycle_service
     ),
+    company_id: str = Depends(get_web_company_id),
 ) -> HTMLResponse:
     """Archive one Knowledge Base document."""
     try:
-        lifecycle_service.archive(_WEB_ADMIN_COMPANY_ID, document_id)
+        lifecycle_service.archive(company_id, document_id)
     except AdminKnowledgeLifecycleError as exc:
         return _render_admin_knowledge_page(
             request,
             knowledge_service,
+            company_id,
             error_message=exc.message,
         )
 
@@ -622,6 +643,7 @@ async def admin_knowledge_ask_submit(
     question_service: AdminKnowledgeQuestionService = Depends(
         get_admin_knowledge_question_service
     ),
+    company_id: str = Depends(get_web_company_id),
 ) -> HTMLResponse:
     """Answer one grounded Knowledge Base question for the admin UI."""
     form = await request.form()
@@ -630,7 +652,7 @@ async def admin_knowledge_ask_submit(
 
     try:
         answer_view = question_service.answer_question(
-            _WEB_ADMIN_COMPANY_ID,
+            company_id,
             question,
             language=language,
         )
@@ -690,6 +712,7 @@ async def admin_knowledge_upload_submit(
     upload_service: AdminKnowledgeUploadService = Depends(
         get_admin_knowledge_upload_service
     ),
+    company_id: str = Depends(get_web_company_id),
 ) -> HTMLResponse:
     """Validate and import one uploaded Knowledge Base document."""
     form = await request.form()
@@ -709,7 +732,7 @@ async def admin_knowledge_upload_submit(
     content = await upload_file.read()
     try:
         upload_service.import_upload(
-            company_id=_WEB_ADMIN_COMPANY_ID,
+            company_id=company_id,
             filename=filename,
             content=content,
             title=title or None,
@@ -735,11 +758,12 @@ def admin_knowledge_document_page(
     request: Request,
     document_id: str,
     knowledge_service: AdminKnowledgeService = Depends(get_admin_knowledge_service),
+    company_id: str = Depends(get_web_company_id),
     chunk: Optional[int] = None,
 ) -> HTMLResponse:
     """Render one tenant-scoped Knowledge Base document."""
     detail = knowledge_service.get_document_detail(
-        _WEB_ADMIN_COMPANY_ID,
+        company_id,
         document_id,
         focus_chunk_index=chunk,
     )
