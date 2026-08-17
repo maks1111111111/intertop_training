@@ -243,6 +243,312 @@ class ProgressRepository:
                 int(row["progress_percent"]),
             )
 
+    def start_course_for_user(
+        self,
+        db_path: Path,
+        user_id: int,
+        course_slug: str,
+    ) -> None:
+        """Start or resume a course for one canonical user id."""
+        normalized_user_id = _validate_user_id(user_id)
+
+        with get_connection(db_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO enrollments (
+                    user_id,
+                    course_id,
+                    status,
+                    progress_percent,
+                    started_at
+                )
+                SELECT
+                    ?,
+                    courses.id,
+                    'in_progress',
+                    0,
+                    CURRENT_TIMESTAMP
+                FROM courses
+                WHERE courses.slug = ?
+                  AND EXISTS (
+                      SELECT 1
+                      FROM users
+                      WHERE users.id = ?
+                  )
+                ON CONFLICT(user_id, course_id) DO UPDATE SET
+                    status = CASE
+                        WHEN enrollments.status = 'completed'
+                            THEN enrollments.status
+                        ELSE 'in_progress'
+                    END,
+                    started_at = COALESCE(
+                        enrollments.started_at,
+                        CURRENT_TIMESTAMP
+                    )
+                """,
+                (
+                    normalized_user_id,
+                    course_slug,
+                    normalized_user_id,
+                ),
+            )
+
+    def get_resume_lesson_index_for_user(
+        self,
+        db_path: Path,
+        user_id: int,
+        course_slug: str,
+    ) -> int:
+        """Return completed lesson count for one canonical user id."""
+        normalized_user_id = _validate_user_id(user_id)
+
+        with get_connection(db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS completed_count
+                FROM lesson_progress
+                JOIN lessons
+                    ON lessons.id = lesson_progress.lesson_id
+                JOIN courses
+                    ON courses.id = lessons.course_id
+                WHERE lesson_progress.user_id = ?
+                  AND courses.slug = ?
+                  AND lesson_progress.status = 'completed'
+                """,
+                (
+                    normalized_user_id,
+                    course_slug,
+                ),
+            ).fetchone()
+
+        if row is None:
+            return 0
+
+        return int(row["completed_count"])
+
+    def complete_lesson_for_user(
+        self,
+        db_path: Path,
+        user_id: int,
+        course_slug: str,
+        lesson_slug: str,
+    ) -> None:
+        """Complete one lesson for a canonical user id."""
+        normalized_user_id = _validate_user_id(user_id)
+
+        with get_connection(db_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO lesson_progress (
+                    user_id,
+                    lesson_id,
+                    status,
+                    started_at,
+                    completed_at
+                )
+                SELECT
+                    ?,
+                    lessons.id,
+                    'completed',
+                    CURRENT_TIMESTAMP,
+                    CURRENT_TIMESTAMP
+                FROM courses
+                JOIN lessons
+                    ON lessons.course_id = courses.id
+                   AND lessons.slug = ?
+                WHERE courses.slug = ?
+                  AND EXISTS (
+                      SELECT 1
+                      FROM users
+                      WHERE users.id = ?
+                  )
+                ON CONFLICT(user_id, lesson_id) DO UPDATE SET
+                    status = 'completed',
+                    started_at = COALESCE(
+                        lesson_progress.started_at,
+                        CURRENT_TIMESTAMP
+                    ),
+                    completed_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    normalized_user_id,
+                    lesson_slug,
+                    course_slug,
+                    normalized_user_id,
+                ),
+            )
+
+            totals = connection.execute(
+                """
+                SELECT
+                    courses.id AS course_id,
+                    COUNT(lessons.id) AS total_lessons,
+                    SUM(
+                        CASE
+                            WHEN lesson_progress.status = 'completed'
+                                THEN 1
+                            ELSE 0
+                        END
+                    ) AS completed_lessons
+                FROM courses
+                JOIN lessons
+                    ON lessons.course_id = courses.id
+                LEFT JOIN lesson_progress
+                    ON lesson_progress.lesson_id = lessons.id
+                   AND lesson_progress.user_id = ?
+                WHERE courses.slug = ?
+                GROUP BY courses.id
+                """,
+                (
+                    normalized_user_id,
+                    course_slug,
+                ),
+            ).fetchone()
+
+            if totals is None or int(totals["total_lessons"]) == 0:
+                return
+
+            progress_percent = round(
+                int(totals["completed_lessons"])
+                * 100
+                / int(totals["total_lessons"])
+            )
+
+            connection.execute(
+                """
+                UPDATE enrollments
+                SET progress_percent = ?
+                WHERE user_id = ?
+                  AND course_id = ?
+                """,
+                (
+                    progress_percent,
+                    normalized_user_id,
+                    totals["course_id"],
+                ),
+            )
+
+    def complete_course_for_user(
+        self,
+        db_path: Path,
+        user_id: int,
+        course_slug: str,
+    ) -> None:
+        """Mark one canonical user's course enrollment completed."""
+        normalized_user_id = _validate_user_id(user_id)
+
+        with get_connection(db_path) as connection:
+            connection.execute(
+                """
+                UPDATE enrollments
+                SET status = 'completed',
+                    progress_percent = 100,
+                    completed_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+                  AND course_id = (
+                      SELECT id
+                      FROM courses
+                      WHERE slug = ?
+                  )
+                """,
+                (
+                    normalized_user_id,
+                    course_slug,
+                ),
+            )
+
+    def get_course_progress_for_user(
+        self,
+        db_path: Path,
+        user_id: int,
+        course_slug: str,
+    ) -> Optional[Tuple[str, int]]:
+        """Return course progress for one canonical user id."""
+        normalized_user_id = _validate_user_id(user_id)
+
+        with get_connection(db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    enrollments.status,
+                    enrollments.progress_percent
+                FROM enrollments
+                JOIN courses
+                    ON courses.id = enrollments.course_id
+                WHERE enrollments.user_id = ?
+                  AND courses.slug = ?
+                """,
+                (
+                    normalized_user_id,
+                    course_slug,
+                ),
+            ).fetchone()
+
+        if row is None:
+            return "not_started", 0
+
+        return (
+            str(row["status"]),
+            int(row["progress_percent"]),
+        )
+
+    def get_latest_in_progress_course_for_user(
+        self,
+        db_path: Path,
+        user_id: int,
+    ) -> Optional[Tuple[str, int]]:
+        """Return the latest active course for one canonical user id."""
+        normalized_user_id = _validate_user_id(user_id)
+
+        with get_connection(db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    courses.slug,
+                    enrollments.progress_percent
+                FROM enrollments
+                JOIN courses
+                    ON courses.id = enrollments.course_id
+                LEFT JOIN (
+                    SELECT
+                        lesson_progress.user_id,
+                        lessons.course_id,
+                        MAX(
+                            COALESCE(
+                                lesson_progress.completed_at,
+                                lesson_progress.started_at
+                            )
+                        ) AS last_activity_at
+                    FROM lesson_progress
+                    JOIN lessons
+                        ON lessons.id = lesson_progress.lesson_id
+                    GROUP BY
+                        lesson_progress.user_id,
+                        lessons.course_id
+                ) AS activity
+                    ON activity.user_id = enrollments.user_id
+                   AND activity.course_id = enrollments.course_id
+                WHERE enrollments.user_id = ?
+                  AND enrollments.status = 'in_progress'
+                ORDER BY
+                    COALESCE(
+                        activity.last_activity_at,
+                        enrollments.started_at
+                    ) DESC,
+                    courses.id DESC
+                LIMIT 1
+                """,
+                (normalized_user_id,),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return (
+            str(row["slug"]),
+            int(row["progress_percent"]),
+        )
+
     def get_latest_in_progress_course(
         self,
         db_path: Path,
@@ -298,3 +604,12 @@ class ProgressRepository:
                 str(row["slug"]),
                 int(row["progress_percent"]),
             )
+
+
+def _validate_user_id(user_id: int) -> int:
+    """Validate a canonical database user id."""
+    if not isinstance(user_id, int) or isinstance(user_id, bool):
+        raise ValueError("user_id must be an integer")
+    if user_id <= 0:
+        raise ValueError("user_id must be a positive integer")
+    return user_id
