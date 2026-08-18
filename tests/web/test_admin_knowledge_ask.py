@@ -10,6 +10,9 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from app.web.router import get_current_web_identity
+from app.web.web_identity_service import WebIdentity
+
 from app.web.admin_knowledge_question_service import (
     AdminKnowledgeAnswerSource,
     AdminKnowledgeAnswerSourceGroup,
@@ -116,8 +119,16 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         self.fake_service = _RecordingQuestionService()
         self.app.state.admin_knowledge_question_service = self.fake_service
         self.client = TestClient(self.app)
+        self.app.dependency_overrides[get_current_web_identity] = lambda: WebIdentity(
+            user_id=10,
+            telegram_id=None,
+            company_id="intertop",
+            company_name="Intertop Retail",
+            role="admin",
+        )
 
     def tearDown(self) -> None:
+        self.app.dependency_overrides.clear()
         self.upload_tmp.cleanup()
         self.db_tmp.cleanup()
         self.tmp.cleanup()
@@ -578,6 +589,14 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         app, db_tmp, _, upload_tmp = _create_test_app(self.courses_dir)
         self.addCleanup(upload_tmp.cleanup)
         self.addCleanup(db_tmp.cleanup)
+        app.dependency_overrides[get_current_web_identity] = lambda: WebIdentity(
+            user_id=10,
+            telegram_id=None,
+            company_id="intertop",
+            company_name="Intertop Retail",
+            role="admin",
+        )
+        self.addCleanup(app.dependency_overrides.clear)
 
         mock_config = object()
         mock_from_environment.return_value = mock_config

@@ -155,8 +155,6 @@ def get_db_path(request: Request) -> Path:
 
 
 # Temporary web identity placeholders until authentication is implemented.
-_WEB_DASHBOARD_TELEGRAM_ID = 1
-_WEB_ADMIN_COMPANY_ID = "intertop"
 
 
 def get_web_identity_service() -> WebIdentityService:
@@ -235,17 +233,11 @@ def require_web_management_identity(
 
 
 def get_web_company_id(
-    db_path: Path = Depends(get_db_path),
-    web_identity_service: WebIdentityService = Depends(get_web_identity_service),
+    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
 ) -> str:
-    """Return the tenant company id for the current Web identity."""
-    identity = web_identity_service.resolve(
-        db_path,
-        _WEB_DASHBOARD_TELEGRAM_ID,
-        _WEB_ADMIN_COMPANY_ID,
-    )
+    """Return the tenant company id for the authenticated Web identity."""
     if identity is None:
-        return _WEB_ADMIN_COMPANY_ID
+        raise HTTPException(status_code=401, detail="Authentication required")
     return identity.company_id
 
 

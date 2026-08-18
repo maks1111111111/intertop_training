@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.content.runtime import ContentRuntime
@@ -204,9 +205,8 @@ class WebDashboardIdentityRouterTests(unittest.TestCase):
 
         self.assertIsInstance(service, WebIdentityService)
 
-    def test_web_company_id_uses_resolved_identity_tenant(self) -> None:
-        fake_service = MagicMock(spec=WebIdentityService)
-        fake_service.resolve.return_value = WebIdentity(
+    def test_web_company_id_uses_authenticated_identity_tenant(self) -> None:
+        identity = WebIdentity(
             user_id=10,
             telegram_id=_WEB_TEST_TELEGRAM_ID,
             company_id="company-b",
@@ -214,22 +214,19 @@ class WebDashboardIdentityRouterTests(unittest.TestCase):
             role="admin",
         )
 
-        company_id = get_web_company_id(self.db_path, fake_service)
+        company_id = get_web_company_id(identity)
 
         self.assertEqual(company_id, "company-b")
-        fake_service.resolve.assert_called_once_with(
-            self.db_path,
-            _WEB_TEST_TELEGRAM_ID,
-            "intertop",
+
+    def test_web_company_id_requires_authentication(self) -> None:
+        with self.assertRaises(HTTPException) as context:
+            get_web_company_id(None)
+
+        self.assertEqual(context.exception.status_code, 401)
+        self.assertEqual(
+            context.exception.detail,
+            "Authentication required",
         )
-
-    def test_web_company_id_falls_back_until_web_authentication_exists(self) -> None:
-        fake_service = MagicMock(spec=WebIdentityService)
-        fake_service.resolve.return_value = None
-
-        company_id = get_web_company_id(self.db_path, fake_service)
-
-        self.assertEqual(company_id, "intertop")
 
 
 class WebDashboardIdentityMembershipTests(unittest.TestCase):

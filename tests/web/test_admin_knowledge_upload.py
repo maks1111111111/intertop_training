@@ -11,6 +11,9 @@ from unittest import mock
 
 from fastapi.testclient import TestClient
 
+from app.web.router import get_current_web_identity
+from app.web.web_identity_service import WebIdentity
+
 from app.content.import_readers import ImportReader
 from app.database.db import initialize_database
 from app.knowledge.import_service import (
@@ -280,8 +283,16 @@ class AdminKnowledgeUploadRouteTests(unittest.TestCase):
         )
         self.client = TestClient(self.app)
         self.upload_dir = self.app.state.upload_dir
+        self.app.dependency_overrides[get_current_web_identity] = lambda: WebIdentity(
+            user_id=10,
+            telegram_id=None,
+            company_id="intertop",
+            company_name="Intertop Retail",
+            role="admin",
+        )
 
     def tearDown(self) -> None:
+        self.app.dependency_overrides.clear()
         self.upload_tmp.cleanup()
         self.db_tmp.cleanup()
         self.tmp.cleanup()

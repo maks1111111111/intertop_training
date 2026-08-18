@@ -18,7 +18,6 @@ from app.web.progress_service import WebProgressService
 from app.web.router import get_current_web_identity
 from app.web.web_identity_service import WebIdentity
 
-# Matches app.web.router._WEB_DASHBOARD_TELEGRAM_ID
 _WEB_TEST_TELEGRAM_ID = 1
 
 
