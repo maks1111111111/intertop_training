@@ -14,7 +14,7 @@ from app.database.db import get_connection
 from app.repositories.company_membership_repository import CompanyMembershipRepository
 from app.repositories.company_repository import CompanyRepository
 from app.repositories.progress_repository import ProgressRepository
-from app.web.router import get_web_company_id, get_web_identity_service
+from app.web.router import get_current_web_identity, get_web_company_id, get_web_identity_service
 from app.web.web_identity_service import WebIdentity, WebIdentityService
 from tests.web.test_web_ui import (
     _WEB_TEST_TELEGRAM_ID,
@@ -46,8 +46,37 @@ def _seed_web_identity_context(db_path: Path, telegram_id: int = _WEB_TEST_TELEG
     )
 
 
+def _create_password_only_user(db_path: Path) -> int:
+    """Create one canonical user without a Telegram id."""
+    company_repository = CompanyRepository()
+    membership_repository = CompanyMembershipRepository()
+    company_repository.create(db_path, company_id="intertop", name="Intertop Retail")
+    with get_connection(db_path) as connection:
+        user_id = int(
+            connection.execute(
+                """
+                INSERT INTO users (
+                    telegram_id,
+                    username,
+                    first_name,
+                    last_name
+                )
+                VALUES (NULL, ?, ?, ?)
+                """,
+                ("web-only", "Web", "Only"),
+            ).lastrowid
+        )
+    membership_repository.add(
+        db_path,
+        company_id="intertop",
+        user_id=user_id,
+        role="student",
+    )
+    return user_id
+
+
 class WebDashboardIdentityRouterTests(unittest.TestCase):
-    """Verify learner routes resolve identity through WebIdentityService."""
+    """Verify dashboard resolves identity through get_current_web_identity."""
 
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -60,63 +89,75 @@ class WebDashboardIdentityRouterTests(unittest.TestCase):
         self.progress_repository = ProgressRepository()
 
     def tearDown(self) -> None:
+        self.app.dependency_overrides.clear()
         self.upload_tmp.cleanup()
         self.db_tmp.cleanup()
         self.tmp.cleanup()
 
-    def test_dashboard_resolve_uses_web_identity_service(self) -> None:
-        _seed_web_identity_context(self.db_path)
-        fake_service = MagicMock(spec=WebIdentityService)
-        fake_service.resolve.return_value = WebIdentity(
-            user_id=10,
-            telegram_id=_WEB_TEST_TELEGRAM_ID,
-            company_id="intertop",
-            company_name="Intertop Retail",
-            role="student",
-        )
-        self.app.dependency_overrides[get_web_identity_service] = lambda: fake_service
-
-        response = self.client.get("/dashboard")
-
-        self.assertEqual(response.status_code, 200)
-        fake_service.resolve.assert_called_once_with(
+    def test_dashboard_uses_resolved_session_identity_for_progress(self) -> None:
+        user_id = _create_password_only_user(self.db_path)
+        self.progress_repository.start_course_for_user(
             self.db_path,
-            _WEB_TEST_TELEGRAM_ID,
-            "intertop",
-        )
-        self.app.dependency_overrides.clear()
-
-    def test_dashboard_uses_resolved_telegram_id_for_progress(self) -> None:
-        _seed_web_identity_context(self.db_path)
-        self.progress_repository.start_course(
-            self.db_path,
-            _WEB_TEST_TELEGRAM_ID,
+            user_id,
             "alpha",
         )
-        self.progress_repository.complete_lesson(
+        self.progress_repository.complete_lesson_for_user(
             self.db_path,
-            _WEB_TEST_TELEGRAM_ID,
+            user_id,
             "alpha",
             "lesson_01",
         )
         self.app.state.content_runtime = ContentRuntime(self.courses_dir)
+        self.app.dependency_overrides[get_current_web_identity] = lambda: WebIdentity(
+            user_id=user_id,
+            telegram_id=None,
+            company_id="intertop",
+            company_name="Intertop Retail",
+            role="student",
+        )
 
         response = self.client.get("/dashboard")
 
+        self.assertEqual(response.status_code, 200)
         self.assertIn("33%", response.text)
         self.assertIn("Последний урок: First lesson", response.text)
 
-    def test_dashboard_falls_back_when_identity_unresolved(self) -> None:
+    def test_dashboard_without_session_identity_renders_empty_courses(self) -> None:
         self.progress_repository.start_course(
             self.db_path,
             _WEB_TEST_TELEGRAM_ID,
             "alpha",
         )
         self.app.state.content_runtime = ContentRuntime(self.courses_dir)
+        self.app.dependency_overrides[get_current_web_identity] = lambda: None
 
         response = self.client.get("/dashboard")
 
         self.assertEqual(response.status_code, 200)
+        self.assertIn("Доступных курсов пока нет", response.text)
+        self.assertNotIn("Alpha Course", response.text)
+        self.assertNotIn("В процессе", response.text)
+
+    def test_dashboard_password_only_identity_without_telegram_id(self) -> None:
+        user_id = _create_password_only_user(self.db_path)
+        self.progress_repository.start_course_for_user(
+            self.db_path,
+            user_id,
+            "alpha",
+        )
+        self.app.state.content_runtime = ContentRuntime(self.courses_dir)
+        self.app.dependency_overrides[get_current_web_identity] = lambda: WebIdentity(
+            user_id=user_id,
+            telegram_id=None,
+            company_id="intertop",
+            company_name="Intertop Retail",
+            role="student",
+        )
+
+        response = self.client.get("/dashboard")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Alpha Course", response.text)
         self.assertIn("В процессе", response.text)
 
     def test_progress_service_uses_resolved_telegram_id(self) -> None:
@@ -186,18 +227,20 @@ class WebDashboardIdentityMembershipTests(unittest.TestCase):
         self.client = TestClient(self.app)
 
     def tearDown(self) -> None:
+        self.app.dependency_overrides.clear()
         self.upload_tmp.cleanup()
         self.db_tmp.cleanup()
         self.tmp.cleanup()
 
-    def test_dashboard_without_membership_still_renders_courses(self) -> None:
+    def test_dashboard_without_membership_renders_empty_courses(self) -> None:
         self.app.state.content_runtime = ContentRuntime(self.courses_dir)
+        self.app.dependency_overrides[get_current_web_identity] = lambda: None
 
         response = self.client.get("/dashboard")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Alpha Course", response.text)
-        self.assertIn("0%", response.text)
+        self.assertIn("Доступных курсов пока нет", response.text)
+        self.assertNotIn("Alpha Course", response.text)
 
     def test_lesson_progress_without_membership_uses_fallback_user(self) -> None:
         self.app.state.content_runtime = ContentRuntime(self.courses_dir)

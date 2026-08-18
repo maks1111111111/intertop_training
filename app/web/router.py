@@ -181,15 +181,34 @@ def get_web_session_service() -> WebSessionService:
     return WebSessionService(config.secret_key)
 
 
+def get_web_session_service_for_request(
+    request: Request,
+) -> Optional[WebSessionService]:
+    """Return a session service only when the request includes a session cookie."""
+    if request.cookies.get(WEB_SESSION_COOKIE_NAME) is None:
+        return None
+
+    override = getattr(request.app.state, "web_session_service", None)
+    if override is not None:
+        return override
+
+    return get_web_session_service()
+
+
 def get_current_web_identity(
     request: Request,
     db_path: Path = Depends(get_db_path),
-    web_session_service: WebSessionService = Depends(get_web_session_service),
+    web_session_service: Optional[WebSessionService] = Depends(
+        get_web_session_service_for_request
+    ),
     web_identity_service: WebIdentityService = Depends(get_web_identity_service),
 ) -> Optional[WebIdentity]:
     """Resolve the current Web identity from the session cookie."""
     token = request.cookies.get(WEB_SESSION_COOKIE_NAME)
     if token is None:
+        return None
+
+    if web_session_service is None:
         return None
 
     session = web_session_service.resolve_token(token)
@@ -540,14 +559,12 @@ def root() -> RedirectResponse:
 def dashboard_page(
     request: Request,
     dashboard_service: DashboardService = Depends(get_dashboard_service),
-    db_path: Path = Depends(get_db_path),
-    web_identity_service: WebIdentityService = Depends(get_web_identity_service),
+    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
 ) -> HTMLResponse:
     """Render the student dashboard with course progress and quiz stats."""
-    user_id = _resolve_dashboard_user_id(db_path, web_identity_service)
     courses = (
-        dashboard_service.get_courses_for_user(user_id)
-        if user_id is not None
+        dashboard_service.get_courses_for_user(identity.user_id)
+        if identity is not None
         else ()
     )
     return templates.TemplateResponse(

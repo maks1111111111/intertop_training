@@ -10,10 +10,12 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.content.runtime import ContentRuntime
-from app.database.db import upsert_telegram_user
+from app.database.db import get_connection, upsert_telegram_user
 from app.repositories import quiz_repository
 from app.repositories.progress_repository import ProgressRepository
 from app.services.course_sync import sync_courses
+from app.web.router import get_current_web_identity
+from app.web.web_identity_service import WebIdentity
 from tests.web.test_web_ui import _create_test_app
 
 WEB_DASHBOARD_TELEGRAM_ID = 1
@@ -70,6 +72,35 @@ def _write_multi_lesson_course(courses_dir: Path, slug: str = "alpha") -> None:
         )
 
 
+def _authenticate_dashboard_user(app) -> int:
+    """Provide an authenticated canonical Web identity for dashboard tests."""
+    upsert_telegram_user(
+        app.state.db_path,
+        telegram_id=WEB_DASHBOARD_TELEGRAM_ID,
+        username="web-learner",
+        first_name="Web",
+        last_name="Learner",
+    )
+    with get_connection(app.state.db_path) as connection:
+        row = connection.execute(
+            "SELECT id FROM users WHERE telegram_id = ?",
+            (WEB_DASHBOARD_TELEGRAM_ID,),
+        ).fetchone()
+
+    assert row is not None
+    user_id = int(row["id"])
+
+    identity = WebIdentity(
+        user_id=user_id,
+        telegram_id=WEB_DASHBOARD_TELEGRAM_ID,
+        company_id="intertop",
+        company_name="Intertop Retail",
+        role="student",
+    )
+    app.dependency_overrides[get_current_web_identity] = lambda: identity
+    return user_id
+
+
 def _prepare_dashboard_db(app, courses_dir: Path) -> ProgressRepository:
     sync_courses(courses_dir, app.state.db_path)
     upsert_telegram_user(
@@ -93,8 +124,10 @@ class DashboardPageTests(unittest.TestCase):
             self.courses_dir
         )
         self.client = TestClient(self.app)
+        _authenticate_dashboard_user(self.app)
 
     def tearDown(self) -> None:
+        self.app.dependency_overrides.clear()
         self.upload_tmp.cleanup()
         self.db_tmp.cleanup()
         self.tmp.cleanup()
@@ -172,8 +205,10 @@ class DashboardPageIntegrationTests(unittest.TestCase):
         )
         self.client = TestClient(self.app)
         self.progress_repository = ProgressRepository()
+        _authenticate_dashboard_user(self.app)
 
     def tearDown(self) -> None:
+        self.app.dependency_overrides.clear()
         self.upload_tmp.cleanup()
         self.db_tmp.cleanup()
         self.tmp.cleanup()
