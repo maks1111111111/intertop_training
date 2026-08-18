@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Вход · Intertop Training{% endblock %}
+
+{% block content %}
+<section class="auth-page">
+    <div class="auth-card">
+        <div class="auth-card-header">
+            <p class="auth-eyebrow">Intertop Training</p>
+            <h1>Вход в аккаунт</h1>
+            <p class="auth-description">
+                Войдите, чтобы продолжить обучение и открыть рабочее пространство.
+            </p>
+        </div>
+
+        {% if error_message %}
+        <div class="auth-error" role="alert">
+            {{ error_message }}
+        </div>
+        {% endif %}
+
+        <form method="post" action="/login" class="auth-form">
+            <label class="auth-field">
+                <span>Email</span>
+                <input
+                    type="email"
+                    name="email"
+                    value="{{ email }}"
+                    autocomplete="username"
+                    required
+                    autofocus
+                >
+            </label>
+
+            <label class="auth-field">
+                <span>Компания</span>
+                <input
+    type="text"
+                    name="company_id"
+                    value="{{ company_id }}"
+                    autocomplete="organization"
+                    required
+                >
+            </label>
+
+            <label class="auth-field">
+                <span>Пароль</span>
+                <input
+                    type="password"
+                    name="password"
+                    autocomplete="current-password"
+                    required
+                >
+            </label>
+
+            <button
+                type="submit"
+                class="button button--primary auth-submit"
+            >
+                Войти
+            </button>
+        </form>
+    </div>
+</section>
+{% endblock %}

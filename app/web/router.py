@@ -14,6 +14,7 @@ from app.content.runtime import ContentRuntime
 from app.repositories import quiz_repository
 from app.repositories.company_membership_repository import CompanyMembershipRepository
 from app.repositories.company_repository import CompanyRepository
+from app.repositories.password_credential_repository import PasswordCredentialRepository
 from app.repositories.progress_repository import ProgressRepository
 from app.repositories.user_repository import UserRepository
 from app.services.tenant_context_service import TenantContextService
@@ -126,7 +127,9 @@ from app.web.admin_knowledge_upload_service import (
     AdminKnowledgeUploadService,
 )
 from app.web.dashboard_service import DashboardService
+from app.web.password_hashing_service import PasswordHashingService
 from app.web.progress_service import WebProgressService
+from app.web.web_authentication_service import WebAuthenticationService
 from app.web.web_authorization_service import WebAuthorizationService
 from app.web.web_identity_service import WebIdentity, WebIdentityService
 from app.web.web_session_config import WEB_SESSION_COOKIE_NAME, WebSessionConfig
@@ -171,6 +174,15 @@ def get_web_identity_service() -> WebIdentityService:
 def get_web_authorization_service() -> WebAuthorizationService:
     """Return the role-based Web authorization service."""
     return WebAuthorizationService()
+
+
+def get_web_authentication_service() -> WebAuthenticationService:
+    """Return the password-based Web authentication service."""
+    return WebAuthenticationService(
+        PasswordCredentialRepository(),
+        PasswordHashingService(),
+        get_web_identity_service(),
+    )
 
 
 def get_web_session_service() -> WebSessionService:
@@ -513,6 +525,105 @@ def _parse_quiz_answers(form_data) -> dict[str, str]:
             continue
         answers[key[len("answer_"):]] = str(form_data[key])
     return answers
+
+
+def _render_login_page(
+    request: Request,
+    *,
+    email: str = "",
+    company_id: str = "",
+    error_message: str = "",
+) -> HTMLResponse:
+    """Render the password login form."""
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {
+            "email": email,
+            "company_id": company_id,
+            "error_message": error_message,
+        },
+    )
+
+
+@router.get("/login", response_class=HTMLResponse, include_in_schema=False)
+def login_page(
+    request: Request,
+    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
+) -> HTMLResponse:
+    """Render the login page or redirect an authenticated user."""
+    if identity is not None:
+        return RedirectResponse(url="/dashboard", status_code=302)
+
+    return _render_login_page(request)
+
+
+@router.post("/login", response_class=HTMLResponse, include_in_schema=False)
+async def login_submit(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    authentication_service: WebAuthenticationService = Depends(
+        get_web_authentication_service
+    ),
+    session_service: WebSessionService = Depends(get_web_session_service),
+) -> HTMLResponse:
+    """Authenticate credentials and create a signed Web session."""
+    form = await request.form()
+
+    email = str(form.get("email") or "").strip()
+    password = str(form.get("password") or "")
+    company_id = str(form.get("company_id") or "").strip()
+
+    try:
+        identity = authentication_service.authenticate(
+            db_path,
+            email=email,
+            password=password,
+            company_id=company_id,
+        )
+    except ValueError:
+        identity = None
+
+    if identity is None:
+        return _render_login_page(
+            request,
+            email=email,
+            company_id=company_id,
+            error_message="Неверные данные для входа.",
+        )
+
+    token = session_service.create_token(
+        user_id=identity.user_id,
+        company_id=identity.company_id,
+    )
+
+    response = RedirectResponse(
+        url="/dashboard",
+        status_code=303,
+    )
+    response.set_cookie(
+        key=WEB_SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@router.post("/logout", include_in_schema=False)
+def logout_submit() -> RedirectResponse:
+    """Clear the current Web session cookie."""
+    response = RedirectResponse(
+        url="/login",
+        status_code=303,
+    )
+    response.delete_cookie(
+        key=WEB_SESSION_COOKIE_NAME,
+        path="/",
+    )
+    return response
 
 
 @router.get("/", include_in_schema=False)
