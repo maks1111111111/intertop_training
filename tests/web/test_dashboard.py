@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 from app.content.runtime import ContentRuntime
@@ -97,7 +98,11 @@ def _authenticate_dashboard_user(app) -> int:
         company_name="Intertop Retail",
         role="student",
     )
-    app.dependency_overrides[get_current_web_identity] = lambda: identity
+    def provide_identity(request: Request) -> WebIdentity:
+        request.state.web_identity = identity
+        return identity
+
+    app.dependency_overrides[get_current_web_identity] = provide_identity
     return user_id
 
 

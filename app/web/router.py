@@ -144,7 +144,19 @@ from app.web.quiz_scoring import (
 router = APIRouter(tags=["web"])
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
-templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+
+def _web_template_context(request: Request) -> dict[str, object]:
+    """Expose request-scoped Web identity to every server-rendered template."""
+    return {
+        "identity": getattr(request.state, "web_identity", None),
+    }
+
+
+templates = Jinja2Templates(
+    directory=str(_TEMPLATES_DIR),
+    context_processors=[_web_template_context],
+)
 
 
 def get_content_runtime(request: Request) -> ContentRuntime:
@@ -216,20 +228,25 @@ def get_current_web_identity(
     """Resolve the current Web identity from the session cookie."""
     token = request.cookies.get(WEB_SESSION_COOKIE_NAME)
     if token is None:
+        request.state.web_identity = None
         return None
 
     if web_session_service is None:
+        request.state.web_identity = None
         return None
 
     session = web_session_service.resolve_token(token)
     if session is None:
+        request.state.web_identity = None
         return None
 
-    return web_identity_service.resolve_user(
+    identity = web_identity_service.resolve_user(
         db_path,
         session.user_id,
         session.company_id,
     )
+    request.state.web_identity = identity
+    return identity
 
 
 def require_web_management_identity(
@@ -2940,6 +2957,7 @@ router.include_router(admin_router)
 def courses_page(
     request: Request,
     content_runtime: ContentRuntime = Depends(get_content_runtime),
+    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
 ) -> HTMLResponse:
     """Render the published course catalog."""
     courses = content_runtime.get_courses()
@@ -3057,6 +3075,7 @@ def quiz_page(
     slug: str,
     request: Request,
     content_runtime: ContentRuntime = Depends(get_content_runtime),
+    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
 ) -> HTMLResponse:
     """Render the course quiz form."""
     course = content_runtime.get_course(slug)

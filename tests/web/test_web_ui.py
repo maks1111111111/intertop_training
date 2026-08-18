@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 from app.api.app import create_app
@@ -185,8 +186,14 @@ def _create_test_app(
             company_name="Intertop Retail",
             role="admin",
         )
+        def provide_management_identity(
+            request: Request,
+        ) -> WebIdentity:
+            request.state.web_identity = management_user
+            return management_user
+
         app.dependency_overrides[require_web_management_identity] = (
-            lambda: management_user
+            provide_management_identity
         )
 
     return app, db_tmp, db_path, upload_tmp
@@ -210,7 +217,11 @@ def _authenticate_test_web_user(app) -> int:
         company_name="Intertop Retail",
         role="student",
     )
-    app.dependency_overrides[get_current_web_identity] = lambda: identity
+    def provide_identity(request: Request) -> WebIdentity:
+        request.state.web_identity = identity
+        return identity
+
+    app.dependency_overrides[get_current_web_identity] = provide_identity
     return user_id
 
 

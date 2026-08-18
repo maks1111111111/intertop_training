@@ -3825,3 +3825,63 @@ a:focus-visible,
         padding: 1.25rem 1rem 2rem;
     }
 }
+
+/* Authenticated sidebar account */
+
+.sidebar {
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-nav {
+    flex: 0 0 auto;
+}
+
+.sidebar-account {
+    margin-top: auto;
+    padding: 1rem 0.75rem 0;
+    border-top: 1px solid #e5e7eb;
+}
+
+.sidebar-account-company {
+    color: #111827;
+    font-size: 0.9375rem;
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-snug);
+    overflow-wrap: anywhere;
+}
+
+.sidebar-account-role {
+    margin-top: 0.25rem;
+    color: #6b7280;
+    font-size: 0.8125rem;
+    line-height: var(--line-height-snug);
+}
+
+.sidebar-logout-form {
+    margin-top: 0.875rem;
+}
+
+.sidebar-logout {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    background: #ffffff;
+    color: #374151;
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: var(--font-weight-medium);
+    text-align: left;
+    cursor: pointer;
+}
+
+.sidebar-logout:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+}
+
+.sidebar-logout:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
