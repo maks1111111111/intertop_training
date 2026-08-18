@@ -46,24 +46,53 @@ class WebManagementAccessTests(unittest.TestCase):
         self.assertIsInstance(service, WebAuthorizationService)
 
     def test_current_identity_uses_web_identity_service(self) -> None:
+        request = MagicMock()
+        request.cookies.get.return_value = "signed-session"
+
+        session_service = MagicMock()
+        session_service.resolve_token.return_value = MagicMock(
+            user_id=10,
+            company_id="intertop",
+        )
+
         fake_service = MagicMock(spec=WebIdentityService)
         expected = _identity("manager")
-        fake_service.resolve.return_value = expected
+        fake_service.resolve_user.return_value = expected
 
-        result = get_current_web_identity(self.db_path, fake_service)
+        result = get_current_web_identity(
+            request,
+            self.db_path,
+            session_service,
+            fake_service,
+        )
 
         self.assertEqual(result, expected)
-        fake_service.resolve.assert_called_once_with(
+        session_service.resolve_token.assert_called_once_with("signed-session")
+        fake_service.resolve_user.assert_called_once_with(
             self.db_path,
-            1,
+            10,
             "intertop",
         )
 
     def test_current_identity_preserves_unresolved_state(self) -> None:
-        fake_service = MagicMock(spec=WebIdentityService)
-        fake_service.resolve.return_value = None
+        request = MagicMock()
+        request.cookies.get.return_value = "signed-session"
 
-        result = get_current_web_identity(self.db_path, fake_service)
+        session_service = MagicMock()
+        session_service.resolve_token.return_value = MagicMock(
+            user_id=10,
+            company_id="intertop",
+        )
+
+        fake_service = MagicMock(spec=WebIdentityService)
+        fake_service.resolve_user.return_value = None
+
+        result = get_current_web_identity(
+            request,
+            self.db_path,
+            session_service,
+            fake_service,
+        )
 
         self.assertIsNone(result)
 

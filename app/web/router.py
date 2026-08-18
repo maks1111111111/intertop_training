@@ -129,6 +129,8 @@ from app.web.dashboard_service import DashboardService
 from app.web.progress_service import WebProgressService
 from app.web.web_authorization_service import WebAuthorizationService
 from app.web.web_identity_service import WebIdentity, WebIdentityService
+from app.web.web_session_config import WEB_SESSION_COOKIE_NAME, WebSessionConfig
+from app.web.web_session_service import WebSessionService
 from app.web.quiz_scoring import (
     build_quiz_page_view,
     build_quiz_summary_view,
@@ -173,15 +175,31 @@ def get_web_authorization_service() -> WebAuthorizationService:
     return WebAuthorizationService()
 
 
+def get_web_session_service() -> WebSessionService:
+    """Return the signed Web session service for the current application."""
+    config = WebSessionConfig.from_environment()
+    return WebSessionService(config.secret_key)
+
+
 def get_current_web_identity(
+    request: Request,
     db_path: Path = Depends(get_db_path),
+    web_session_service: WebSessionService = Depends(get_web_session_service),
     web_identity_service: WebIdentityService = Depends(get_web_identity_service),
 ) -> Optional[WebIdentity]:
-    """Resolve the current bootstrap Web identity until authentication exists."""
-    return web_identity_service.resolve(
+    """Resolve the current Web identity from the session cookie."""
+    token = request.cookies.get(WEB_SESSION_COOKIE_NAME)
+    if token is None:
+        return None
+
+    session = web_session_service.resolve_token(token)
+    if session is None:
+        return None
+
+    return web_identity_service.resolve_user(
         db_path,
-        _WEB_DASHBOARD_TELEGRAM_ID,
-        _WEB_ADMIN_COMPANY_ID,
+        session.user_id,
+        session.company_id,
     )
 
 

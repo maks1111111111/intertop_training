@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 
 WEB_SESSION_SECRET_ENV = "WEB_SESSION_SECRET"
+WEB_SESSION_COOKIE_NAME = "intertop_session"
 MIN_WEB_SESSION_SECRET_BYTES = 32
 
 
