@@ -41,7 +41,10 @@ class WebLoginRouteTests(unittest.TestCase):
             self.db_tmp,
             self.db_path,
             self.upload_tmp,
-        ) = _create_test_app(self.courses_dir)
+        ) = _create_test_app(
+            self.courses_dir,
+            management_identity=False,
+        )
 
         self.session_service = WebSessionService(
             _TEST_SESSION_SECRET

@@ -195,6 +195,9 @@ def _create_test_app(
         app.dependency_overrides[require_web_management_identity] = (
             provide_management_identity
         )
+        app.dependency_overrides[get_current_web_identity] = (
+            provide_management_identity
+        )
 
     return app, db_tmp, db_path, upload_tmp
 
@@ -245,11 +248,11 @@ class WebUiTests(unittest.TestCase):
         self.db_tmp.cleanup()
         self.tmp.cleanup()
 
-    def test_root_redirects_to_courses(self) -> None:
+    def test_authenticated_root_redirects_to_dashboard(self) -> None:
         response = self.client.get("/", follow_redirects=False)
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers["location"], "/courses")
+        self.assertEqual(response.headers["location"], "/dashboard")
 
     def test_courses_page_returns_200(self) -> None:
         response = self.client.get("/courses")

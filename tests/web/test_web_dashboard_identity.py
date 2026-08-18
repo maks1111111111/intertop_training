@@ -123,7 +123,7 @@ class WebDashboardIdentityRouterTests(unittest.TestCase):
         self.assertIn("33%", response.text)
         self.assertIn("Последний урок: First lesson", response.text)
 
-    def test_dashboard_without_session_identity_renders_empty_courses(self) -> None:
+    def test_dashboard_without_session_identity_redirects_to_login(self) -> None:
         self.progress_repository.start_course(
             self.db_path,
             _WEB_TEST_TELEGRAM_ID,
@@ -132,12 +132,13 @@ class WebDashboardIdentityRouterTests(unittest.TestCase):
         self.app.state.content_runtime = ContentRuntime(self.courses_dir)
         self.app.dependency_overrides[get_current_web_identity] = lambda: None
 
-        response = self.client.get("/dashboard")
+        response = self.client.get(
+            "/dashboard",
+            follow_redirects=False,
+        )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("Доступных курсов пока нет", response.text)
-        self.assertNotIn("Alpha Course", response.text)
-        self.assertNotIn("В процессе", response.text)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/login")
 
     def test_dashboard_password_only_identity_without_telegram_id(self) -> None:
         user_id = _create_password_only_user(self.db_path)
@@ -247,27 +248,29 @@ class WebDashboardIdentityMembershipTests(unittest.TestCase):
         self.db_tmp.cleanup()
         self.tmp.cleanup()
 
-    def test_dashboard_without_membership_renders_empty_courses(self) -> None:
+    def test_dashboard_without_membership_redirects_to_login(self) -> None:
         self.app.state.content_runtime = ContentRuntime(self.courses_dir)
         self.app.dependency_overrides[get_current_web_identity] = lambda: None
 
-        response = self.client.get("/dashboard")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("Доступных курсов пока нет", response.text)
-        self.assertNotIn("Alpha Course", response.text)
-
-    def test_lesson_progress_without_identity_requires_authentication(self) -> None:
-        self.app.state.content_runtime = ContentRuntime(self.courses_dir)
-        self.app.dependency_overrides[get_current_web_identity] = lambda: None
-
-        response = self.client.get("/courses/alpha/lessons/lesson_01")
-
-        self.assertEqual(response.status_code, 401)
-        self.assertEqual(
-            response.json()["detail"],
-            "Authentication required",
+        response = self.client.get(
+            "/dashboard",
+            follow_redirects=False,
         )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/login")
+
+    def test_lesson_progress_without_identity_redirects_to_login(self) -> None:
+        self.app.state.content_runtime = ContentRuntime(self.courses_dir)
+        self.app.dependency_overrides[get_current_web_identity] = lambda: None
+
+        response = self.client.get(
+            "/courses/alpha/lessons/lesson_01",
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/login")
 
         with get_connection(self.db_path) as connection:
             row = connection.execute(

@@ -249,6 +249,19 @@ def get_current_web_identity(
     return identity
 
 
+def require_web_identity(
+    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
+) -> WebIdentity:
+    """Require an authenticated Web identity for learner routes."""
+    if identity is None:
+        raise HTTPException(
+            status_code=303,
+            detail="Authentication required",
+            headers={"Location": "/login"},
+        )
+    return identity
+
+
 def require_web_management_identity(
     identity: Optional[WebIdentity] = Depends(get_current_web_identity),
     authorization_service: WebAuthorizationService = Depends(
@@ -277,11 +290,9 @@ def get_web_company_id(
 
 def get_progress_service(
     db_path: Path = Depends(get_db_path),
-    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
+    identity: WebIdentity = Depends(require_web_identity),
 ) -> WebProgressService:
     """Return canonical-user Web progress for the authenticated identity."""
-    if identity is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
     return WebProgressService(
         db_path,
         ProgressRepository(),
@@ -649,23 +660,22 @@ def logout_submit() -> RedirectResponse:
 
 
 @router.get("/", include_in_schema=False)
-def root() -> RedirectResponse:
-    """Redirect the site root to the course catalog."""
-    return RedirectResponse(url="/courses", status_code=302)
+def root(
+    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
+) -> RedirectResponse:
+    """Redirect the site root according to Web authentication state."""
+    target = "/dashboard" if identity is not None else "/login"
+    return RedirectResponse(url=target, status_code=302)
 
 
 @router.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
 def dashboard_page(
     request: Request,
     dashboard_service: DashboardService = Depends(get_dashboard_service),
-    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
+    identity: WebIdentity = Depends(require_web_identity),
 ) -> HTMLResponse:
     """Render the student dashboard with course progress and quiz stats."""
-    courses = (
-        dashboard_service.get_courses_for_user(identity.user_id)
-        if identity is not None
-        else ()
-    )
+    courses = dashboard_service.get_courses_for_user(identity.user_id)
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -2957,7 +2967,7 @@ router.include_router(admin_router)
 def courses_page(
     request: Request,
     content_runtime: ContentRuntime = Depends(get_content_runtime),
-    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
+    identity: WebIdentity = Depends(require_web_identity),
 ) -> HTMLResponse:
     """Render the published course catalog."""
     courses = content_runtime.get_courses()
@@ -3075,7 +3085,7 @@ def quiz_page(
     slug: str,
     request: Request,
     content_runtime: ContentRuntime = Depends(get_content_runtime),
-    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
+    identity: WebIdentity = Depends(require_web_identity),
 ) -> HTMLResponse:
     """Render the course quiz form."""
     course = content_runtime.get_course(slug)
@@ -3122,7 +3132,7 @@ async def quiz_submit_page(
     request: Request,
     content_runtime: ContentRuntime = Depends(get_content_runtime),
     db_path: Path = Depends(get_db_path),
-    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
+    identity: WebIdentity = Depends(require_web_identity),
 ) -> HTMLResponse:
     """Score submitted quiz answers and render the result page."""
     course = content_runtime.get_course(slug)
@@ -3151,9 +3161,6 @@ async def quiz_submit_page(
     form_data = await request.form()
     answers = _parse_quiz_answers(form_data)
     result = score_web_quiz(course.quiz, answers)
-
-    if identity is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
 
     attempt_id = quiz_repository.create_attempt_for_user(
         db_path,
