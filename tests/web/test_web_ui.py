@@ -15,7 +15,10 @@ from app.database.db import get_connection, initialize_database, upsert_telegram
 from app.repositories.progress_repository import ProgressRepository
 from app.services.course_sync import sync_courses
 from app.web.progress_service import WebProgressService
-from app.web.router import get_current_web_identity
+from app.web.router import (
+    get_current_web_identity,
+    require_web_management_identity,
+)
 from app.web.web_identity_service import WebIdentity
 
 _WEB_TEST_TELEGRAM_ID = 1
@@ -150,7 +153,11 @@ def _write_empty_course(courses_dir: Path, slug: str = "empty") -> None:
     )
 
 
-def _create_test_app(courses_dir: Path) -> tuple:
+def _create_test_app(
+    courses_dir: Path,
+    *,
+    management_identity: bool = True,
+) -> tuple:
     """Return app, temp db/upload handles, and db path for isolated tests."""
     db_tmp = tempfile.TemporaryDirectory()
     db_path = Path(db_tmp.name) / "test.db"
@@ -169,6 +176,19 @@ def _create_test_app(courses_dir: Path) -> tuple:
     app.state.db_path = db_path
     app.state.content_runtime = ContentRuntime(courses_dir)
     app.state.upload_dir = upload_dir
+
+    if management_identity:
+        management_user = WebIdentity(
+            user_id=10,
+            telegram_id=None,
+            company_id="intertop",
+            company_name="Intertop Retail",
+            role="admin",
+        )
+        app.dependency_overrides[require_web_management_identity] = (
+            lambda: management_user
+        )
+
     return app, db_tmp, db_path, upload_tmp
 
 

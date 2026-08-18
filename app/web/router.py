@@ -244,6 +244,11 @@ def require_web_management_identity(
     return identity
 
 
+admin_router = APIRouter(
+    dependencies=[Depends(require_web_management_identity)],
+)
+
+
 def get_web_company_id(
     identity: Optional[WebIdentity] = Depends(get_current_web_identity),
 ) -> str:
@@ -655,7 +660,7 @@ def dashboard_page(
     )
 
 
-@router.get("/admin", response_class=HTMLResponse, include_in_schema=False)
+@admin_router.get("/admin", response_class=HTMLResponse, include_in_schema=False)
 def admin_dashboard_page(
     request: Request,
     admin_service: AdminService = Depends(get_admin_service),
@@ -694,7 +699,7 @@ def _render_admin_knowledge_page(
     )
 
 
-@router.get("/admin/knowledge", response_class=HTMLResponse, include_in_schema=False)
+@admin_router.get("/admin/knowledge", response_class=HTMLResponse, include_in_schema=False)
 def admin_knowledge_page(
     request: Request,
     knowledge_service: AdminKnowledgeService = Depends(get_admin_knowledge_service),
@@ -704,7 +709,7 @@ def admin_knowledge_page(
     return _render_admin_knowledge_page(request, knowledge_service, company_id)
 
 
-@router.post(
+@admin_router.post(
     "/admin/knowledge/{document_id}/publish",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -732,7 +737,7 @@ def admin_knowledge_publish(
     return RedirectResponse(url="/admin/knowledge", status_code=303)
 
 
-@router.post(
+@admin_router.post(
     "/admin/knowledge/{document_id}/archive",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -782,7 +787,7 @@ def _render_admin_knowledge_ask_page(
     )
 
 
-@router.get(
+@admin_router.get(
     "/admin/knowledge/ask",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -792,7 +797,7 @@ def admin_knowledge_ask_page(request: Request) -> HTMLResponse:
     return _render_admin_knowledge_ask_page(request)
 
 
-@router.post(
+@admin_router.post(
     "/admin/knowledge/ask",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -851,7 +856,7 @@ def _render_admin_knowledge_upload_page(
     )
 
 
-@router.get(
+@admin_router.get(
     "/admin/knowledge/upload",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -861,7 +866,7 @@ def admin_knowledge_upload_page(request: Request) -> HTMLResponse:
     return _render_admin_knowledge_upload_page(request)
 
 
-@router.post(
+@admin_router.post(
     "/admin/knowledge/upload",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -908,7 +913,7 @@ async def admin_knowledge_upload_submit(
     return RedirectResponse(url="/admin/knowledge", status_code=303)
 
 
-@router.get(
+@admin_router.get(
     "/admin/knowledge/{document_id}",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -966,7 +971,7 @@ def _render_admin_course_create_page(
     )
 
 
-@router.get(
+@admin_router.get(
     "/admin/courses/new",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -982,7 +987,7 @@ def admin_course_create_mode_page(request: Request) -> HTMLResponse:
     )
 
 
-@router.get(
+@admin_router.get(
     "/admin/courses/new/ai",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -995,7 +1000,7 @@ def admin_course_create_page(
     return _render_admin_course_create_page(request, admin_service)
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/new/ai",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -1039,7 +1044,7 @@ async def admin_course_create_submit(
     )
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/new",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -1078,7 +1083,7 @@ def _render_admin_manual_course_create_page(
     )
 
 
-@router.get(
+@admin_router.get(
     "/admin/courses/new/manual",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -1093,7 +1098,7 @@ def admin_manual_course_create_page(
     return _render_admin_manual_course_create_page(request, create_service)
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/new/manual",
     include_in_schema=False,
 )
@@ -1133,7 +1138,7 @@ async def admin_manual_course_create_submit(
     )
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/new/review",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -1180,7 +1185,7 @@ async def admin_course_generation_review(
     )
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/new/loading",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -1263,7 +1268,7 @@ def _render_admin_generation_review_error(
     )
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/new/generate",
     include_in_schema=False,
 )
@@ -1311,7 +1316,7 @@ async def admin_course_generate(
     )
 
 
-@router.get(
+@admin_router.get(
     "/admin/courses/{slug}/created",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -1362,7 +1367,7 @@ def _render_admin_course_detail_page(
     )
 
 
-@router.get("/admin/courses/{slug}", response_class=HTMLResponse, include_in_schema=False)
+@admin_router.get("/admin/courses/{slug}", response_class=HTMLResponse, include_in_schema=False)
 def admin_course_detail_page(
     slug: str,
     request: Request,
@@ -1404,7 +1409,7 @@ def _get_preview_course_or_not_found(
     return course, None
 
 
-@router.get(
+@admin_router.get(
     "/admin/courses/{slug}/preview",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -1441,7 +1446,7 @@ def admin_course_preview_page(
     )
 
 
-@router.get(
+@admin_router.get(
     "/admin/courses/{slug}/preview/lessons/{lesson_id}",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -1484,7 +1489,7 @@ def admin_lesson_preview_page(
     )
 
 
-@router.get(
+@admin_router.get(
     "/admin/courses/{slug}/preview/quiz",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -1524,7 +1529,7 @@ def admin_quiz_preview_page(
     )
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/{slug}/preview/quiz",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -1598,7 +1603,7 @@ def _render_admin_course_edit_page(
     )
 
 
-@router.get(
+@admin_router.get(
     "/admin/courses/{slug}/edit",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -1624,7 +1629,7 @@ def admin_course_edit_page(
     return _render_admin_course_edit_page(request, edit_view)
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/{slug}/edit",
     include_in_schema=False,
 )
@@ -1722,7 +1727,7 @@ def _render_admin_lesson_edit_page(
     )
 
 
-@router.get(
+@admin_router.get(
     "/admin/courses/{slug}/lessons/{lesson_id}/edit",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -1749,7 +1754,7 @@ def admin_lesson_edit_page(
     return _render_admin_lesson_edit_page(request, edit_view)
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/{slug}/lessons/{lesson_id}/edit",
     include_in_schema=False,
 )
@@ -1856,7 +1861,7 @@ def _render_admin_lesson_generate_questions_page(
     )
 
 
-@router.get(
+@admin_router.get(
     "/admin/courses/{slug}/lessons/{lesson_id}/generate-questions",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -1881,7 +1886,7 @@ def admin_lesson_generate_questions_page(
     return _render_admin_lesson_generate_questions_page(request, preview_view)
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/{slug}/lessons/{lesson_id}/generate-questions",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -1915,7 +1920,7 @@ def admin_lesson_generate_questions_submit(
     return _render_admin_lesson_generate_questions_page(request, preview_view)
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/{slug}/lessons/{lesson_id}/generate-questions/apply",
     include_in_schema=False,
 )
@@ -2051,7 +2056,7 @@ def _render_admin_lesson_generate_practical_task_page(
     )
 
 
-@router.get(
+@admin_router.get(
     "/admin/courses/{slug}/lessons/{lesson_id}/generate-practical-task",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -2076,7 +2081,7 @@ def admin_lesson_generate_practical_task_page(
     return _render_admin_lesson_generate_practical_task_page(request, preview_view)
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/{slug}/lessons/{lesson_id}/generate-practical-task",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -2110,7 +2115,7 @@ def admin_lesson_generate_practical_task_submit(
     return _render_admin_lesson_generate_practical_task_page(request, preview_view)
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/{slug}/lessons/{lesson_id}/generate-practical-task/apply",
     include_in_schema=False,
 )
@@ -2187,7 +2192,7 @@ async def admin_lesson_generate_practical_task_apply(
     )
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/{slug}/lessons/create",
     include_in_schema=False,
 )
@@ -2222,7 +2227,7 @@ def admin_lesson_create(
     return RedirectResponse(url=result.edit_url, status_code=303)
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/{slug}/quiz/create",
     include_in_schema=False,
 )
@@ -2295,7 +2300,7 @@ def _render_admin_quiz_edit_page(
     )
 
 
-@router.get(
+@admin_router.get(
     "/admin/courses/{slug}/quiz/edit",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -2333,7 +2338,7 @@ def admin_quiz_edit_page(
     return _render_admin_quiz_edit_page(request, edit_view)
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/{slug}/quiz/edit",
     include_in_schema=False,
 )
@@ -2452,7 +2457,7 @@ def _render_admin_quiz_question_edit_page(
     )
 
 
-@router.get(
+@admin_router.get(
     "/admin/courses/{slug}/quiz/questions/{question_id}/edit",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -2504,7 +2509,7 @@ def admin_quiz_question_edit_page(
     return _render_admin_quiz_question_edit_page(request, edit_view)
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/{slug}/quiz/questions/{question_id}/edit",
     include_in_schema=False,
 )
@@ -2634,7 +2639,7 @@ def _render_admin_quiz_question_create_page(
     )
 
 
-@router.get(
+@admin_router.get(
     "/admin/courses/{slug}/quiz/questions/new",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -2675,7 +2680,7 @@ def admin_quiz_question_create_page(
     return _render_admin_quiz_question_create_page(request, create_view)
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/{slug}/quiz/questions/new",
     include_in_schema=False,
 )
@@ -2749,7 +2754,7 @@ async def admin_quiz_question_create_submit(
     )
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/{slug}/quiz/questions/{question_id}/delete",
     include_in_schema=False,
 )
@@ -2876,7 +2881,7 @@ def _handle_admin_quiz_question_reorder(
     )
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/{slug}/quiz/questions/{question_id}/move-up",
     include_in_schema=False,
 )
@@ -2902,7 +2907,7 @@ async def admin_quiz_question_move_up(
     )
 
 
-@router.post(
+@admin_router.post(
     "/admin/courses/{slug}/quiz/questions/{question_id}/move-down",
     include_in_schema=False,
 )
@@ -2926,6 +2931,9 @@ async def admin_quiz_question_move_down(
         reorder_service,
         direction="down",
     )
+
+
+router.include_router(admin_router)
 
 
 @router.get("/courses", response_class=HTMLResponse, include_in_schema=False)
