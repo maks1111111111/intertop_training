@@ -16,6 +16,7 @@ from app.web.admin_lesson_create_service import (
     _next_lesson_id_and_order,
     _safe_remove_lesson_dir,
 )
+from tests.web.test_web_ui import _authenticate_test_web_user
 from tests.web.test_web_ui import (
     _create_test_app,
     _write_course,
@@ -357,6 +358,7 @@ class AdminLessonCreatePageTests(unittest.TestCase):
         self.assertIn("Новый урок", response.text)
 
     def test_new_lesson_appears_on_student_course_page(self) -> None:
+        _authenticate_test_web_user(self.client.app)
         _write_course(self.courses_dir, "alpha", title="Alpha Course")
         self.app.state.content_runtime.refresh()
 

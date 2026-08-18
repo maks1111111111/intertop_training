@@ -29,6 +29,7 @@ from tests.web.test_admin_course_upload import _default_form_data
 from tests.web.test_admin_course_generation_review import (
     _extract_hidden_value,
 )
+from tests.web.test_web_ui import _authenticate_test_web_user
 from tests.web.test_web_ui import _create_test_app, _write_course
 
 
@@ -298,6 +299,7 @@ class AdminCourseGenerationHttpTests(unittest.TestCase):
     def test_generated_course_is_accessible_without_restart(self) -> None:
         app, db_tmp, _db_path, upload_tmp = _create_test_app(self.courses_dir)
         client = TestClient(app)
+        _authenticate_test_web_user(app)
         _write_generated_course(self.courses_dir, "generated-course")
         app.state.content_runtime.refresh()
 

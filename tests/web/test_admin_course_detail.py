@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from tests.web.test_web_ui import _authenticate_test_web_user
 from tests.web.test_web_ui import (
     _create_test_app,
     _write_course,
@@ -197,6 +198,7 @@ class AdminCourseDetailPageTests(unittest.TestCase):
         self.assertIn('href="/admin/courses/alpha"', response.text)
 
     def test_student_course_route_still_works(self) -> None:
+        _authenticate_test_web_user(self.client.app)
         _write_course(self.courses_dir, "alpha", title="Alpha Course")
         self.app.state.content_runtime.refresh()
 

@@ -15,6 +15,8 @@ from app.database.db import get_connection, initialize_database, upsert_telegram
 from app.repositories.progress_repository import ProgressRepository
 from app.services.course_sync import sync_courses
 from app.web.progress_service import WebProgressService
+from app.web.router import get_current_web_identity
+from app.web.web_identity_service import WebIdentity
 
 # Matches app.web.router._WEB_DASHBOARD_TELEGRAM_ID
 _WEB_TEST_TELEGRAM_ID = 1
@@ -171,6 +173,28 @@ def _create_test_app(courses_dir: Path) -> tuple:
     return app, db_tmp, db_path, upload_tmp
 
 
+def _authenticate_test_web_user(app) -> int:
+    """Provide the canonical learner identity used by authenticated Web UI tests."""
+    with get_connection(app.state.db_path) as connection:
+        row = connection.execute(
+            "SELECT id FROM users WHERE telegram_id = ?",
+            (_WEB_TEST_TELEGRAM_ID,),
+        ).fetchone()
+
+    assert row is not None
+    user_id = int(row["id"])
+
+    identity = WebIdentity(
+        user_id=user_id,
+        telegram_id=_WEB_TEST_TELEGRAM_ID,
+        company_id="intertop",
+        company_name="Intertop Retail",
+        role="student",
+    )
+    app.dependency_overrides[get_current_web_identity] = lambda: identity
+    return user_id
+
+
 class WebUiTests(unittest.TestCase):
     """Verify server-rendered learning pages."""
 
@@ -183,8 +207,10 @@ class WebUiTests(unittest.TestCase):
             self.courses_dir
         )
         self.client = TestClient(self.app)
+        _authenticate_test_web_user(self.app)
 
     def tearDown(self) -> None:
+        self.app.dependency_overrides.clear()
         self.upload_tmp.cleanup()
         self.db_tmp.cleanup()
         self.tmp.cleanup()
@@ -338,6 +364,7 @@ class WebUiTests(unittest.TestCase):
             _write_multi_lesson_course(courses_dir, "nav-course")
             app, db_tmp, _db_path, upload_tmp = _create_test_app(courses_dir)
             client = TestClient(app)
+            _authenticate_test_web_user(app)
 
             response = client.get("/courses/nav-course/lessons/lesson_02")
             html = response.text
@@ -355,6 +382,7 @@ class WebUiTests(unittest.TestCase):
             _write_multi_lesson_course(courses_dir, "nav-course")
             app, db_tmp, _db_path, upload_tmp = _create_test_app(courses_dir)
             client = TestClient(app)
+            _authenticate_test_web_user(app)
 
             first = client.get("/courses/nav-course/lessons/lesson_01")
             middle = client.get("/courses/nav-course/lessons/lesson_02")
@@ -394,6 +422,7 @@ class WebProgressUiTests(unittest.TestCase):
             self.courses_dir
         )
         self.client = TestClient(self.app)
+        _authenticate_test_web_user(self.app)
         self.progress = WebProgressService(
             self.db_path,
             ProgressRepository(),
@@ -401,6 +430,7 @@ class WebProgressUiTests(unittest.TestCase):
         )
 
     def tearDown(self) -> None:
+        self.app.dependency_overrides.clear()
         self.upload_tmp.cleanup()
         self.db_tmp.cleanup()
         self.tmp.cleanup()
@@ -502,6 +532,7 @@ class WebProgressUiTests(unittest.TestCase):
             _write_quiz_json(courses_dir / "quiz-progress", "quiz-progress")
             app, db_tmp, _db_path, upload_tmp = _create_test_app(courses_dir)
             client = TestClient(app)
+            _authenticate_test_web_user(app)
 
             for lesson_id in ("lesson_01", "lesson_02", "lesson_03"):
                 client.get(f"/courses/quiz-progress/lessons/{lesson_id}")
@@ -520,6 +551,7 @@ class WebProgressUiTests(unittest.TestCase):
             _write_course(courses_dir, "solo", title="Solo Course")
             app, db_tmp, db_path, upload_tmp = _create_test_app(courses_dir)
             client = TestClient(app)
+            _authenticate_test_web_user(app)
             progress = WebProgressService(
                 db_path,
                 ProgressRepository(),
@@ -546,6 +578,7 @@ class WebProgressUiTests(unittest.TestCase):
             _write_empty_course(courses_dir, "empty")
             app, db_tmp, _db_path, upload_tmp = _create_test_app(courses_dir)
             client = TestClient(app)
+            _authenticate_test_web_user(app)
 
             response = client.get("/courses/empty")
             html = response.text
@@ -570,8 +603,10 @@ class WebQuizUiTests(unittest.TestCase):
             self.courses_dir
         )
         self.client = TestClient(self.app)
+        _authenticate_test_web_user(self.app)
 
     def tearDown(self) -> None:
+        self.app.dependency_overrides.clear()
         self.upload_tmp.cleanup()
         self.db_tmp.cleanup()
         self.tmp.cleanup()

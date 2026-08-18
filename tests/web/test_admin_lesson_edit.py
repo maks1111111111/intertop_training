@@ -18,6 +18,7 @@ from app.web.admin_lesson_edit_service import (
     _parse_multiline_list,
     _resolve_lesson_json_path,
 )
+from tests.web.test_web_ui import _authenticate_test_web_user
 from tests.web.test_web_ui import _create_test_app, _write_course, _write_multi_lesson_course
 
 
@@ -681,6 +682,7 @@ class AdminLessonEditPageTests(unittest.TestCase):
         mock_refresh.assert_not_called()
 
     def test_student_lesson_reflects_updated_content(self) -> None:
+        _authenticate_test_web_user(self.client.app)
         _write_lesson_with_quality_fields(self.courses_dir)
         self.app.state.content_runtime.refresh()
 

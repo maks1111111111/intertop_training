@@ -17,6 +17,7 @@ from app.web.admin_course_edit_service import (
     AdminCourseEditService,
     _resolve_course_json_path,
 )
+from tests.web.test_web_ui import _authenticate_test_web_user
 from tests.web.test_web_ui import _create_test_app, _write_course
 
 
@@ -208,6 +209,7 @@ class AdminCourseEditPageTests(unittest.TestCase):
         self.assertEqual(payload["language"], "en")
 
     def test_student_course_reflects_updated_values(self) -> None:
+        _authenticate_test_web_user(self.client.app)
         _write_course(self.courses_dir, "alpha", title="Alpha Course")
         self.app.state.content_runtime.refresh()
 

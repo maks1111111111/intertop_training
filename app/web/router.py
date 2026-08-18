@@ -273,19 +273,15 @@ def get_web_company_id(
 
 def get_progress_service(
     db_path: Path = Depends(get_db_path),
-    web_identity_service: WebIdentityService = Depends(get_web_identity_service),
+    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
 ) -> WebProgressService:
-    """Return canonical-user Web progress for the current database."""
-    user_id = _resolve_dashboard_user_id(
-        db_path,
-        web_identity_service,
-    )
-    if user_id is None:
+    """Return canonical-user Web progress for the authenticated identity."""
+    if identity is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     return WebProgressService(
         db_path,
         ProgressRepository(),
-        user_id,
+        identity.user_id,
     )
 
 

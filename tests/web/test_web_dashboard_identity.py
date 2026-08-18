@@ -160,20 +160,38 @@ class WebDashboardIdentityRouterTests(unittest.TestCase):
         self.assertIn("Alpha Course", response.text)
         self.assertIn("В процессе", response.text)
 
-    def test_progress_service_uses_resolved_telegram_id(self) -> None:
+    def test_progress_service_uses_session_canonical_user_id(self) -> None:
         _seed_web_identity_context(self.db_path)
-        self.progress_repository.start_course(
+
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                "SELECT id FROM users WHERE telegram_id = ?",
+                (_WEB_TEST_TELEGRAM_ID,),
+            ).fetchone()
+
+        assert row is not None
+        user_id = int(row["id"])
+
+        self.progress_repository.start_course_for_user(
             self.db_path,
-            _WEB_TEST_TELEGRAM_ID,
+            user_id,
             "alpha",
         )
-        self.progress_repository.complete_lesson(
+        self.progress_repository.complete_lesson_for_user(
             self.db_path,
-            _WEB_TEST_TELEGRAM_ID,
+            user_id,
             "alpha",
             "lesson_01",
         )
+
         self.app.state.content_runtime = ContentRuntime(self.courses_dir)
+        self.app.dependency_overrides[get_current_web_identity] = lambda: WebIdentity(
+            user_id=user_id,
+            telegram_id=_WEB_TEST_TELEGRAM_ID,
+            company_id="intertop",
+            company_name="Intertop Retail",
+            role="student",
+        )
 
         response = self.client.get("/courses/alpha")
 
@@ -242,11 +260,17 @@ class WebDashboardIdentityMembershipTests(unittest.TestCase):
         self.assertIn("Доступных курсов пока нет", response.text)
         self.assertNotIn("Alpha Course", response.text)
 
-    def test_lesson_progress_without_membership_uses_fallback_user(self) -> None:
+    def test_lesson_progress_without_identity_requires_authentication(self) -> None:
         self.app.state.content_runtime = ContentRuntime(self.courses_dir)
+        self.app.dependency_overrides[get_current_web_identity] = lambda: None
 
-        before = self.client.get("/courses/alpha/lessons/lesson_01")
-        self.assertEqual(before.status_code, 200)
+        response = self.client.get("/courses/alpha/lessons/lesson_01")
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(
+            response.json()["detail"],
+            "Authentication required",
+        )
 
         with get_connection(self.db_path) as connection:
             row = connection.execute(
@@ -261,7 +285,9 @@ class WebDashboardIdentityMembershipTests(unittest.TestCase):
                 """,
                 (_WEB_TEST_TELEGRAM_ID, "alpha"),
             ).fetchone()
-        self.assertEqual(int(row[0]), 1)
+
+        self.assertEqual(int(row[0]), 0)
+
 
 
 if __name__ == "__main__":

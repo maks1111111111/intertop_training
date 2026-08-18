@@ -19,6 +19,7 @@ from app.web.admin_quiz_question_edit_service import (
     parse_question_tags,
 )
 from tests.web.test_admin_quiz_edit import _write_rich_quiz
+from tests.web.test_web_ui import _authenticate_test_web_user
 from tests.web.test_web_ui import (
     _create_test_app,
     _write_course,
@@ -554,6 +555,7 @@ class AdminQuizQuestionEditRegressionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_student_course_page_still_works(self) -> None:
+        _authenticate_test_web_user(self.client.app)
         _write_course_with_quiz(self.courses_dir, "quiz-course")
         response = self.client.get("/courses/quiz-course")
         self.assertEqual(response.status_code, 200)

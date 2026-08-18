@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from app.database.db import get_connection
 from app.repositories.progress_repository import ProgressRepository
 from app.web.progress_service import WebProgressService
+from tests.web.test_web_ui import _authenticate_test_web_user
 from tests.web.test_web_ui import (
     _WEB_TEST_TELEGRAM_ID,
     _create_test_app,
@@ -191,6 +192,7 @@ class AdminCoursePreviewQuizTests(unittest.TestCase):
         self.assertIn("Предпросмотр теста", response.text)
 
     def test_student_routes_still_work(self) -> None:
+        _authenticate_test_web_user(self.client.app)
         response = self.client.get("/courses/quiz-preview")
 
         self.assertEqual(response.status_code, 200)

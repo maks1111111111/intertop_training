@@ -17,6 +17,7 @@ from app.web.admin_quiz_edit_service import (
     AdminQuizEditService,
     _resolve_quiz_json_path,
 )
+from tests.web.test_web_ui import _authenticate_test_web_user
 from tests.web.test_web_ui import (
     _create_test_app,
     _write_course,
@@ -390,6 +391,7 @@ class AdminQuizEditPostTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_student_course_page_still_works(self) -> None:
+        _authenticate_test_web_user(self.client.app)
         _write_rich_quiz(self.courses_dir)
         self._post_valid()
         response = self.client.get("/courses/rich-quiz-course")

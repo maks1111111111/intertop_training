@@ -23,6 +23,7 @@ from app.web.admin_lesson_question_preview_service import (
     AdminLessonQuestionPreviewService,
 )
 from app.web.admin_lesson_question_preview_store import AdminLessonQuestionPreviewStore
+from tests.web.test_web_ui import _authenticate_test_web_user
 from tests.web.test_web_ui import (
     _create_test_app,
     _write_course,
@@ -357,6 +358,7 @@ class AdminLessonQuestionPreviewRegressionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_student_course_page_still_works(self) -> None:
+        _authenticate_test_web_user(self.client.app)
         response = self.client.get("/courses/alpha")
         self.assertEqual(response.status_code, 200)
 
