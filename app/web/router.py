@@ -234,28 +234,6 @@ def require_web_management_identity(
     return identity
 
 
-def _resolve_dashboard_user_id(
-    db_path: Path,
-    web_identity_service: WebIdentityService,
-) -> Optional[int]:
-    """Return the canonical user id for the current bootstrap Web identity."""
-    identity = web_identity_service.resolve(
-        db_path,
-        _WEB_DASHBOARD_TELEGRAM_ID,
-        _WEB_ADMIN_COMPANY_ID,
-    )
-    if identity is not None:
-        return identity.user_id
-
-    user = UserRepository().get_by_telegram_id(
-        db_path,
-        _WEB_DASHBOARD_TELEGRAM_ID,
-    )
-    if user is None:
-        return None
-    return int(user["id"])
-
-
 def get_web_company_id(
     db_path: Path = Depends(get_db_path),
     web_identity_service: WebIdentityService = Depends(get_web_identity_service),
@@ -3014,7 +2992,7 @@ async def quiz_submit_page(
     request: Request,
     content_runtime: ContentRuntime = Depends(get_content_runtime),
     db_path: Path = Depends(get_db_path),
-    web_identity_service: WebIdentityService = Depends(get_web_identity_service),
+    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
 ) -> HTMLResponse:
     """Score submitted quiz answers and render the result page."""
     course = content_runtime.get_course(slug)
@@ -3044,16 +3022,12 @@ async def quiz_submit_page(
     answers = _parse_quiz_answers(form_data)
     result = score_web_quiz(course.quiz, answers)
 
-    user_id = _resolve_dashboard_user_id(
-        db_path,
-        web_identity_service,
-    )
-    if user_id is None:
+    if identity is None:
         raise HTTPException(status_code=401, detail="Authentication required")
 
     attempt_id = quiz_repository.create_attempt_for_user(
         db_path,
-        user_id=user_id,
+        user_id=identity.user_id,
         course_slug=course.slug,
         quiz_version=course.quiz.version,
         questions_count=result.questions_count,
