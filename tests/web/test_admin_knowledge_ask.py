@@ -242,9 +242,51 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         self.assertEqual(self.fake_service.calls[0]["company_id"], "intertop")
         self.assertEqual(
             self.fake_service.calls[0]["question"],
-            "  Как оформить возврат?  ",
+            "Как оформить возврат?",
         )
         self.assertEqual(self.fake_service.calls[0]["language"], "kk")
+
+    def test_post_normalizes_leading_trailing_whitespace_in_question(self) -> None:
+        self.fake_service.result = _success_view(
+            question="Как оформить возврат?",
+        )
+
+        response = self.client.post(
+            "/admin/knowledge/ask",
+            data={
+                "question": "  \u00a0Как оформить возврат?\u00a0  ",
+                "language": "ru",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self.fake_service.calls[0]["question"],
+            "Как оформить возврат?",
+        )
+        self.assertIn(">Как оформить возврат?<", response.text)
+
+    def test_post_preserves_internal_whitespace_in_question(self) -> None:
+        question = "  Как   оформить\nвозврат?  "
+        expected = "Как   оформить\nвозврат?"
+        self.fake_service.result = _success_view(question=expected)
+
+        response = self.client.post(
+            "/admin/knowledge/ask",
+            data={"question": question, "language": "ru"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.fake_service.calls[0]["question"], expected)
+        self.assertIn(">Как   оформить", response.text)
+        self.assertIn("возврат?<", response.text)
+
+    def test_ask_page_includes_paste_normalize_script(self) -> None:
+        response = self.client.get("/admin/knowledge/ask")
+
+        html = response.text
+        self.assertIn('/static/js/input_paste_normalize.js', html)
+        self.assertIn('data-paste-trim="edges"', html)
 
     def test_post_success_renders_answer_text(self) -> None:
         self.fake_service.result = _success_view(
@@ -630,14 +672,32 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
 
         self.assertEqual(len(self.fake_service.calls), 1)
 
-    def test_ask_page_contains_thinking_card_markup(self) -> None:
+    def test_ask_page_contains_loading_card_markup(self) -> None:
         response = self.client.get("/admin/knowledge/ask")
 
         html = response.text
-        self.assertIn("ai-chat-thinking", html)
-        self.assertIn("Поиск информации...", html)
-        self.assertIn("анализ документов", html)
-        self.assertIn("подготовка ответа", html)
+        self.assertIn("ai-chat-loading-card", html)
+        self.assertIn("ai-chat-loading-orbit", html)
+        self.assertIn("AI ищет ответ в базе знаний", html)
+        self.assertIn("ai-chat-loading-status", html)
+        self.assertNotIn("ai-chat-message--thinking", html)
+
+    def test_ask_page_loading_orbit_is_aria_hidden(self) -> None:
+        response = self.client.get("/admin/knowledge/ask")
+
+        html = response.text
+        self.assertIn('class="ai-chat-loading-visual" aria-hidden="true"', html)
+        self.assertIn('class="ai-chat-loading-ellipsis" aria-hidden="true"', html)
+
+    def test_ask_page_loading_status_has_initial_stage_and_cycling_script(self) -> None:
+        response = self.client.get("/admin/knowledge/ask")
+
+        html = response.text
+        self.assertIn('id="ai-chat-loading-status-text"', html)
+        self.assertIn("Анализируем документы", html)
+        self.assertIn("Ищем релевантные фрагменты", html)
+        self.assertIn("Формируем ответ", html)
+        self.assertIn("startLoadingStages", html)
 
     def test_ask_page_contains_loading_state_markup(self) -> None:
         response = self.client.get("/admin/knowledge/ask")

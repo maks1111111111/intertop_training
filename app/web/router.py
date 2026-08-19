@@ -838,7 +838,7 @@ async def admin_knowledge_ask_submit(
 ) -> HTMLResponse:
     """Answer one grounded Knowledge Base question for the admin UI."""
     form = await request.form()
-    question = str(form.get("question") or "")
+    question = str(form.get("question") or "").strip()
     language = str(form.get("language") or "ru").strip()
 
     try:

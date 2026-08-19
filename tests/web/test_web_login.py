@@ -268,6 +268,43 @@ class WebLoginRouteTests(unittest.TestCase):
             response.text,
         )
 
+    def test_password_with_surrounding_spaces_is_not_trimmed(self) -> None:
+        response = self.client.post(
+            "/login",
+            data={
+                "email": "user@example.com",
+                "password": "  Strong-password-123!  ",
+                "company_id": "login-company",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "Неверные данные для входа.",
+            response.text,
+        )
+        self.assertNotIn(
+            WEB_SESSION_COOKIE_NAME,
+            response.cookies,
+        )
+
+    def test_email_and_company_whitespace_is_normalized_on_login(self) -> None:
+        response = self.client.post(
+            "/login",
+            data={
+                "email": "  user@example.com  ",
+                "password": "Strong-password-123!",
+                "company_id": "  login-company  ",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            response.headers["location"],
+            "/dashboard",
+        )
+
     def test_authenticated_user_is_redirected_away_from_login(
         self,
     ) -> None:
