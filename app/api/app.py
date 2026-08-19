@@ -11,6 +11,7 @@ from app.api.router import router
 from app.content.runtime import ContentRuntime
 from app.database.db import initialize_database
 from app.env import load_project_env
+from app.services.course_sync import sync_courses
 from app.web.router import router as web_router
 
 
@@ -22,8 +23,13 @@ def create_app() -> FastAPI:
     db_path = project_root / "data" / "training.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
     initialize_database(db_path)
+    courses_dir = project_root / "courses"
+    sync_courses(
+        base_dir=courses_dir,
+        db_path=db_path,
+    )
     application.state.db_path = db_path
-    application.state.content_runtime = ContentRuntime(project_root / "courses")
+    application.state.content_runtime = ContentRuntime(courses_dir)
     application.state.upload_dir = project_root / "data" / "uploads"
     application.include_router(router)
     application.include_router(web_router)
