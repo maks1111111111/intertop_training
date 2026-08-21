@@ -21,6 +21,9 @@
                     Моё обучение
                 </a>
                 {% if identity.role in ("manager", "admin") %}
+                <a href="/manager/team" class="nav-link{% if active_nav == 'team' %} is-active{% endif %}">
+                    Команда
+                </a>
                 <a href="/admin" class="nav-link{% if active_nav == 'admin' %} is-active{% endif %}">
                     Админ
                 </a>

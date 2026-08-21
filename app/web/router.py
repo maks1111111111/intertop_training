@@ -14,6 +14,7 @@ from app.content.runtime import ContentRuntime
 from app.repositories import quiz_repository
 from app.repositories.company_membership_repository import CompanyMembershipRepository
 from app.repositories.company_repository import CompanyRepository
+from app.repositories.company_team_repository import CompanyTeamRepository
 from app.repositories.password_credential_repository import PasswordCredentialRepository
 from app.repositories.progress_repository import ProgressRepository
 from app.repositories.user_repository import UserRepository
@@ -127,6 +128,7 @@ from app.web.admin_knowledge_upload_service import (
     AdminKnowledgeUploadService,
 )
 from app.web.dashboard_service import DashboardService
+from app.web.manager_team_service import ManagerTeamService
 from app.web.password_hashing_service import PasswordHashingService
 from app.web.progress_service import WebProgressService
 from app.web.web_authentication_service import WebAuthenticationService
@@ -309,6 +311,16 @@ def get_dashboard_service(
         runtime,
         ProgressRepository(),
         quiz_repository,
+        db_path,
+    )
+
+
+def get_manager_team_service(
+    db_path: Path = Depends(get_db_path),
+) -> ManagerTeamService:
+    """Return the tenant-scoped manager team service."""
+    return ManagerTeamService(
+        CompanyTeamRepository(),
         db_path,
     )
 
@@ -683,6 +695,29 @@ def dashboard_page(
             "active_nav": "dashboard",
             "courses": courses,
             "courses_count": len(courses),
+        },
+    )
+
+
+@router.get(
+    "/manager/team",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def manager_team_page(
+    request: Request,
+    team_service: ManagerTeamService = Depends(get_manager_team_service),
+    identity: WebIdentity = Depends(require_web_management_identity),
+) -> HTMLResponse:
+    """Render tenant-scoped team learning progress for manager/admin."""
+    members = team_service.get_team(identity.company_id)
+    return templates.TemplateResponse(
+        request,
+        "manager_team.html",
+        {
+            "active_nav": "team",
+            "members": members,
+            "members_count": len(members),
         },
     )
 

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Команда — Intertop Training{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <h1 class="page-title">Команда</h1>
+    <p class="page-lead">Прогресс обучения сотрудников вашей компании.</p>
+</section>
+
+{% if members %}
+<section class="section">
+    <ul class="course-list admin-course-list">
+        {% for member in members %}
+        <li class="course-card admin-course-card">
+            <div class="admin-course-body">
+                <header class="admin-course-header">
+                    <h2 class="course-card-title">{{ member.display_name }}</h2>
+                    <span class="admin-status-badge admin-status-badge--active">{{ member.role_label }}</span>
+                </header>
+                {% if member.username %}
+                <p class="page-meta">{{ member.username }}</p>
+                {% endif %}
+                <div class="dashboard-metrics">
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Начато курсов</span>
+                        <span class="dashboard-metric-value">{{ member.started_courses_count }}</span>
+                    </div>
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Завершено курсов</span>
+                        <span class="dashboard-metric-value">{{ member.completed_courses_count }}</span>
+                    </div>
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Средний прогресс</span>
+                        <span class="dashboard-metric-value">{{ member.average_progress_percent }}%</span>
+                    </div>
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% else %}
+<div class="empty-state dashboard-empty-state">
+    <p class="dashboard-empty-state-message">В компании пока нет сотрудников.</p>
+</div>
+{% endif %}
+{% endblock %}

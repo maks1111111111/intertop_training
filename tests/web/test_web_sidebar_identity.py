@@ -74,6 +74,7 @@ class WebSidebarIdentityTests(unittest.TestCase):
         self.assertIn('href="/courses"', response.text)
         self.assertIn('href="/dashboard"', response.text)
         self.assertNotIn('href="/admin"', response.text)
+        self.assertNotIn('href="/manager/team"', response.text)
         self.assertIn("Intertop Retail", response.text)
         self.assertIn("Сотрудник", response.text)
         self.assertIn('action="/logout"', response.text)
@@ -85,6 +86,8 @@ class WebSidebarIdentityTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('href="/admin"', response.text)
+        self.assertIn('href="/manager/team"', response.text)
+        self.assertIn("Команда", response.text)
         self.assertIn("Менеджер", response.text)
 
     def test_admin_sees_admin_navigation(self) -> None:
@@ -94,6 +97,8 @@ class WebSidebarIdentityTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('href="/admin"', response.text)
+        self.assertIn('href="/manager/team"', response.text)
+        self.assertIn("Команда", response.text)
         self.assertIn("Администратор", response.text)
 
 
