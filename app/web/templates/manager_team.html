@@ -15,7 +15,9 @@
         <li class="course-card admin-course-card">
             <div class="admin-course-body">
                 <header class="admin-course-header">
-                    <h2 class="course-card-title">{{ member.display_name }}</h2>
+                    <h2 class="course-card-title">
+                        <a href="/manager/team/{{ member.user_id }}">{{ member.display_name }}</a>
+                    </h2>
                     <span class="admin-status-badge admin-status-badge--active">{{ member.role_label }}</span>
                 </header>
                 {% if member.username %}

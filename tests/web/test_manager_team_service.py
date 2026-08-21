@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Optional
 
 from app.repositories.company_team_repository import CompanyTeamMemberRecord
 from app.web.manager_team_service import ManagerTeamService
@@ -19,6 +20,7 @@ class FakeCompanyTeamRepository:
     ) -> None:
         self.records = records
         self.calls: list[tuple[Path, str]] = []
+        self.member_calls: list[tuple[Path, str, int]] = []
 
     def list_learning_summary(
         self,
@@ -27,6 +29,19 @@ class FakeCompanyTeamRepository:
     ) -> tuple[CompanyTeamMemberRecord, ...]:
         self.calls.append((db_path, company_id))
         return self.records
+
+
+    def get_learning_summary(
+        self,
+        db_path: Path,
+        company_id: str,
+        user_id: int,
+    ) -> Optional[CompanyTeamMemberRecord]:
+        self.member_calls.append((db_path, company_id, user_id))
+        return next(
+            (record for record in self.records if record.user_id == user_id),
+            None,
+        )
 
 
 class ManagerTeamServiceTests(unittest.TestCase):
@@ -129,6 +144,51 @@ class ManagerTeamServiceTests(unittest.TestCase):
             repository.calls,
             [(self.db_path, "company-a")],
         )
+
+
+    def test_get_member_returns_view_model(self) -> None:
+        repository = FakeCompanyTeamRepository(
+            (
+                CompanyTeamMemberRecord(
+                    user_id=20,
+                    username="alice",
+                    first_name="Alice",
+                    last_name="Smith",
+                    role="student",
+                    started_courses_count=2,
+                    completed_courses_count=1,
+                    average_progress_percent=75,
+                ),
+            )
+        )
+        service = ManagerTeamService(repository, self.db_path)
+
+        member = service.get_member("company-a", 20)
+
+        self.assertIsNotNone(member)
+        self.assertEqual(member.display_name, "Alice Smith")
+        self.assertEqual(
+            repository.member_calls,
+            [(self.db_path, "company-a", 20)],
+        )
+
+    def test_get_member_returns_none_when_repository_hides_user(self) -> None:
+        repository = FakeCompanyTeamRepository(())
+        service = ManagerTeamService(repository, self.db_path)
+
+        member = service.get_member("company-a", 99)
+
+        self.assertIsNone(member)
+
+    def test_get_member_rejects_invalid_user_id(self) -> None:
+        repository = FakeCompanyTeamRepository(())
+        service = ManagerTeamService(repository, self.db_path)
+
+        with self.assertRaises(ValueError):
+            service.get_member("company-a", 0)
+
+        self.assertEqual(repository.member_calls, [])
+
 
     def test_empty_company_id_is_rejected(self) -> None:
         repository = FakeCompanyTeamRepository(())

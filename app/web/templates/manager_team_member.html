@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}{{ member.display_name }} — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="admin-breadcrumb" aria-label="Навигация">
+    <a href="/manager/team">Команда</a>
+    <span aria-hidden="true">/</span>
+    <span>{{ member.display_name }}</span>
+</nav>
+
+<section class="page-header">
+    <h1 class="page-title">{{ member.display_name }}</h1>
+    <p class="page-lead">{{ member.role_label }}</p>
+    {% if member.username %}
+    <p class="page-meta">{{ member.username }}</p>
+    {% endif %}
+</section>
+
+<section class="section">
+    <div class="dashboard-metrics">
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Начато курсов</span>
+            <span class="dashboard-metric-value">{{ member.started_courses_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Завершено курсов</span>
+            <span class="dashboard-metric-value">{{ member.completed_courses_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Средний прогресс</span>
+            <span class="dashboard-metric-value">{{ member.average_progress_percent }}%</span>
+        </div>
+    </div>
+</section>
+
+{% if courses %}
+<section class="section">
+    <h2>Курсы</h2>
+    <ul class="course-list dashboard-course-list">
+        {% for course in courses %}
+        <li class="course-card dashboard-course-card dashboard-course-card--{{ course.status }}">
+            <div class="dashboard-course-body">
+                <header class="dashboard-course-header">
+                    <h3 class="course-card-title">{{ course.title }}</h3>
+                    <span class="dashboard-status-badge dashboard-status-badge--{{ course.status }}">
+                        {% if course.status == "not_started" %}
+                        Не начат
+                        {% elif course.status == "in_progress" %}
+                        В процессе
+                        {% elif course.status == "completed" %}
+                        Завершён
+                        {% else %}
+                        {{ course.status }}
+                        {% endif %}
+                    </span>
+                </header>
+
+                <div class="dashboard-progress-section">
+                    <div class="dashboard-progress-header">
+                        <span class="dashboard-progress-heading">Прогресс</span>
+                        <span class="dashboard-progress-label">{{ course.progress_percent }}%</span>
+                    </div>
+                    <div
+                        class="dashboard-progress"
+                        aria-label="Прогресс курса {{ course.progress_percent }} процентов"
+                    >
+                        <div class="dashboard-progress-bar" style="width: {{ course.progress_percent }}%;"></div>
+                    </div>
+                </div>
+                {% if course.best_quiz_score is not none or course.last_quiz_score is not none %}
+                <div class="dashboard-metrics">
+                    {% if course.best_quiz_score is not none %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Лучший результат теста</span>
+                        <span class="dashboard-metric-value">{{ course.best_quiz_score }}%</span>
+                    </div>
+                    {% endif %}
+                    {% if course.last_quiz_score is not none %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Последний результат теста</span>
+                        <span class="dashboard-metric-value">{{ course.last_quiz_score }}%</span>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% else %}
+<div class="empty-state dashboard-empty-state">
+    <p class="dashboard-empty-state-message">Доступных курсов пока нет</p>
+</div>
+{% endif %}
+{% endblock %}

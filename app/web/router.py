@@ -722,6 +722,40 @@ def manager_team_page(
     )
 
 
+
+@router.get(
+    "/manager/team/{user_id}",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def manager_team_member_page(
+    request: Request,
+    user_id: int,
+    team_service: ManagerTeamService = Depends(get_manager_team_service),
+    dashboard_service: DashboardService = Depends(get_dashboard_service),
+    identity: WebIdentity = Depends(require_web_management_identity),
+) -> HTMLResponse:
+    """Render one tenant-scoped employee learning profile."""
+    member = team_service.get_member(
+        identity.company_id,
+        user_id,
+    )
+    if member is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    courses = dashboard_service.get_courses_for_user(member.user_id)
+    return templates.TemplateResponse(
+        request,
+        "manager_team_member.html",
+        {
+            "active_nav": "team",
+            "member": member,
+            "courses": courses,
+            "courses_count": len(courses),
+        },
+    )
+
+
 @admin_router.get("/admin", response_class=HTMLResponse, include_in_schema=False)
 def admin_dashboard_page(
     request: Request,

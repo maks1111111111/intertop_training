@@ -58,6 +58,27 @@ class ManagerTeamService:
         return tuple(_to_view_model(record) for record in records)
 
 
+    def get_member(
+        self,
+        company_id: str,
+        user_id: int,
+    ) -> Optional[ManagerTeamMember]:
+        """Return one active member resolved inside one tenant."""
+        normalized_company_id = _validate_company_id(company_id)
+        if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:
+            raise ValueError("user_id must be a positive integer")
+
+        record = self._repository.get_learning_summary(
+            self._db_path,
+            normalized_company_id,
+            user_id,
+        )
+        if record is None:
+            return None
+
+        return _to_view_model(record)
+
+
 def _validate_company_id(company_id: str) -> str:
     if not isinstance(company_id, str):
         raise ValueError("company_id must be a string")

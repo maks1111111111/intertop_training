@@ -191,6 +191,59 @@ class CompanyTeamRepositoryTests(unittest.TestCase):
         self.assertEqual(record.completed_courses_count, 0)
         self.assertEqual(record.average_progress_percent, 0)
 
+
+    def test_get_learning_summary_returns_member_inside_company(self) -> None:
+        self._insert_user(1, "alice", "Alice", "company-a")
+        self._insert_enrollment(1, 1, "in_progress", 60)
+
+        record = self.repository.get_learning_summary(
+            self.db_path,
+            "company-a",
+            1,
+        )
+
+        self.assertIsNotNone(record)
+        self.assertEqual(record.user_id, 1)
+        self.assertEqual(record.started_courses_count, 1)
+        self.assertEqual(record.average_progress_percent, 60)
+
+    def test_get_learning_summary_hides_member_from_other_company(self) -> None:
+        self._insert_user(1, "alice", "Alice", "company-a")
+
+        record = self.repository.get_learning_summary(
+            self.db_path,
+            "company-b",
+            1,
+        )
+
+        self.assertIsNone(record)
+
+    def test_get_learning_summary_hides_inactive_member(self) -> None:
+        self._insert_user(
+            1,
+            "alice",
+            "Alice",
+            "company-a",
+            membership_active=0,
+        )
+
+        record = self.repository.get_learning_summary(
+            self.db_path,
+            "company-a",
+            1,
+        )
+
+        self.assertIsNone(record)
+
+    def test_get_learning_summary_rejects_invalid_user_id(self) -> None:
+        with self.assertRaises(ValueError):
+            self.repository.get_learning_summary(
+                self.db_path,
+                "company-a",
+                0,
+            )
+
+
     def test_company_id_is_required(self) -> None:
         with self.assertRaises(ValueError):
             self.repository.list_learning_summary(

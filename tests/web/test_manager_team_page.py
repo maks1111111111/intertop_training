@@ -9,9 +9,11 @@ from pathlib import Path
 from fastapi import Request
 from fastapi.testclient import TestClient
 
+from app.web.dashboard_service import CourseDashboardItem
 from app.web.manager_team_service import ManagerTeamMember
 from app.web.router import (
     get_current_web_identity,
+    get_dashboard_service,
     get_manager_team_service,
 )
 from app.web.web_identity_service import WebIdentity
@@ -36,6 +38,51 @@ class FakeManagerTeamService:
                 average_progress_percent=100,
             ),
         )
+
+    def get_member(
+        self,
+        company_id: str,
+        user_id: int,
+    ) -> ManagerTeamMember | None:
+        self.calls.append(f"{company_id}:{user_id}")
+        if user_id != 2:
+            return None
+        return ManagerTeamMember(
+            user_id=2,
+          display_name="E2E Student",
+            username="web-e2e-student",
+            role="student",
+            role_label="Сотрудник",
+            started_courses_count=1,
+            completed_courses_count=0,
+            average_progress_percent=100,
+        )
+
+
+
+class FakeDashboardService:
+    def __init__(self) -> None:
+        self.calls: list[int] = []
+
+    def get_courses_for_user(
+        self,
+        user_id: int,
+    ) -> tuple[CourseDashboardItem, ...]:
+        self.calls.append(user_id)
+        return (
+            CourseDashboardItem(
+                slug="alpha",
+                title="Alpha Course",
+                description="",
+                status="in_progress",
+                progress_percent=75,
+                best_quiz_score=90.0,
+                last_quiz_score=85.0,
+                last_lesson_title="Lesson 1",
+             continue_url="/courses/alpha",
+            ),
+        )
+
 
 
 def _identity(role: str) -> WebIdentity:
@@ -64,7 +111,9 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
         self.client = TestClient(self.app)
         self.team_service = FakeManagerTeamService()
+        self.dashboard_service = FakeDashboardService()
         self.app.dependency_overrides[get_manager_team_service] = lambda: self.team_service
+        self.app.dependency_overrides[get_dashboard_service] = lambda: self.dashboard_service
 
     def tearDown(self) -> None:
         self.app.dependency_overrides.clear()
@@ -105,6 +154,49 @@ class ManagerTeamPageTests(unittest.TestCase):
         response = self.client.get("/manager/team")
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.team_service.calls, [])
+
+
+    def test_manager_can_open_team_member_page(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("E2E Student", response.text)
+        self.assertIn("Alpha Course", response.text)
+        self.assertIn("75%", response.text)
+        self.assertIn("90.0%", response.text)
+        self.assertIn("85.0%", response.text)
+        self.assertEqual(self.team_service.calls, ["intertop:2"])
+        self.assertEqual(self.dashboard_service.calls, [2])
+
+    def test_team_member_page_returns_404_outside_tenant(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/99")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.team_service.calls, ["intertop:99"])
+        self.assertEqual(self.dashboard_service.calls, [])
+
+
+
+    def test_student_cannot_open_team_member_page(self) -> None:
+        self._set_identity("student")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.team_service.calls, [])
+        self.assertEqual(self.dashboard_service.calls, [])
+
+    def test_anonymous_cannot_open_team_member_page(self) -> None:
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.team_service.calls, [])
+        self.assertEqual(self.dashboard_service.calls, [])
+
 
 
 if __name__ == "__main__":
