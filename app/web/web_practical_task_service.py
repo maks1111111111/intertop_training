@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
+from typing import Optional
 
 from app.ai.review_interfaces import ReviewRequest, ReviewResult
 from app.ai.review_language import resolve_review_language
@@ -25,6 +26,10 @@ class WebPracticalTaskAttemptCreationError(Exception):
     """Raised when a canonical attempt cannot be created."""
 
 
+class WebPracticalTaskReviewUnavailableError(Exception):
+    """Raised when AI practical-task review is unavailable."""
+
+
 class WebPracticalTaskReviewCompletionError(Exception):
     """Raised when an AI review cannot be persisted."""
 
@@ -41,7 +46,7 @@ class WebPracticalTaskService:
     def __init__(
         self,
         runtime: ContentRuntime,
-        review_service: PracticalTaskReviewService,
+        review_service: Optional[PracticalTaskReviewService],
         db_path: Path,
         repository: ModuleType = practical_task_attempt_repository,
     ) -> None:
@@ -79,6 +84,11 @@ class WebPracticalTaskService:
         if task is None:
             raise WebPracticalTaskNotFoundError(
                 "Structured practical task not found."
+            )
+
+        if self._review_service is None:
+            raise WebPracticalTaskReviewUnavailableError(
+                "AI practical-task review is unavailable."
             )
 
         request = ReviewRequest(

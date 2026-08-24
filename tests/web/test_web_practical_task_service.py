@@ -14,6 +14,7 @@ from app.database.db import get_connection, initialize_database, upsert_telegram
 from app.repositories import practical_task_attempt_repository
 from app.web.web_practical_task_service import (
     WebPracticalTaskNotFoundError,
+    WebPracticalTaskReviewUnavailableError,
     WebPracticalTaskService,
     WebPracticalTaskValidationError,
 )
@@ -154,6 +155,29 @@ class WebPracticalTaskServiceTests(unittest.TestCase):
         )
         self.assertEqual(len(attempts), 1)
         self.assertEqual(attempts[0].status, "pending")
+
+    def test_missing_ai_review_service_is_controlled(self) -> None:
+        service = WebPracticalTaskService(
+            self.runtime,
+            None,
+            self.db_path,
+        )
+
+        with self.assertRaises(WebPracticalTaskReviewUnavailableError):
+            service.submit_and_review(
+                self.user_id,
+                "safety",
+                "lesson_01",
+                "Ответ",
+            )
+
+        attempts = practical_task_attempt_repository.get_attempts_for_lesson_for_user(
+            self.db_path,
+            self.user_id,
+            "safety",
+            "lesson_01",
+        )
+        self.assertEqual(attempts, [])
 
 
 if __name__ == "__main__":
