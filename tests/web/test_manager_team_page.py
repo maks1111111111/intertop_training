@@ -16,11 +16,18 @@ from app.web.manager_employee_analytics_service import (
     EmployeeQuizTopicAnalytics,
     EmployeeQuizTopicClassification,
 )
+from app.web.manager_team_analytics_service import (
+    ManagerTeamAnalytics,
+    ManagerTeamMemberAnalytics,
+    ManagerTeamOverview,
+    ManagerTeamTopicAnalytics,
+)
 from app.web.manager_team_service import ManagerTeamMember
 from app.web.router import (
     get_current_web_identity,
     get_dashboard_service,
     get_manager_employee_analytics_service,
+    get_manager_team_analytics_service,
     get_manager_team_service,
 )
 from app.web.web_identity_service import WebIdentity
@@ -151,6 +158,117 @@ class FakeAnalyticsService:
         )
 
 
+class FakeTeamAnalyticsService:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self._empty = False
+        self._quiz_analytics_override: EmployeeQuizAnalytics | None = None
+
+    @staticmethod
+    def _default_member() -> ManagerTeamMember:
+        return ManagerTeamMember(
+            user_id=2,
+            display_name="E2E Student",
+            username="web-e2e-student",
+            role="student",
+            role_label="Сотрудник",
+            started_courses_count=1,
+            completed_courses_count=0,
+            average_progress_percent=100,
+        )
+
+    @staticmethod
+    def _default_member_quiz_analytics() -> EmployeeQuizAnalytics:
+        return EmployeeQuizAnalytics(
+            total_attempts_count=3,
+            tested_courses_count=2,
+            passed_courses_count=1,
+            latest_failed_courses_count=1,
+            best_score_percent=90.0,
+            average_score_percent=75.0,
+            courses=(
+                EmployeeCourseQuizAnalytics(
+                    slug="alpha",
+                    title="Alpha Quiz",
+                    attempts_count=2,
+                    best_score_percent=90.0,
+                    average_score_percent=80.0,
+                    latest_score_percent=90.0,
+                    latest_passed=True,
+                    ever_passed=True,
+                ),
+                EmployeeCourseQuizAnalytics(
+                    slug="beta",
+                    title="Beta Quiz",
+                    attempts_count=1,
+                    best_score_percent=70.0,
+                    average_score_percent=70.0,
+                    latest_score_percent=60.0,
+                    latest_passed=False,
+                    ever_passed=True,
+                ),
+            ),
+        )
+
+    def _resolve_member_quiz_analytics(self) -> EmployeeQuizAnalytics:
+        if self._quiz_analytics_override is not None:
+            return self._quiz_analytics_override
+        return self._default_member_quiz_analytics()
+
+    def _populated_analytics(self) -> ManagerTeamAnalytics:
+        return ManagerTeamAnalytics(
+            members_count=3,
+            started_members_count=2,
+            completed_members_count=1,
+            average_progress_percent=66.67,
+            members_with_quiz_results_count=2,
+            members_requiring_attention_count=1,
+            members_without_quiz_data_count=1,
+            average_quiz_score_percent=78.5,
+            development_topics=(
+                ManagerTeamTopicAnalytics(
+                    tag="Возвраты",
+                    answers_count=8,
+                    correct_answers_count=3,
+                    accuracy_percent=37.5,
+                    employees_count=2,
+                ),
+            ),
+        )
+
+    def get_team_overview(self, company_id: str) -> ManagerTeamOverview:
+        self.calls.append(company_id)
+        if self._empty:
+            return ManagerTeamOverview(
+                analytics=ManagerTeamAnalytics(
+                    members_count=0,
+                    started_members_count=0,
+                    completed_members_count=0,
+                    average_progress_percent=None,
+                    members_with_quiz_results_count=0,
+                    members_requiring_attention_count=0,
+                    members_without_quiz_data_count=0,
+                    average_quiz_score_percent=None,
+                    development_topics=(),
+                ),
+                members=(),
+            )
+        member = self._default_member()
+        quiz_analytics = self._resolve_member_quiz_analytics()
+        return ManagerTeamOverview(
+            analytics=self._populated_analytics(),
+            members=(
+                ManagerTeamMemberAnalytics(
+                    member=member,
+                    quiz_analytics=quiz_analytics,
+                ),
+            ),
+        )
+
+    def get_team_analytics(self, company_id: str) -> ManagerTeamAnalytics:
+        return self.get_team_overview(company_id).analytics
+
+
 
 class FakeDashboardService:
     def __init__(self) -> None:
@@ -205,10 +323,14 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.team_service = FakeManagerTeamService()
         self.dashboard_service = FakeDashboardService()
         self.analytics_service = FakeAnalyticsService()
+        self.team_analytics_service = FakeTeamAnalyticsService()
         self.app.dependency_overrides[get_manager_team_service] = lambda: self.team_service
         self.app.dependency_overrides[get_dashboard_service] = lambda: self.dashboard_service
         self.app.dependency_overrides[get_manager_employee_analytics_service] = (
             lambda: self.analytics_service
+        )
+        self.app.dependency_overrides[get_manager_team_analytics_service] = (
+            lambda: self.team_analytics_service
         )
 
     def tearDown(self) -> None:
@@ -233,40 +355,61 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Команда", response.text)
         self.assertIn("E2E Student", response.text)
         self.assertIn("100%", response.text)
-        self.assertEqual(self.team_service.calls, ["intertop"])
-        self.assertEqual(self.analytics_service.calls, [2])
+        self.assertEqual(self.team_service.calls, [])
+        self.assertEqual(self.analytics_service.calls, [])
+        self.assertEqual(self.team_analytics_service.calls, ["intertop"])
+        self.assertIn("Аналитика команды", response.text)
+        self.assertIn("66.67%", response.text)
+        self.assertIn("78.5%", response.text)
+        self.assertIn("Требуют внимания", response.text)
+        self.assertIn("Зоны развития команды", response.text)
+        self.assertIn("Возвраты", response.text)
+        self.assertIn("37.5%", response.text)
         self.assertIn("Протестировано курсов", response.text)
         self.assertIn("75.0%", response.text)
         self.assertIn("Требует внимания", response.text)
 
+    def test_manager_team_page_renders_empty_team_analytics(self) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._empty = True
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Аналитика команды", response.text)
+        self.assertIn("—", response.text)
+        self.assertIn(
+            "Пока недостаточно данных для определения зон развития команды",
+            response.text,
+        )
+
     def test_manager_team_page_renders_zero_quiz_attempts(self) -> None:
         self._set_identity("manager")
-        self.analytics_service.get_quiz_analytics = (
-            lambda user_id: FakeAnalyticsService.empty_analytics()
+        self.team_analytics_service._quiz_analytics_override = (
+            FakeAnalyticsService.empty_analytics()
         )
 
         response = self.client.get("/manager/team")
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Нет данных по тестам", response.text)
-        self.assertNotIn("Средний результат", response.text)
+        self.assertNotIn(
+            '<span class="dashboard-metric-label">Средний результат</span>',
+            response.text,
+        )
+        self.assertEqual(self.analytics_service.calls, [])
 
     def test_manager_team_page_renders_quiz_results_without_failures(self) -> None:
         self._set_identity("manager")
-
-        def analytics_without_failures(user_id: int) -> EmployeeQuizAnalytics:
-            self.analytics_service.calls.append(user_id)
-            return EmployeeQuizAnalytics(
-                total_attempts_count=2,
-                tested_courses_count=1,
-                passed_courses_count=1,
-                latest_failed_courses_count=0,
-                best_score_percent=90.0,
-                average_score_percent=85.0,
-                courses=(),
-            )
-
-        self.analytics_service.get_quiz_analytics = analytics_without_failures
+        self.team_analytics_service._quiz_analytics_override = EmployeeQuizAnalytics(
+            total_attempts_count=2,
+            tested_courses_count=1,
+            passed_courses_count=1,
+            latest_failed_courses_count=0,
+            best_score_percent=90.0,
+            average_score_percent=85.0,
+            courses=(),
+        )
 
         response = self.client.get("/manager/team")
 
@@ -274,6 +417,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Есть результаты", response.text)
         self.assertIn("85.0%", response.text)
         self.assertNotIn("Требует внимания", response.text)
+        self.assertEqual(self.analytics_service.calls, [])
 
     def test_admin_can_open_team_page(self) -> None:
         self._set_identity("admin")
@@ -286,12 +430,14 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.team_service.calls, [])
         self.assertEqual(self.analytics_service.calls, [])
+        self.assertEqual(self.team_analytics_service.calls, [])
 
     def test_anonymous_cannot_open_team_page_does_not_call_analytics(self) -> None:
         response = self.client.get("/manager/team")
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.team_service.calls, [])
         self.assertEqual(self.analytics_service.calls, [])
+        self.assertEqual(self.team_analytics_service.calls, [])
 
 
     def test_manager_can_open_team_member_page(self) -> None:

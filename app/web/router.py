@@ -129,6 +129,7 @@ from app.web.admin_knowledge_upload_service import (
 )
 from app.web.dashboard_service import DashboardService
 from app.web.manager_employee_analytics_service import ManagerEmployeeAnalyticsService
+from app.web.manager_team_analytics_service import ManagerTeamAnalyticsService
 from app.web.manager_team_service import ManagerTeamService
 from app.web.password_hashing_service import PasswordHashingService
 from app.web.progress_service import WebProgressService
@@ -335,6 +336,19 @@ def get_manager_employee_analytics_service(
         runtime,
         quiz_repository,
         db_path,
+    )
+
+
+def get_manager_team_analytics_service(
+    team_service: ManagerTeamService = Depends(get_manager_team_service),
+    employee_analytics_service: ManagerEmployeeAnalyticsService = Depends(
+        get_manager_employee_analytics_service
+    ),
+) -> ManagerTeamAnalyticsService:
+    """Return aggregate analytics service for manager team views."""
+    return ManagerTeamAnalyticsService(
+        team_service,
+        employee_analytics_service,
     )
 
 
@@ -719,28 +733,21 @@ def dashboard_page(
 )
 def manager_team_page(
     request: Request,
-    team_service: ManagerTeamService = Depends(get_manager_team_service),
-    analytics_service: ManagerEmployeeAnalyticsService = Depends(
-        get_manager_employee_analytics_service
+    team_analytics_service: ManagerTeamAnalyticsService = Depends(
+        get_manager_team_analytics_service
     ),
     identity: WebIdentity = Depends(require_web_management_identity),
 ) -> HTMLResponse:
     """Render tenant-scoped team learning progress for manager/admin."""
-    members = team_service.get_team(identity.company_id)
-    member_rows = tuple(
-        {
-            "member": member,
-            "quiz_analytics": analytics_service.get_quiz_analytics(member.user_id),
-        }
-        for member in members
-    )
+    overview = team_analytics_service.get_team_overview(identity.company_id)
     return templates.TemplateResponse(
         request,
         "manager_team.html",
         {
             "active_nav": "team",
-            "member_rows": member_rows,
-            "members_count": len(member_rows),
+            "member_rows": overview.members,
+            "members_count": len(overview.members),
+            "team_analytics": overview.analytics,
         },
     )
 

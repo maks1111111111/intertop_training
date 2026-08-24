@@ -10,7 +10,10 @@ from app.web.manager_employee_analytics_service import (
     EmployeeQuizTopicAnalytics,
     EmployeeQuizTopicsAnalytics,
 )
-from app.web.manager_team_analytics_service import ManagerTeamAnalyticsService
+from app.web.manager_team_analytics_service import (
+    ManagerTeamAnalyticsService,
+    ManagerTeamMemberAnalytics,
+)
 from app.web.manager_team_service import ManagerTeamMember
 
 
@@ -387,6 +390,84 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
         service.get_team_analytics("  company-a  ")
 
         self.assertEqual(team_service.calls, ["  company-a  "])
+
+    def test_get_team_overview_fetches_team_once(self) -> None:
+        members = (_member(1), _member(2))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            quiz_by_user={
+                1: _quiz_analytics(attempts=2, average=80.0),
+                2: _quiz_analytics(attempts=1, average=60.0),
+            },
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        overview = service.get_team_overview("company-a")
+
+        self.assertEqual(team_service.calls, ["company-a"])
+        self.assertEqual(employee_service.quiz_calls, [1, 2])
+        self.assertEqual(employee_service.topics_calls, [1, 2])
+        self.assertEqual(len(overview.members), 2)
+
+    def test_get_team_overview_member_rows_contain_quiz_analytics(self) -> None:
+        members = (_member(10),)
+        quiz = _quiz_analytics(attempts=3, average=75.0, latest_failed=1)
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(quiz_by_user={10: quiz})
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        overview = service.get_team_overview("company-a")
+
+        self.assertEqual(len(overview.members), 1)
+        row = overview.members[0]
+        self.assertIsInstance(row, ManagerTeamMemberAnalytics)
+        self.assertEqual(row.member.user_id, 10)
+        self.assertEqual(row.quiz_analytics, quiz)
+
+    def test_get_team_overview_aggregate_matches_get_team_analytics(self) -> None:
+        members = (
+            _member(1, started=2, completed=1, progress=80),
+            _member(2, started=0, completed=0, progress=40),
+        )
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            quiz_by_user={
+                1: _quiz_analytics(attempts=4, average=80.0),
+                2: _quiz_analytics(attempts=0),
+            },
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        overview = service.get_team_overview("company-a")
+        direct = service.get_team_analytics("company-a")
+
+        self.assertEqual(overview.analytics, direct)
+        self.assertEqual(overview.analytics.members_count, 2)
+        self.assertAlmostEqual(overview.analytics.average_progress_percent, 60.0)
+
+    def test_get_team_overview_empty_team_performs_no_employee_analytics(self) -> None:
+        team_service = FakeTeamService(())
+        employee_service = FakeEmployeeAnalyticsService()
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        overview = service.get_team_overview("company-a")
+
+        self.assertEqual(overview.members, ())
+        self.assertEqual(overview.analytics.members_count, 0)
+        self.assertEqual(employee_service.quiz_calls, [])
+        self.assertEqual(employee_service.topics_calls, [])
+
+    def test_get_team_analytics_delegates_to_overview(self) -> None:
+        members = (_member(1),)
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService()
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        result = service.get_team_analytics("company-a")
+
+        self.assertEqual(team_service.calls, ["company-a"])
+        self.assertEqual(employee_service.quiz_calls, [1])
+        self.assertEqual(result.members_count, 1)
 
 
 if __name__ == "__main__":

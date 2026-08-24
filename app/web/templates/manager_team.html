@@ -8,6 +8,87 @@
     <p class="page-lead">Прогресс обучения сотрудников вашей компании.</p>
 </section>
 
+<section class="section">
+    <h2 class="section-title">Аналитика команды</h2>
+    <div class="dashboard-metrics">
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Сотрудников</span>
+            <span class="dashboard-metric-value">{{ team_analytics.members_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Начали обучение</span>
+            <span class="dashboard-metric-value">{{ team_analytics.started_members_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Завершили хотя бы один курс</span>
+            <span class="dashboard-metric-value">{{ team_analytics.completed_members_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Средний прогресс</span>
+            <span class="dashboard-metric-value">
+                {% if team_analytics.average_progress_percent is not none %}
+                {{ team_analytics.average_progress_percent }}%
+                {% else %}
+                —
+                {% endif %}
+            </span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Есть результаты тестов</span>
+            <span class="dashboard-metric-value">{{ team_analytics.members_with_quiz_results_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Требуют внимания</span>
+            <span class="dashboard-metric-value">{{ team_analytics.members_requiring_attention_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Без данных по тестам</span>
+            <span class="dashboard-metric-value">{{ team_analytics.members_without_quiz_data_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Средний результат тестов</span>
+            <span class="dashboard-metric-value">
+                {% if team_analytics.average_quiz_score_percent is not none %}
+                {{ team_analytics.average_quiz_score_percent }}%
+                {% else %}
+                —
+                {% endif %}
+            </span>
+        </div>
+    </div>
+
+    <h3 class="section-subtitle">Зоны развития команды</h3>
+    {% if team_analytics.development_topics %}
+    <ul class="course-list admin-course-list">
+        {% for topic in team_analytics.development_topics %}
+        <li class="course-card admin-course-card">
+            <div class="admin-course-body">
+                <header class="admin-course-header">
+                    <h4 class="course-card-title">{{ topic.tag }}</h4>
+                </header>
+                <div class="dashboard-metrics">
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Точность</span>
+                        <span class="dashboard-metric-value">{{ topic.accuracy_percent }}%</span>
+                    </div>
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Ответов</span>
+                        <span class="dashboard-metric-value">{{ topic.answers_count }}</span>
+                    </div>
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Сотрудников</span>
+                        <span class="dashboard-metric-value">{{ topic.employees_count }}</span>
+                    </div>
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="page-meta">Пока недостаточно данных для определения зон развития команды</p>
+    {% endif %}
+</section>
+
 {% if member_rows %}
 <section class="section">
     <ul class="course-list admin-course-list">
