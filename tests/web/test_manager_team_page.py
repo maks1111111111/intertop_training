@@ -10,10 +10,15 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 
 from app.web.dashboard_service import CourseDashboardItem
+from app.web.manager_employee_analytics_service import (
+    EmployeeCourseQuizAnalytics,
+    EmployeeQuizAnalytics,
+)
 from app.web.manager_team_service import ManagerTeamMember
 from app.web.router import (
     get_current_web_identity,
     get_dashboard_service,
+    get_manager_employee_analytics_service,
     get_manager_team_service,
 )
 from app.web.web_identity_service import WebIdentity
@@ -49,13 +54,64 @@ class FakeManagerTeamService:
             return None
         return ManagerTeamMember(
             user_id=2,
-          display_name="E2E Student",
+            display_name="E2E Student",
             username="web-e2e-student",
             role="student",
             role_label="Сотрудник",
             started_courses_count=1,
             completed_courses_count=0,
             average_progress_percent=100,
+        )
+
+
+
+class FakeAnalyticsService:
+    def __init__(self) -> None:
+        self.calls: list[int] = []
+
+    def get_quiz_analytics(self, user_id: int) -> EmployeeQuizAnalytics:
+        self.calls.append(user_id)
+        return EmployeeQuizAnalytics(
+            total_attempts_count=3,
+            tested_courses_count=2,
+            passed_courses_count=1,
+            latest_failed_courses_count=1,
+            best_score_percent=90.0,
+            average_score_percent=75.0,
+            courses=(
+                EmployeeCourseQuizAnalytics(
+                    slug="alpha",
+                    title="Alpha Quiz",
+                    attempts_count=2,
+                    best_score_percent=90.0,
+                    average_score_percent=80.0,
+                    latest_score_percent=90.0,
+                    latest_passed=True,
+                    ever_passed=True,
+                ),
+                EmployeeCourseQuizAnalytics(
+                    slug="beta",
+                    title="Beta Quiz",
+                    attempts_count=1,
+                    best_score_percent=70.0,
+                    average_score_percent=70.0,
+                    latest_score_percent=60.0,
+                    latest_passed=False,
+                    ever_passed=True,
+                ),
+            ),
+        )
+
+    @staticmethod
+    def empty_analytics() -> EmployeeQuizAnalytics:
+        return EmployeeQuizAnalytics(
+            total_attempts_count=0,
+            tested_courses_count=0,
+            passed_courses_count=0,
+            latest_failed_courses_count=0,
+            best_score_percent=None,
+            average_score_percent=None,
+            courses=(),
         )
 
 
@@ -79,7 +135,7 @@ class FakeDashboardService:
                 best_quiz_score=90.0,
                 last_quiz_score=85.0,
                 last_lesson_title="Lesson 1",
-             continue_url="/courses/alpha",
+                continue_url="/courses/alpha",
             ),
         )
 
@@ -112,8 +168,12 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.client = TestClient(self.app)
         self.team_service = FakeManagerTeamService()
         self.dashboard_service = FakeDashboardService()
+        self.analytics_service = FakeAnalyticsService()
         self.app.dependency_overrides[get_manager_team_service] = lambda: self.team_service
         self.app.dependency_overrides[get_dashboard_service] = lambda: self.dashboard_service
+        self.app.dependency_overrides[get_manager_employee_analytics_service] = (
+            lambda: self.analytics_service
+        )
 
     def tearDown(self) -> None:
         self.app.dependency_overrides.clear()
@@ -169,6 +229,25 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("85.0%", response.text)
         self.assertEqual(self.team_service.calls, ["intertop:2"])
         self.assertEqual(self.dashboard_service.calls, [2])
+        self.assertEqual(self.analytics_service.calls, [2])
+        self.assertIn("Результаты тестов", response.text)
+        self.assertIn("Alpha Quiz", response.text)
+        self.assertIn("Beta Quiz", response.text)
+        self.assertIn("Пройден", response.text)
+        self.assertIn("Не пройден", response.text)
+        self.assertIn("Ранее был успешно сдан", response.text)
+
+    def test_team_member_page_renders_zero_attempt_analytics(self) -> None:
+        self._set_identity("manager")
+        self.analytics_service.get_quiz_analytics = (
+            lambda user_id: FakeAnalyticsService.empty_analytics()
+        )
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Результаты тестов", response.text)
+        self.assertIn("Сотрудник пока не проходил тесты", response.text)
 
     def test_team_member_page_returns_404_outside_tenant(self) -> None:
         self._set_identity("manager")
@@ -178,6 +257,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(self.team_service.calls, ["intertop:99"])
         self.assertEqual(self.dashboard_service.calls, [])
+        self.assertEqual(self.analytics_service.calls, [])
 
 
 
@@ -189,6 +269,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.team_service.calls, [])
         self.assertEqual(self.dashboard_service.calls, [])
+        self.assertEqual(self.analytics_service.calls, [])
 
     def test_anonymous_cannot_open_team_member_page(self) -> None:
         response = self.client.get("/manager/team/2")
@@ -196,6 +277,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.team_service.calls, [])
         self.assertEqual(self.dashboard_service.calls, [])
+        self.assertEqual(self.analytics_service.calls, [])
 
 
 

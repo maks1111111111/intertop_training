@@ -128,6 +128,7 @@ from app.web.admin_knowledge_upload_service import (
     AdminKnowledgeUploadService,
 )
 from app.web.dashboard_service import DashboardService
+from app.web.manager_employee_analytics_service import ManagerEmployeeAnalyticsService
 from app.web.manager_team_service import ManagerTeamService
 from app.web.password_hashing_service import PasswordHashingService
 from app.web.progress_service import WebProgressService
@@ -321,6 +322,18 @@ def get_manager_team_service(
     """Return the tenant-scoped manager team service."""
     return ManagerTeamService(
         CompanyTeamRepository(),
+        db_path,
+    )
+
+
+def get_manager_employee_analytics_service(
+    runtime: ContentRuntime = Depends(get_content_runtime),
+    db_path: Path = Depends(get_db_path),
+) -> ManagerEmployeeAnalyticsService:
+    """Return quiz analytics service for manager employee views."""
+    return ManagerEmployeeAnalyticsService(
+        runtime,
+        quiz_repository,
         db_path,
     )
 
@@ -733,6 +746,9 @@ def manager_team_member_page(
     user_id: int,
     team_service: ManagerTeamService = Depends(get_manager_team_service),
     dashboard_service: DashboardService = Depends(get_dashboard_service),
+    analytics_service: ManagerEmployeeAnalyticsService = Depends(
+        get_manager_employee_analytics_service
+    ),
     identity: WebIdentity = Depends(require_web_management_identity),
 ) -> HTMLResponse:
     """Render one tenant-scoped employee learning profile."""
@@ -744,6 +760,7 @@ def manager_team_member_page(
         raise HTTPException(status_code=404, detail="Employee not found")
 
     courses = dashboard_service.get_courses_for_user(member.user_id)
+    quiz_analytics = analytics_service.get_quiz_analytics(member.user_id)
     return templates.TemplateResponse(
         request,
         "manager_team_member.html",
@@ -752,6 +769,7 @@ def manager_team_member_page(
             "member": member,
             "courses": courses,
             "courses_count": len(courses),
+            "quiz_analytics": quiz_analytics,
         },
     )
 

@@ -94,4 +94,84 @@
     <p class="dashboard-empty-state-message">Доступных курсов пока нет</p>
 </div>
 {% endif %}
+
+<section class="section">
+    <h2>Результаты тестов</h2>
+    {% if quiz_analytics.total_attempts_count > 0 %}
+    <div class="dashboard-metrics">
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Попыток</span>
+            <span class="dashboard-metric-value">{{ quiz_analytics.total_attempts_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Протестировано курсов</span>
+            <span class="dashboard-metric-value">{{ quiz_analytics.tested_courses_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Успешно сдано курсов</span>
+            <span class="dashboard-metric-value">{{ quiz_analytics.passed_courses_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Последняя попытка не пройдена</span>
+            <span class="dashboard-metric-value">{{ quiz_analytics.latest_failed_courses_count }}</span>
+        </div>
+        {% if quiz_analytics.best_score_percent is not none %}
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Лучший результат</span>
+            <span class="dashboard-metric-value">{{ quiz_analytics.best_score_percent }}%</span>
+        </div>
+        {% endif %}
+        {% if quiz_analytics.average_score_percent is not none %}
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Средний результат</span>
+            <span class="dashboard-metric-value">{{ quiz_analytics.average_score_percent }}%</span>
+        </div>
+        {% endif %}
+    </div>
+
+    <ul class="course-list dashboard-course-list">
+        {% for course in quiz_analytics.courses %}
+        <li class="course-card dashboard-course-card">
+            <div class="dashboard-course-body">
+                <header class="dashboard-course-header">
+                    <h3 class="course-card-title">{{ course.title }}</h3>
+                    <span class="dashboard-status-badge dashboard-status-badge--{% if course.latest_passed %}completed{% else %}in_progress{% endif %}">
+                        {% if course.latest_passed %}
+                        Пройден
+                        {% else %}
+                        Не пройден
+                        {% endif %}
+                    </span>
+                </header>
+                <div class="dashboard-metrics">
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Попыток</span>
+                        <span class="dashboard-metric-value">{{ course.attempts_count }}</span>
+                    </div>
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Лучший результат</span>
+                        <span class="dashboard-metric-value">{{ course.best_score_percent }}%</span>
+                    </div>
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Средний результат</span>
+                        <span class="dashboard-metric-value">{{ course.average_score_percent }}%</span>
+                    </div>
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Последний результат</span>
+                        <span class="dashboard-metric-value">{{ course.latest_score_percent }}%</span>
+                    </div>
+                </div>
+                {% if course.ever_passed and not course.latest_passed %}
+                <p class="page-meta">Ранее был успешно сдан</p>
+                {% endif %}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state dashboard-empty-state">
+        <p class="dashboard-empty-state-message">Сотрудник пока не проходил тесты</p>
+    </div>
+    {% endif %}
+</section>
 {% endblock %}
