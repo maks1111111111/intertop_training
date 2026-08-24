@@ -33,6 +33,20 @@ class EmployeeQuizAnalytics:
     courses: tuple[EmployeeCourseQuizAnalytics, ...]
 
 
+@dataclass(frozen=True)
+class EmployeeQuizTopicAnalytics:
+    tag: str
+    answers_count: int
+    correct_answers_count: int
+    accuracy_percent: float
+
+
+@dataclass(frozen=True)
+class EmployeeQuizTopicsAnalytics:
+    total_tagged_answers_count: int
+    topics: tuple[EmployeeQuizTopicAnalytics, ...]
+
+
 class ManagerEmployeeAnalyticsService:
     """Build quiz analytics for one canonical employee."""
 
@@ -99,6 +113,94 @@ class ManagerEmployeeAnalyticsService:
             ),
             courses=tuple(courses),
         )
+
+    def get_quiz_topics_analytics(self, user_id: int) -> EmployeeQuizTopicsAnalytics:
+        normalized_user_id = _validate_user_id(user_id)
+
+        tag_stats: dict[str, dict[str, int]] = {}
+        total_tagged_answers_count = 0
+
+        for course in self._runtime.get_courses():
+            quiz = course.quiz
+            if quiz is None:
+                continue
+
+            questions_by_id = {question.id: question for question in quiz.questions}
+            answers = self._quiz_repository.get_finished_answers_for_user(
+                self._db_path,
+                normalized_user_id,
+                course.slug,
+            )
+
+            for answer in answers:
+                question = questions_by_id.get(answer["question_id"])
+                if question is None:
+                    continue
+
+                normalized_tags = _normalize_question_tags(question.tags)
+                if not normalized_tags:
+                    continue
+
+                is_correct = bool(int(answer["is_correct"]))
+                for tag in normalized_tags:
+                    stats = tag_stats.setdefault(
+                        tag,
+                        {"answers_count": 0, "correct_answers_count": 0},
+                    )
+                    stats["answers_count"] += 1
+                    if is_correct:
+                        stats["correct_answers_count"] += 1
+                    total_tagged_answers_count += 1
+
+        topics = tuple(
+            _build_topic_analytics(tag, stats)
+            for tag, stats in sorted(
+                tag_stats.items(),
+                key=lambda item: (
+                    -_topic_accuracy_percent(item[1]),
+                    -item[1]["answers_count"],
+                    item[0].casefold(),
+                    item[0],
+                ),
+            )
+        )
+
+        return EmployeeQuizTopicsAnalytics(
+            total_tagged_answers_count=total_tagged_answers_count,
+            topics=topics,
+        )
+
+
+def _normalize_question_tags(tags: list[str]) -> set[str]:
+    normalized_tags: set[str] = set()
+    for tag in tags:
+        if not isinstance(tag, str):
+            continue
+        stripped = tag.strip()
+        if stripped:
+            normalized_tags.add(stripped)
+    return normalized_tags
+
+
+def _topic_accuracy_percent(stats: dict[str, int]) -> float:
+    answers_count = stats["answers_count"]
+    if answers_count == 0:
+        return 0.0
+    return round(stats["correct_answers_count"] * 100 / answers_count, 2)
+
+
+def _build_topic_analytics(
+    tag: str,
+    stats: dict[str, int],
+) -> EmployeeQuizTopicAnalytics:
+    answers_count = stats["answers_count"]
+    correct_answers_count = stats["correct_answers_count"]
+    return EmployeeQuizTopicAnalytics(
+        tag=tag,
+        answers_count=answers_count,
+        correct_answers_count=correct_answers_count,
+        accuracy_percent=_topic_accuracy_percent(stats),
+    )
 
 
 def _validate_user_id(user_id: int) -> int:
