@@ -47,6 +47,18 @@ class EmployeeQuizTopicsAnalytics:
     topics: tuple[EmployeeQuizTopicAnalytics, ...]
 
 
+@dataclass(frozen=True)
+class EmployeeQuizTopicClassification:
+    strengths: tuple[EmployeeQuizTopicAnalytics, ...]
+    development_areas: tuple[EmployeeQuizTopicAnalytics, ...]
+    unclassified_topics_count: int
+
+
+MIN_TOPIC_ANSWERS = 3
+STRONG_TOPIC_ACCURACY_PERCENT = 80.0
+DEVELOPMENT_TOPIC_ACCURACY_PERCENT = 70.0
+
+
 class ManagerEmployeeAnalyticsService:
     """Build quiz analytics for one canonical employee."""
 
@@ -168,6 +180,55 @@ class ManagerEmployeeAnalyticsService:
         return EmployeeQuizTopicsAnalytics(
             total_tagged_answers_count=total_tagged_answers_count,
             topics=topics,
+        )
+
+    def get_quiz_topic_classification(
+        self,
+        user_id: int,
+    ) -> EmployeeQuizTopicClassification:
+        _validate_user_id(user_id)
+        topic_analytics = self.get_quiz_topics_analytics(user_id)
+
+        strengths: list[EmployeeQuizTopicAnalytics] = []
+        development_areas: list[EmployeeQuizTopicAnalytics] = []
+        unclassified_topics_count = 0
+
+        for topic in topic_analytics.topics:
+            if topic.answers_count < MIN_TOPIC_ANSWERS:
+                unclassified_topics_count += 1
+                continue
+
+            if topic.accuracy_percent >= STRONG_TOPIC_ACCURACY_PERCENT:
+                strengths.append(topic)
+            elif topic.accuracy_percent < DEVELOPMENT_TOPIC_ACCURACY_PERCENT:
+                development_areas.append(topic)
+            else:
+                unclassified_topics_count += 1
+
+        return EmployeeQuizTopicClassification(
+            strengths=tuple(
+                sorted(
+                    strengths,
+                    key=lambda topic: (
+                        -topic.accuracy_percent,
+                        -topic.answers_count,
+                        topic.tag.casefold(),
+                        topic.tag,
+                    ),
+                )
+            ),
+            development_areas=tuple(
+                sorted(
+                    development_areas,
+                    key=lambda topic: (
+                        topic.accuracy_percent,
+                        -topic.answers_count,
+                        topic.tag.casefold(),
+                        topic.tag,
+                    ),
+                )
+            ),
+            unclassified_topics_count=unclassified_topics_count,
         )
 
 

@@ -4,6 +4,9 @@ from pathlib import Path
 from typing import Optional
 
 from app.web.manager_employee_analytics_service import (
+    DEVELOPMENT_TOPIC_ACCURACY_PERCENT,
+    MIN_TOPIC_ANSWERS,
+    STRONG_TOPIC_ACCURACY_PERCENT,
     ManagerEmployeeAnalyticsService,
 )
 
@@ -543,6 +546,317 @@ class ManagerEmployeeTopicAnalyticsServiceTests(unittest.TestCase):
         self.assertEqual(result.topics[1].answers_count, 1)
         self.assertEqual(result.topics[2].accuracy_percent, 50.0)
         self.assertEqual(result.topics[3].accuracy_percent, 0.0)
+
+
+def _topic_service(
+    db_path: Path,
+    *,
+    answers_by_course: dict[str, list[dict[str, object]]],
+    courses: tuple[SimpleNamespace, ...],
+) -> tuple[ManagerEmployeeAnalyticsService, TopicAnalyticsFakeQuizRepository]:
+    repository = TopicAnalyticsFakeQuizRepository(answers_by_course)
+    service = ManagerEmployeeAnalyticsService(
+        TopicAnalyticsFakeRuntime(courses),
+        repository,
+        db_path,
+    )
+    return service, repository
+
+
+def _answers_for_accuracy(
+    question_id: str,
+    *,
+    correct_count: int,
+    incorrect_count: int,
+) -> list[dict[str, object]]:
+    return [
+        *(_answer_row(question_id, is_correct=True) for _ in range(correct_count)),
+        *(_answer_row(question_id, is_correct=False) for _ in range(incorrect_count)),
+    ]
+
+
+class ManagerEmployeeTopicClassificationServiceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.db_path = Path("/tmp/training.db")
+
+    def test_eighty_percent_or_higher_with_minimum_answers_becomes_strength(self) -> None:
+        service, _ = _topic_service(
+            self.db_path,
+            courses=(
+                _course(
+                    "alpha",
+                    quiz=_quiz(_question("q1", ["Returns"])),
+                ),
+            ),
+            answers_by_course={
+                "alpha": _answers_for_accuracy(
+                    "q1",
+                    correct_count=8,
+                    incorrect_count=2,
+                ),
+            },
+        )
+
+        result = service.get_quiz_topic_classification(42)
+
+        self.assertEqual(len(result.strengths), 1)
+        self.assertEqual(result.strengths[0].tag, "Returns")
+        self.assertEqual(result.strengths[0].accuracy_percent, 80.0)
+        self.assertEqual(result.development_areas, ())
+        self.assertEqual(result.unclassified_topics_count, 0)
+
+    def test_below_seventy_percent_with_minimum_answers_becomes_development_area(
+        self,
+    ) -> None:
+        service, _ = _topic_service(
+            self.db_path,
+            courses=(
+                _course(
+                    "alpha",
+                    quiz=_quiz(_question("q1", ["Returns"])),
+                ),
+            ),
+            answers_by_course={
+                "alpha": _answers_for_accuracy(
+                    "q1",
+                    correct_count=2,
+                    incorrect_count=1,
+                ),
+            },
+        )
+
+        result = service.get_quiz_topic_classification(42)
+
+        self.assertEqual(result.strengths, ())
+        self.assertEqual(len(result.development_areas), 1)
+        self.assertEqual(result.development_areas[0].tag, "Returns")
+        self.assertAlmostEqual(result.development_areas[0].accuracy_percent, 66.67, places=2)
+        self.assertEqual(result.unclassified_topics_count, 0)
+
+    def test_exactly_seventy_percent_is_neutral(self) -> None:
+        service, _ = _topic_service(
+            self.db_path,
+            courses=(
+                _course(
+                    "alpha",
+                    quiz=_quiz(_question("q1", ["Returns"])),
+                ),
+            ),
+            answers_by_course={
+                "alpha": _answers_for_accuracy(
+                    "q1",
+                    correct_count=7,
+                    incorrect_count=3,
+                ),
+            },
+        )
+
+        result = service.get_quiz_topic_classification(42)
+
+        self.assertEqual(result.strengths, ())
+        self.assertEqual(result.development_areas, ())
+        self.assertEqual(result.unclassified_topics_count, 1)
+
+    def test_exactly_eighty_percent_is_strength(self) -> None:
+        service, _ = _topic_service(
+            self.db_path,
+            courses=(
+                _course(
+                    "alpha",
+                    quiz=_quiz(_question("q1", ["Returns"])),
+                ),
+            ),
+            answers_by_course={
+                "alpha": _answers_for_accuracy(
+                    "q1",
+                    correct_count=4,
+                    incorrect_count=1,
+                ),
+            },
+        )
+
+        result = service.get_quiz_topic_classification(42)
+
+        self.assertEqual(len(result.strengths), 1)
+        self.assertEqual(result.strengths[0].accuracy_percent, 80.0)
+        self.assertEqual(result.development_areas, ())
+        self.assertEqual(result.unclassified_topics_count, 0)
+
+    def test_topic_with_fewer_than_minimum_answers_is_unclassified(self) -> None:
+        service, _ = _topic_service(
+            self.db_path,
+            courses=(
+                _course(
+                    "alpha",
+                    quiz=_quiz(_question("q1", ["Returns"])),
+                ),
+            ),
+            answers_by_course={
+                "alpha": _answers_for_accuracy(
+                    "q1",
+                    correct_count=2,
+                    incorrect_count=0,
+                ),
+            },
+        )
+
+        result = service.get_quiz_topic_classification(42)
+
+        self.assertEqual(result.strengths, ())
+        self.assertEqual(result.development_areas, ())
+        self.assertEqual(result.unclassified_topics_count, 1)
+
+    def test_neutral_and_low_sample_topics_are_counted_as_unclassified(self) -> None:
+        service, _ = _topic_service(
+            self.db_path,
+            courses=(
+                _course(
+                    "alpha",
+                    quiz=_quiz(
+                        _question("q1", ["Strong"]),
+                        _question("q2", ["Neutral"]),
+                        _question("q3", ["LowSample"]),
+                    ),
+                ),
+            ),
+            answers_by_course={
+                "alpha": [
+                    *_answers_for_accuracy("q1", correct_count=3, incorrect_count=0),
+                    *_answers_for_accuracy("q2", correct_count=7, incorrect_count=3),
+                    *_answers_for_accuracy("q3", correct_count=2, incorrect_count=0),
+                ],
+            },
+        )
+
+        result = service.get_quiz_topic_classification(42)
+
+        self.assertEqual(len(result.strengths), 1)
+        self.assertEqual(result.strengths[0].tag, "Strong")
+        self.assertEqual(result.development_areas, ())
+        self.assertEqual(result.unclassified_topics_count, 2)
+
+    def test_strengths_are_sorted_deterministically(self) -> None:
+        service, _ = _topic_service(
+            self.db_path,
+            courses=(
+                _course(
+                    "alpha",
+                    quiz=_quiz(
+                        _question("q1", ["beta"]),
+                        _question("q2", ["Alpha"]),
+                        _question("q3", ["gamma"]),
+                    ),
+                ),
+            ),
+            answers_by_course={
+                "alpha": [
+                    *_answers_for_accuracy("q1", correct_count=4, incorrect_count=0),
+                    *_answers_for_accuracy("q2", correct_count=3, incorrect_count=0),
+                    *_answers_for_accuracy("q3", correct_count=4, incorrect_count=1),
+                ],
+            },
+        )
+
+        result = service.get_quiz_topic_classification(42)
+
+        self.assertEqual(
+            [topic.tag for topic in result.strengths],
+            ["beta", "Alpha", "gamma"],
+        )
+        self.assertEqual(result.strengths[0].accuracy_percent, 100.0)
+        self.assertEqual(result.strengths[0].answers_count, 4)
+        self.assertEqual(result.strengths[1].accuracy_percent, 100.0)
+        self.assertEqual(result.strengths[1].answers_count, 3)
+        self.assertEqual(result.strengths[2].accuracy_percent, 80.0)
+
+    def test_development_areas_are_sorted_deterministically(self) -> None:
+        service, _ = _topic_service(
+            self.db_path,
+            courses=(
+                _course(
+                    "alpha",
+                    quiz=_quiz(
+                        _question("q1", ["beta"]),
+                        _question("q2", ["Alpha"]),
+                        _question("q3", ["gamma"]),
+                    ),
+                ),
+            ),
+            answers_by_course={
+                "alpha": [
+                    *_answers_for_accuracy("q1", correct_count=1, incorrect_count=2),
+                    *_answers_for_accuracy("q2", correct_count=1, incorrect_count=2),
+                    *_answers_for_accuracy("q3", correct_count=0, incorrect_count=4),
+                ],
+            },
+        )
+
+        result = service.get_quiz_topic_classification(42)
+
+        self.assertEqual(
+            [topic.tag for topic in result.development_areas],
+            ["gamma", "Alpha", "beta"],
+        )
+        self.assertEqual(result.development_areas[0].accuracy_percent, 0.0)
+        self.assertAlmostEqual(result.development_areas[1].accuracy_percent, 33.33, places=2)
+        self.assertAlmostEqual(result.development_areas[2].accuracy_percent, 33.33, places=2)
+        self.assertEqual(result.development_areas[1].answers_count, 3)
+        self.assertEqual(result.development_areas[2].answers_count, 3)
+
+    def test_empty_topic_analytics_returns_empty_classification(self) -> None:
+        service, _ = _topic_service(
+            self.db_path,
+            courses=(_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),),
+            answers_by_course={"alpha": []},
+        )
+
+        result = service.get_quiz_topic_classification(42)
+
+        self.assertEqual(result.strengths, ())
+        self.assertEqual(result.development_areas, ())
+        self.assertEqual(result.unclassified_topics_count, 0)
+
+    def test_rejects_invalid_user_id_for_topic_classification(self) -> None:
+        service, _ = _topic_service(
+            self.db_path,
+            courses=(_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),),
+            answers_by_course={"alpha": []},
+        )
+
+        for invalid_user_id in (0, -1, True, "42"):
+            with self.subTest(user_id=invalid_user_id):
+                with self.assertRaises(ValueError):
+                    service.get_quiz_topic_classification(invalid_user_id)
+
+    def test_reuses_topic_analytics_without_duplicating_repository_logic(self) -> None:
+        class CountingService(ManagerEmployeeAnalyticsService):
+            topic_analytics_calls = 0
+
+            def get_quiz_topics_analytics(self, user_id: int):
+                CountingService.topic_analytics_calls += 1
+                return super().get_quiz_topics_analytics(user_id)
+
+        CountingService.topic_analytics_calls = 0
+        service = CountingService(
+            TopicAnalyticsFakeRuntime(
+                (_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),)
+            ),
+            TopicAnalyticsFakeQuizRepository(
+                {"alpha": _answers_for_accuracy("q1", correct_count=3, incorrect_count=0)},
+            ),
+            self.db_path,
+        )
+
+        result = service.get_quiz_topic_classification(42)
+
+        self.assertEqual(CountingService.topic_analytics_calls, 1)
+        self.assertEqual(len(result.strengths), 1)
+        self.assertEqual(result.strengths[0].tag, "Returns")
+
+    def test_classification_constants_match_requirements(self) -> None:
+        self.assertEqual(MIN_TOPIC_ANSWERS, 3)
+        self.assertEqual(STRONG_TOPIC_ACCURACY_PERCENT, 80.0)
+        self.assertEqual(DEVELOPMENT_TOPIC_ACCURACY_PERCENT, 70.0)
 
 
 if __name__ == "__main__":
