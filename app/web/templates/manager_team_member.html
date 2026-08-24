@@ -174,4 +174,65 @@
     </div>
     {% endif %}
 </section>
+
+<section class="section">
+    <h2>Сильные стороны и зоны развития</h2>
+    {% if topic_classification.strengths %}
+    <h3>Сильные стороны</h3>
+    <ul class="course-list dashboard-course-list">
+        {% for topic in topic_classification.strengths %}
+        <li class="course-card dashboard-course-card">
+            <div class="dashboard-course-body">
+                <header class="dashboard-course-header">
+                    <h4 class="course-card-title">{{ topic.tag }}</h4>
+                    <span class="dashboard-status-badge dashboard-status-badge--completed">
+                        {{ topic.accuracy_percent }}%
+                    </span>
+                </header>
+                <div class="dashboard-metrics">
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Ответов</span>
+                        <span class="dashboard-metric-value">{{ topic.answers_count }}</span>
+                    </div>
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if topic_classification.development_areas %}
+    <h3>Зоны развития</h3>
+    <ul class="course-list dashboard-course-list">
+        {% for topic in topic_classification.development_areas %}
+        <li class="course-card dashboard-course-card">
+            <div class="dashboard-course-body">
+                <header class="dashboard-course-header">
+                    <h4 class="course-card-title">{{ topic.tag }}</h4>
+                    <span class="dashboard-status-badge dashboard-status-badge--in_progress">
+                        {{ topic.accuracy_percent }}%
+                    </span>
+                </header>
+                <div class="dashboard-metrics">
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Ответов</span>
+                        <span class="dashboard-metric-value">{{ topic.answers_count }}</span>
+                    </div>
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if not topic_classification.strengths and not topic_classification.development_areas %}
+    <div class="empty-state dashboard-empty-state">
+        <p class="dashboard-empty-state-message">Пока недостаточно данных для определения сильных сторон и зон развития</p>
+    </div>
+    {% endif %}
+
+    {% if topic_classification.unclassified_topics_count > 0 %}
+    <p class="page-meta">Недостаточно данных или нейтральный результат по темам: {{ topic_classification.unclassified_topics_count }}</p>
+    {% endif %}
+</section>
 {% endblock %}

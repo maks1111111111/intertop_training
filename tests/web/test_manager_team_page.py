@@ -13,6 +13,8 @@ from app.web.dashboard_service import CourseDashboardItem
 from app.web.manager_employee_analytics_service import (
     EmployeeCourseQuizAnalytics,
     EmployeeQuizAnalytics,
+    EmployeeQuizTopicAnalytics,
+    EmployeeQuizTopicClassification,
 )
 from app.web.manager_team_service import ManagerTeamMember
 from app.web.router import (
@@ -68,6 +70,7 @@ class FakeManagerTeamService:
 class FakeAnalyticsService:
     def __init__(self) -> None:
         self.calls: list[int] = []
+        self.topic_classification_calls: list[int] = []
 
     def get_quiz_analytics(self, user_id: int) -> EmployeeQuizAnalytics:
         self.calls.append(user_id)
@@ -102,6 +105,31 @@ class FakeAnalyticsService:
             ),
         )
 
+    def get_quiz_topic_classification(
+        self,
+        user_id: int,
+    ) -> EmployeeQuizTopicClassification:
+        self.topic_classification_calls.append(user_id)
+        return EmployeeQuizTopicClassification(
+            strengths=(
+                EmployeeQuizTopicAnalytics(
+                    tag="Работа с клиентом",
+                    answers_count=5,
+                    correct_answers_count=5,
+                    accuracy_percent=100.0,
+                ),
+            ),
+            development_areas=(
+                EmployeeQuizTopicAnalytics(
+                    tag="Возвраты",
+                    answers_count=4,
+                    correct_answers_count=2,
+                    accuracy_percent=50.0,
+                ),
+            ),
+            unclassified_topics_count=1,
+        )
+
     @staticmethod
     def empty_analytics() -> EmployeeQuizAnalytics:
         return EmployeeQuizAnalytics(
@@ -112,6 +140,14 @@ class FakeAnalyticsService:
             best_score_percent=None,
             average_score_percent=None,
             courses=(),
+        )
+
+    @staticmethod
+    def empty_topic_classification() -> EmployeeQuizTopicClassification:
+        return EmployeeQuizTopicClassification(
+            strengths=(),
+            development_areas=(),
+            unclassified_topics_count=0,
         )
 
 
@@ -236,6 +272,15 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Пройден", response.text)
         self.assertIn("Не пройден", response.text)
         self.assertIn("Ранее был успешно сдан", response.text)
+        self.assertIn("Сильные стороны и зоны развития", response.text)
+        self.assertIn("Сильные стороны", response.text)
+        self.assertIn("Зоны развития", response.text)
+        self.assertIn("Работа с клиентом", response.text)
+        self.assertIn("Возвраты", response.text)
+        self.assertIn("100.0%", response.text)
+        self.assertIn("50.0%", response.text)
+        self.assertIn("Недостаточно данных или нейтральный результат по темам: 1", response.text)
+        self.assertEqual(self.analytics_service.topic_classification_calls, [2])
 
     def test_team_member_page_renders_zero_attempt_analytics(self) -> None:
         self._set_identity("manager")
@@ -249,6 +294,20 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Результаты тестов", response.text)
         self.assertIn("Сотрудник пока не проходил тесты", response.text)
 
+    def test_team_member_page_renders_empty_topic_classification(self) -> None:
+        self._set_identity("manager")
+        self.analytics_service.get_quiz_topic_classification = (
+            lambda user_id: FakeAnalyticsService.empty_topic_classification()
+        )
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "Пока недостаточно данных для определения сильных сторон и зон развития",
+            response.text,
+        )
+
     def test_team_member_page_returns_404_outside_tenant(self) -> None:
         self._set_identity("manager")
 
@@ -258,6 +317,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(self.team_service.calls, ["intertop:99"])
         self.assertEqual(self.dashboard_service.calls, [])
         self.assertEqual(self.analytics_service.calls, [])
+        self.assertEqual(self.analytics_service.topic_classification_calls, [])
 
 
 
@@ -270,6 +330,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(self.team_service.calls, [])
         self.assertEqual(self.dashboard_service.calls, [])
         self.assertEqual(self.analytics_service.calls, [])
+        self.assertEqual(self.analytics_service.topic_classification_calls, [])
 
     def test_anonymous_cannot_open_team_member_page(self) -> None:
         response = self.client.get("/manager/team/2")
@@ -278,6 +339,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(self.team_service.calls, [])
         self.assertEqual(self.dashboard_service.calls, [])
         self.assertEqual(self.analytics_service.calls, [])
+        self.assertEqual(self.analytics_service.topic_classification_calls, [])
 
 
 
