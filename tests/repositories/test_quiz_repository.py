@@ -295,5 +295,199 @@ class QuizRepositorySaveAnswerTests(unittest.TestCase):
         self.assertLessEqual(float(attempt["score_percent"]), 100.0)
 
 
+class QuizRepositoryFinishedAnswersForUserTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self._tmpdir.name) / "test.db"
+        initialize_database(self.db_path)
+
+        with get_connection(self.db_path) as connection:
+            self.user_id = int(
+                connection.execute(
+                    """
+                    INSERT INTO users (
+                        telegram_id,
+                        username,
+                        first_name,
+                        last_name
+                    )
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (1001, "learner", "Test", "User"),
+                ).lastrowid
+            )
+            self.other_user_id = int(
+                connection.execute(
+                    """
+                    INSERT INTO users (
+                        telegram_id,
+                        username,
+                        first_name,
+                        last_name
+                    )
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (1002, "other", "Other", "User"),
+                ).lastrowid
+            )
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def _create_attempt(
+        self,
+        *,
+        user_id: int,
+        course_slug: str = "alpha",
+        questions_count: int = 2,
+    ) -> int:
+        attempt_id = quiz_repository.create_attempt_for_user(
+            self.db_path,
+            user_id=user_id,
+            course_slug=course_slug,
+            quiz_version=1,
+            questions_count=questions_count,
+        )
+        self.assertIsNotNone(attempt_id)
+        return int(attempt_id)
+
+    def _finish_attempt_with_answers(
+        self,
+        attempt_id: int,
+        *,
+        answers: list[tuple[str, str, bool]],
+    ) -> None:
+        for question_id, selected_option_id, is_correct in answers:
+            quiz_repository.save_answer(
+                self.db_path,
+                attempt_id=attempt_id,
+                question_id=question_id,
+                selected_option_id=selected_option_id,
+                is_correct=is_correct,
+            )
+        quiz_repository.finish_attempt(self.db_path, attempt_id)
+
+    def test_finished_answers_for_user_and_course_are_returned(self) -> None:
+        first_attempt = self._create_attempt(user_id=self.user_id, course_slug="alpha")
+        self._finish_attempt_with_answers(
+            first_attempt,
+            answers=[
+                ("q1", "a", True),
+                ("q2", "b", False),
+            ],
+        )
+
+        second_attempt = self._create_attempt(user_id=self.user_id, course_slug="alpha")
+        self._finish_attempt_with_answers(
+            second_attempt,
+            answers=[
+                ("q1", "a", True),
+            ],
+        )
+
+        rows = quiz_repository.get_finished_answers_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(int(rows[0]["attempt_id"]), first_attempt)
+        self.assertEqual(rows[0]["question_id"], "q1")
+        self.assertEqual(int(rows[0]["is_correct"]), 1)
+        self.assertIsNotNone(rows[0]["finished_at"])
+        self.assertEqual(int(rows[1]["attempt_id"]), first_attempt)
+        self.assertEqual(rows[1]["question_id"], "q2")
+        self.assertEqual(int(rows[2]["attempt_id"]), second_attempt)
+        self.assertEqual(rows[2]["question_id"], "q1")
+
+    def test_unfinished_attempt_answers_are_excluded(self) -> None:
+        finished_attempt = self._create_attempt(user_id=self.user_id)
+        self._finish_attempt_with_answers(
+            finished_attempt,
+            answers=[("q1", "a", True)],
+        )
+
+        unfinished_attempt = self._create_attempt(user_id=self.user_id)
+        quiz_repository.save_answer(
+            self.db_path,
+            attempt_id=unfinished_attempt,
+            question_id="q2",
+            selected_option_id="b",
+            is_correct=False,
+        )
+
+        rows = quiz_repository.get_finished_answers_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(int(rows[0]["attempt_id"]), finished_attempt)
+        self.assertEqual(rows[0]["question_id"], "q1")
+
+    def test_other_user_answers_are_excluded(self) -> None:
+        own_attempt = self._create_attempt(user_id=self.user_id)
+        self._finish_attempt_with_answers(
+            own_attempt,
+            answers=[("q1", "a", True)],
+        )
+
+        other_attempt = self._create_attempt(user_id=self.other_user_id)
+        self._finish_attempt_with_answers(
+            other_attempt,
+            answers=[("q1", "b", False)],
+        )
+
+        rows = quiz_repository.get_finished_answers_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(int(rows[0]["attempt_id"]), own_attempt)
+
+    def test_other_course_answers_are_excluded(self) -> None:
+        alpha_attempt = self._create_attempt(
+            user_id=self.user_id,
+            course_slug="alpha",
+        )
+        self._finish_attempt_with_answers(
+            alpha_attempt,
+            answers=[("q1", "a", True)],
+        )
+
+        beta_attempt = self._create_attempt(
+            user_id=self.user_id,
+            course_slug="beta",
+        )
+        self._finish_attempt_with_answers(
+            beta_attempt,
+            answers=[("q1", "b", False)],
+        )
+
+        rows = quiz_repository.get_finished_answers_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(int(rows[0]["attempt_id"]), alpha_attempt)
+        self.assertEqual(rows[0]["question_id"], "q1")
+
+    def test_invalid_user_id_is_rejected(self) -> None:
+        for invalid in (0, -1, True, "1"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    quiz_repository.get_finished_answers_for_user(
+                        self.db_path,
+                        invalid,  # type: ignore[arg-type]
+                        "alpha",
+                    )
+
+
 if __name__ == "__main__":
     unittest.main()

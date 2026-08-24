@@ -433,6 +433,40 @@ def get_finished_attempts_for_user(
         ).fetchall()
 
 
+def get_finished_answers_for_user(
+    db_path: Path,
+    user_id: int,
+    course_slug: str,
+) -> list[sqlite3.Row]:
+    """Return answers from finished quiz attempts for a canonical user and course."""
+    normalized_user_id = _validate_user_id(user_id)
+
+    with get_connection(db_path) as connection:
+        return connection.execute(
+            """
+            SELECT
+                quiz_answers.attempt_id,
+                quiz_answers.question_id,
+                quiz_answers.is_correct,
+                quiz_attempts.finished_at
+            FROM quiz_answers
+            JOIN quiz_attempts
+                ON quiz_attempts.id = quiz_answers.attempt_id
+            WHERE quiz_attempts.user_id = ?
+              AND quiz_attempts.course_slug = ?
+              AND quiz_attempts.finished_at IS NOT NULL
+            ORDER BY
+                quiz_attempts.finished_at ASC,
+                quiz_attempts.id ASC,
+                quiz_answers.id ASC
+            """,
+            (
+                normalized_user_id,
+                course_slug,
+            ),
+        ).fetchall()
+
+
 def get_course_quiz_stats_for_user(
     db_path: Path,
     user_id: int,
