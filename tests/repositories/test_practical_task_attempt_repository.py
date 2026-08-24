@@ -51,6 +51,30 @@ class PracticalTaskAttemptRepositoryTests(unittest.TestCase):
             first_name="Other",
             last_name="User",
         )
+        upsert_telegram_user(
+            self.db_path,
+            telegram_id=3003,
+            username="web-only",
+            first_name="Web",
+            last_name="User",
+        )
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                "SELECT id FROM users WHERE telegram_id = ?",
+                (3003,),
+            ).fetchone()
+            assert row is not None
+            self.web_user_id = int(row["id"])
+            connection.execute(
+                "UPDATE users SET telegram_id = NULL WHERE id = ?",
+                (self.web_user_id,),
+            )
+            other_row = connection.execute(
+                "SELECT id FROM users WHERE telegram_id = ?",
+                (2002,),
+            ).fetchone()
+            assert other_row is not None
+            self.other_user_id = int(other_row["id"])
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
@@ -339,6 +363,220 @@ class PracticalTaskAttemptRepositoryTests(unittest.TestCase):
         self.assertEqual(attempt.course_slug, "safety")
         self.assertEqual(attempt.lesson_slug, "lesson_01")
         self.assertIsNotNone(attempt.started_at)
+
+    def test_create_attempt_for_user_creates_pending_attempt(self) -> None:
+        attempt_id = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+            task_title="Web task",
+            task_description="Complete the task.",
+            expected_result="A complete answer.",
+            learner_answer="My answer.",
+        )
+
+        self.assertIsNotNone(attempt_id)
+        assert attempt_id is not None
+        attempt = repository.get_attempt(self.db_path, attempt_id)
+
+        self.assertIsNotNone(attempt)
+        assert attempt is not None
+        self.assertEqual(attempt.user_id, self.web_user_id)
+        self.assertIsNone(attempt.telegram_id)
+        self.assertEqual(attempt.status, "pending")
+        self.assertIsNone(attempt.score)
+        self.assertIsNone(attempt.reviewed_at)
+
+    def test_create_attempt_for_user_unknown_user_returns_none(self) -> None:
+        with get_connection(self.db_path) as connection:
+            before = connection.execute(
+                "SELECT COUNT(*) FROM practical_task_attempts"
+            ).fetchone()[0]
+
+        attempt_id = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=999999,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+            task_title="Task",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Answer",
+        )
+
+        self.assertIsNone(attempt_id)
+
+        with get_connection(self.db_path) as connection:
+            after = connection.execute(
+                "SELECT COUNT(*) FROM practical_task_attempts"
+            ).fetchone()[0]
+        self.assertEqual(after, before)
+
+    def test_create_attempt_for_user_rejects_invalid_user_id(self) -> None:
+        for invalid_user_id in (0, -1, True):
+            with self.subTest(user_id=invalid_user_id):
+                with self.assertRaises(ValueError):
+                    repository.create_attempt_for_user(
+                        self.db_path,
+                        user_id=invalid_user_id,
+                        course_slug="web-course",
+                        lesson_slug="lesson_01",
+                        task_title="Task",
+                        task_description="Description",
+                        expected_result="Expected",
+                        learner_answer="Answer",
+                    )
+
+    def test_get_attempt_returns_canonical_user_id(self) -> None:
+        attempt_id = self._create_sample_attempt()
+        attempt = repository.get_attempt(self.db_path, attempt_id)
+
+        self.assertIsNotNone(attempt)
+        assert attempt is not None
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                "SELECT id FROM users WHERE telegram_id = ?",
+                (1001,),
+            ).fetchone()
+        assert row is not None
+        self.assertEqual(attempt.user_id, int(row["id"]))
+        self.assertEqual(attempt.telegram_id, 1001)
+
+    def test_get_attempts_for_lesson_for_user_filters_scope(self) -> None:
+        own_attempt = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+            task_title="Own task",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Own answer",
+        )
+        repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.other_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+            task_title="Other user",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Other answer",
+        )
+        repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="other-course",
+            lesson_slug="lesson_01",
+            task_title="Other course",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Other answer",
+        )
+        repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_02",
+            task_title="Other lesson",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Other answer",
+        )
+
+        attempts = repository.get_attempts_for_lesson_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+        )
+
+        self.assertEqual(len(attempts), 1)
+        self.assertEqual(attempts[0].id, own_attempt)
+        self.assertEqual(attempts[0].user_id, self.web_user_id)
+        self.assertIsNone(attempts[0].telegram_id)
+
+    def test_get_attempts_for_lesson_for_user_respects_limit(self) -> None:
+        first = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+            task_title="First",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="First answer",
+        )
+        second = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+            task_title="Second",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Second answer",
+        )
+
+        attempts = repository.get_attempts_for_lesson_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+            limit=1,
+        )
+
+        self.assertEqual(len(attempts), 1)
+        self.assertEqual(attempts[0].id, second)
+        self.assertNotEqual(attempts[0].id, first)
+
+        self.assertEqual(
+            repository.get_attempts_for_lesson_for_user(
+                self.db_path,
+                user_id=self.web_user_id,
+                course_slug="web-course",
+                lesson_slug="lesson_01",
+                limit=0,
+            ),
+            [],
+        )
+
+    def test_get_attempts_for_lesson_for_user_rejects_invalid_user_id(self) -> None:
+        for invalid_user_id in (0, -1, False):
+            with self.subTest(user_id=invalid_user_id):
+                with self.assertRaises(ValueError):
+                    repository.get_attempts_for_lesson_for_user(
+                        self.db_path,
+                        user_id=invalid_user_id,
+                        course_slug="web-course",
+                        lesson_slug="lesson_01",
+                    )
+
+    def test_create_attempt_for_user_preserves_unicode_snapshot(self) -> None:
+        attempt_id = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+            task_title="Проверка рабочей зоны",
+            task_description="Опишите порядок проверки.",
+            expected_result="Все риски выявлены.",
+            learner_answer="Қауіпсіздік талаптарын тексердім.",
+        )
+
+        self.assertIsNotNone(attempt_id)
+        assert attempt_id is not None
+        attempt = repository.get_attempt(self.db_path, attempt_id)
+
+        self.assertIsNotNone(attempt)
+        assert attempt is not None
+        self.assertEqual(attempt.task_title, "Проверка рабочей зоны")
+        self.assertEqual(attempt.task_description, "Опишите порядок проверки.")
+        self.assertEqual(
+            attempt.learner_answer,
+            "Қауіпсіздік талаптарын тексердім.",
+        )
 
 
 if __name__ == "__main__":

@@ -26,7 +26,8 @@ class PracticalTaskAttempt:
     """A stored practical-task attempt with task snapshot and review outcome."""
 
     id: int
-    telegram_id: int
+    user_id: int
+    telegram_id: Optional[int]
     course_slug: str
     lesson_slug: str
     task_title: str
@@ -64,7 +65,12 @@ def _row_to_attempt(row: sqlite3.Row) -> PracticalTaskAttempt:
 
     return PracticalTaskAttempt(
         id=int(row["id"]),
-        telegram_id=int(row["telegram_id"]),
+        user_id=int(row["user_id"]),
+        telegram_id=(
+            int(row["telegram_id"])
+            if row["telegram_id"] is not None
+            else None
+        ),
         course_slug=str(row["course_slug"]),
         lesson_slug=str(row["lesson_slug"]),
         task_title=str(row["task_title"]),
@@ -81,6 +87,65 @@ def _row_to_attempt(row: sqlite3.Row) -> PracticalTaskAttempt:
         started_at=str(row["started_at"]),
         reviewed_at=row["reviewed_at"],
     )
+
+
+def _validate_user_id(user_id: int) -> int:
+    if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:
+        raise ValueError("user_id must be a positive integer")
+    return user_id
+
+
+def create_attempt_for_user(
+    db_path: Path,
+    user_id: int,
+    course_slug: str,
+    lesson_slug: str,
+    task_title: str,
+    task_description: str,
+    expected_result: str,
+    learner_answer: str,
+) -> Optional[int]:
+    """Create a pending practical-task attempt for a canonical user."""
+    normalized_user_id = _validate_user_id(user_id)
+
+    with get_connection(db_path) as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO practical_task_attempts (
+                user_id,
+                course_slug,
+                lesson_slug,
+                task_title,
+                task_description,
+                expected_result,
+                learner_answer
+            )
+            SELECT
+                users.id,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?
+            FROM users
+            WHERE users.id = ?
+            """,
+            (
+                course_slug,
+                lesson_slug,
+                task_title,
+                task_description,
+                expected_result,
+                learner_answer,
+                normalized_user_id,
+            ),
+        )
+
+        if cursor.rowcount == 0:
+            return None
+
+        return int(cursor.lastrowid)
 
 
 def create_attempt(
@@ -227,6 +292,45 @@ def get_attempts_for_lesson(
             """,
             (
                 telegram_id,
+                course_slug,
+                lesson_slug,
+                limit,
+            ),
+        ).fetchall()
+
+    return [_row_to_attempt(row) for row in rows]
+
+
+def get_attempts_for_lesson_for_user(
+    db_path: Path,
+    user_id: int,
+    course_slug: str,
+    lesson_slug: str,
+    limit: int = 10,
+) -> list[PracticalTaskAttempt]:
+    """Return recent lesson attempts for one canonical user."""
+    normalized_user_id = _validate_user_id(user_id)
+    if limit <= 0:
+        return []
+
+    with get_connection(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                practical_task_attempts.*,
+                users.telegram_id
+            FROM practical_task_attempts
+            JOIN users
+                ON users.id = practical_task_attempts.user_id
+            WHERE practical_task_attempts.user_id = ?
+              AND practical_task_attempts.course_slug = ?
+              AND practical_task_attempts.lesson_slug = ?
+            ORDER BY practical_task_attempts.started_at DESC,
+                     practical_task_attempts.id DESC
+            LIMIT ?
+            """,
+            (
+                normalized_user_id,
                 course_slug,
                 lesson_slug,
                 limit,
