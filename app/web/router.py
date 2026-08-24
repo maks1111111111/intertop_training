@@ -720,17 +720,27 @@ def dashboard_page(
 def manager_team_page(
     request: Request,
     team_service: ManagerTeamService = Depends(get_manager_team_service),
+    analytics_service: ManagerEmployeeAnalyticsService = Depends(
+        get_manager_employee_analytics_service
+    ),
     identity: WebIdentity = Depends(require_web_management_identity),
 ) -> HTMLResponse:
     """Render tenant-scoped team learning progress for manager/admin."""
     members = team_service.get_team(identity.company_id)
+    member_rows = tuple(
+        {
+            "member": member,
+            "quiz_analytics": analytics_service.get_quiz_analytics(member.user_id),
+        }
+        for member in members
+    )
     return templates.TemplateResponse(
         request,
         "manager_team.html",
         {
             "active_nav": "team",
-            "members": members,
-            "members_count": len(members),
+            "member_rows": member_rows,
+            "members_count": len(member_rows),
         },
     )
 

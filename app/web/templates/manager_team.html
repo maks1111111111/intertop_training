@@ -8,10 +8,12 @@
     <p class="page-lead">Прогресс обучения сотрудников вашей компании.</p>
 </section>
 
-{% if members %}
+{% if member_rows %}
 <section class="section">
     <ul class="course-list admin-course-list">
-        {% for member in members %}
+        {% for row in member_rows %}
+        {% set member = row.member %}
+        {% set quiz_analytics = row.quiz_analytics %}
         <li class="course-card admin-course-card">
             <div class="admin-course-body">
                 <header class="admin-course-header">
@@ -36,6 +38,44 @@
                         <span class="dashboard-metric-label">Средний прогресс</span>
                         <span class="dashboard-metric-value">{{ member.average_progress_percent }}%</span>
                     </div>
+                </div>
+                <div class="dashboard-metrics">
+                    {% if quiz_analytics.total_attempts_count > 0 %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Протестировано курсов</span>
+                        <span class="dashboard-metric-value">{{ quiz_analytics.tested_courses_count }}</span>
+                    </div>
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Средний результат</span>
+                        <span class="dashboard-metric-value">{{ quiz_analytics.average_score_percent }}%</span>
+                    </div>
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Последних непройденных</span>
+                        <span class="dashboard-metric-value">{{ quiz_analytics.latest_failed_courses_count }}</span>
+                    </div>
+                    {% if quiz_analytics.latest_failed_courses_count > 0 %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Статус</span>
+                        <span class="dashboard-metric-value">
+                            <span class="dashboard-status-badge dashboard-status-badge--in_progress">Требует внимания</span>
+                        </span>
+                    </div>
+                    {% elif quiz_analytics.total_attempts_count > 0 %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Статус</span>
+                        <span class="dashboard-metric-value">
+                            <span class="dashboard-status-badge dashboard-status-badge--completed">Есть результаты</span>
+                        </span>
+                    </div>
+                    {% endif %}
+                    {% else %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Статус</span>
+                        <span class="dashboard-metric-value">
+                            <span class="dashboard-status-badge dashboard-status-badge--not_started">Нет данных по тестам</span>
+                        </span>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </li>

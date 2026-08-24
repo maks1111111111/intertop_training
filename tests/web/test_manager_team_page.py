@@ -234,22 +234,64 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("E2E Student", response.text)
         self.assertIn("100%", response.text)
         self.assertEqual(self.team_service.calls, ["intertop"])
+        self.assertEqual(self.analytics_service.calls, [2])
+        self.assertIn("Протестировано курсов", response.text)
+        self.assertIn("75.0%", response.text)
+        self.assertIn("Требует внимания", response.text)
+
+    def test_manager_team_page_renders_zero_quiz_attempts(self) -> None:
+        self._set_identity("manager")
+        self.analytics_service.get_quiz_analytics = (
+            lambda user_id: FakeAnalyticsService.empty_analytics()
+        )
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Нет данных по тестам", response.text)
+        self.assertNotIn("Средний результат", response.text)
+
+    def test_manager_team_page_renders_quiz_results_without_failures(self) -> None:
+        self._set_identity("manager")
+
+        def analytics_without_failures(user_id: int) -> EmployeeQuizAnalytics:
+            self.analytics_service.calls.append(user_id)
+            return EmployeeQuizAnalytics(
+                total_attempts_count=2,
+                tested_courses_count=1,
+                passed_courses_count=1,
+                latest_failed_courses_count=0,
+                best_score_percent=90.0,
+                average_score_percent=85.0,
+                courses=(),
+            )
+
+        self.analytics_service.get_quiz_analytics = analytics_without_failures
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Есть результаты", response.text)
+        self.assertIn("85.0%", response.text)
+        self.assertNotIn("Требует внимания", response.text)
 
     def test_admin_can_open_team_page(self) -> None:
         self._set_identity("admin")
         response = self.client.get("/manager/team")
         self.assertEqual(response.status_code, 200)
 
-    def test_student_cannot_open_team_page(self) -> None:
+    def test_student_cannot_open_team_page_does_not_call_analytics(self) -> None:
         self._set_identity("student")
         response = self.client.get("/manager/team")
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.team_service.calls, [])
+        self.assertEqual(self.analytics_service.calls, [])
 
-    def test_anonymous_cannot_open_team_page(self) -> None:
+    def test_anonymous_cannot_open_team_page_does_not_call_analytics(self) -> None:
         response = self.client.get("/manager/team")
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.team_service.calls, [])
+        self.assertEqual(self.analytics_service.calls, [])
 
 
     def test_manager_can_open_team_member_page(self) -> None:
