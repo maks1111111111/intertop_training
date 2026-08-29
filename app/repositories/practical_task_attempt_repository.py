@@ -30,6 +30,7 @@ class PracticalTaskAttemptAggregate:
     passed_attempts_count: int
     failed_attempts_count: int
     pending_attempts_count: int
+    scorable_attempts_count: int
     average_score_percent: Optional[float]
     best_score_percent: Optional[float]
 
@@ -411,6 +412,7 @@ def get_attempts_aggregate_for_user(
         passed_attempts_count=int(counts_row["passed_attempts_count"] or 0),
         failed_attempts_count=int(counts_row["failed_attempts_count"] or 0),
         pending_attempts_count=int(counts_row["pending_attempts_count"] or 0),
+        scorable_attempts_count=len(score_percents),
         average_score_percent=(
             round(sum(score_percents) / len(score_percents), 2)
             if score_percents

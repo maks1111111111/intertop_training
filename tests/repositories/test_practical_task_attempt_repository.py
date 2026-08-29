@@ -748,6 +748,7 @@ class PracticalTaskAttemptRepositoryTests(unittest.TestCase):
         self.assertEqual(aggregate.pending_attempts_count, 1)
         self.assertEqual(aggregate.average_score_percent, 65.0)
         self.assertEqual(aggregate.best_score_percent, 90.0)
+        self.assertEqual(aggregate.scorable_attempts_count, 2)
 
     def test_get_attempts_aggregate_for_user_is_not_limited_by_recent_query(
         self,

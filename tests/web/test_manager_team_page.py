@@ -157,6 +157,7 @@ class FakeAnalyticsService:
                 passed_attempts_count=0,
                 failed_attempts_count=0,
                 pending_attempts_count=1,
+                scorable_attempts_count=0,
                 average_score_percent=None,
                 best_score_percent=None,
                 recent_attempts=(
@@ -187,6 +188,7 @@ class FakeAnalyticsService:
                 passed_attempts_count=0,
                 failed_attempts_count=0,
                 pending_attempts_count=0,
+                scorable_attempts_count=0,
                 average_score_percent=None,
                 best_score_percent=None,
                 recent_attempts=(
@@ -216,6 +218,7 @@ class FakeAnalyticsService:
             passed_attempts_count=1,
             failed_attempts_count=1,
             pending_attempts_count=0,
+            scorable_attempts_count=2,
             average_score_percent=75.0,
             best_score_percent=90.0,
             recent_attempts=(
@@ -286,6 +289,7 @@ class FakeAnalyticsService:
             passed_attempts_count=0,
             failed_attempts_count=0,
             pending_attempts_count=0,
+            scorable_attempts_count=0,
             average_score_percent=None,
             best_score_percent=None,
             recent_attempts=(),
@@ -297,6 +301,7 @@ class FakeTeamAnalyticsService:
         self.calls: list[str] = []
         self._empty = False
         self._quiz_analytics_override: EmployeeQuizAnalytics | None = None
+        self._practical_analytics_override: EmployeePracticalTaskAnalytics | None = None
 
     @staticmethod
     def _default_member() -> ManagerTeamMember:
@@ -349,6 +354,11 @@ class FakeTeamAnalyticsService:
             return self._quiz_analytics_override
         return self._default_member_quiz_analytics()
 
+    def _resolve_member_practical_analytics(self) -> EmployeePracticalTaskAnalytics:
+        if self._practical_analytics_override is not None:
+            return self._practical_analytics_override
+        return self._default_member_practical_analytics()
+
     def _populated_analytics(self) -> ManagerTeamAnalytics:
         return ManagerTeamAnalytics(
             members_count=3,
@@ -368,6 +378,29 @@ class FakeTeamAnalyticsService:
                     employees_count=2,
                 ),
             ),
+            members_with_practical_attempts_count=2,
+            members_with_pending_practical_tasks_count=1,
+            members_with_failed_practical_tasks_count=1,
+            practical_attempts_count=5,
+            practical_reviewed_attempts_count=4,
+            practical_passed_attempts_count=2,
+            practical_failed_attempts_count=2,
+            practical_pending_attempts_count=1,
+            average_practical_score_percent=72.5,
+        )
+
+    @staticmethod
+    def _default_member_practical_analytics() -> EmployeePracticalTaskAnalytics:
+        return EmployeePracticalTaskAnalytics(
+            total_attempts_count=2,
+            reviewed_attempts_count=2,
+            passed_attempts_count=1,
+            failed_attempts_count=1,
+            pending_attempts_count=0,
+            scorable_attempts_count=2,
+            average_score_percent=75.0,
+            best_score_percent=90.0,
+            recent_attempts=(),
         )
 
     def get_team_overview(self, company_id: str) -> ManagerTeamOverview:
@@ -384,17 +417,28 @@ class FakeTeamAnalyticsService:
                     members_without_quiz_data_count=0,
                     average_quiz_score_percent=None,
                     development_topics=(),
+                    members_with_practical_attempts_count=0,
+                    members_with_pending_practical_tasks_count=0,
+                    members_with_failed_practical_tasks_count=0,
+                    practical_attempts_count=0,
+                    practical_reviewed_attempts_count=0,
+                    practical_passed_attempts_count=0,
+                    practical_failed_attempts_count=0,
+                    practical_pending_attempts_count=0,
+                    average_practical_score_percent=None,
                 ),
                 members=(),
             )
         member = self._default_member()
         quiz_analytics = self._resolve_member_quiz_analytics()
+        practical_task_analytics = self._resolve_member_practical_analytics()
         return ManagerTeamOverview(
             analytics=self._populated_analytics(),
             members=(
                 ManagerTeamMemberAnalytics(
                     member=member,
                     quiz_analytics=quiz_analytics,
+                    practical_task_analytics=practical_task_analytics,
                 ),
             ),
         )
@@ -502,6 +546,10 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Протестировано курсов", response.text)
         self.assertIn("75.0%", response.text)
         self.assertIn("Требует внимания", response.text)
+        self.assertIn("Практические задания", response.text)
+        self.assertIn("Выполняли практические задания", response.text)
+        self.assertIn("72.5%", response.text)
+        self.assertIn("Есть результаты", response.text)
 
     def test_manager_team_page_renders_empty_team_analytics(self) -> None:
         self._set_identity("manager")
@@ -516,6 +564,61 @@ class ManagerTeamPageTests(unittest.TestCase):
             "Пока недостаточно данных для определения зон развития команды",
             response.text,
         )
+        self.assertIn("—", response.text)
+
+    def test_manager_team_page_renders_zero_practical_attempts(self) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._practical_analytics_override = (
+            FakeAnalyticsService.empty_practical_task_analytics()
+        )
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Нет практических заданий", response.text)
+
+    def test_manager_team_page_renders_pending_practical_status(self) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._practical_analytics_override = (
+            EmployeePracticalTaskAnalytics(
+                total_attempts_count=1,
+                reviewed_attempts_count=0,
+                passed_attempts_count=0,
+                failed_attempts_count=0,
+                pending_attempts_count=1,
+                scorable_attempts_count=0,
+                average_score_percent=None,
+                best_score_percent=None,
+                recent_attempts=(),
+            )
+        )
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Ожидает проверки (1)", response.text)
+
+    def test_manager_team_page_renders_failed_practical_status(self) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._practical_analytics_override = (
+            EmployeePracticalTaskAnalytics(
+                total_attempts_count=2,
+                reviewed_attempts_count=2,
+                passed_attempts_count=0,
+                failed_attempts_count=2,
+                pending_attempts_count=0,
+                scorable_attempts_count=2,
+                average_score_percent=40.0,
+                best_score_percent=40.0,
+                recent_attempts=(),
+            )
+        )
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Требует внимания", response.text)
+        self.assertIn("40.0%", response.text)
 
     def test_manager_team_page_renders_zero_quiz_attempts(self) -> None:
         self._set_identity("manager")
@@ -527,10 +630,7 @@ class ManagerTeamPageTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Нет данных по тестам", response.text)
-        self.assertNotIn(
-            '<span class="dashboard-metric-label">Средний результат</span>',
-            response.text,
-        )
+        self.assertNotIn("Протестировано курсов", response.text)
         self.assertEqual(self.analytics_service.calls, [])
 
     def test_manager_team_page_renders_quiz_results_without_failures(self) -> None:
@@ -544,13 +644,19 @@ class ManagerTeamPageTests(unittest.TestCase):
             average_score_percent=85.0,
             courses=(),
         )
+        self.team_analytics_service._practical_analytics_override = (
+            FakeAnalyticsService.empty_practical_task_analytics()
+        )
 
         response = self.client.get("/manager/team")
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Есть результаты", response.text)
         self.assertIn("85.0%", response.text)
-        self.assertNotIn("Требует внимания", response.text)
+        self.assertNotIn(
+            'dashboard-status-badge--in_progress">Требует внимания</span>',
+            response.text,
+        )
         self.assertEqual(self.analytics_service.calls, [])
 
     def test_admin_can_open_team_page(self) -> None:

@@ -154,6 +154,7 @@ class FakePracticalTaskAttemptRepository:
             passed_attempts_count=passed_attempts_count,
             failed_attempts_count=failed_attempts_count,
             pending_attempts_count=pending_attempts_count,
+            scorable_attempts_count=len(score_percents),
             average_score_percent=(
                 round(sum(score_percents) / len(score_percents), 2)
                 if score_percents
@@ -1023,6 +1024,37 @@ class ManagerEmployeePracticalTaskAnalyticsTests(unittest.TestCase):
         self.assertEqual(result.pending_attempts_count, 1)
         self.assertEqual(result.average_score_percent, 60.0)
         self.assertEqual(result.best_score_percent, 80.0)
+        self.assertEqual(result.scorable_attempts_count, 2)
+
+    def test_exposes_scorable_attempts_count_for_team_weighting(self) -> None:
+        self.practical_repository._attempts = [
+            FakePracticalTaskAttempt(
+                id=1,
+                user_id=42,
+                course_slug="alpha",
+                lesson_slug="lesson_01",
+                task_title="Scored",
+                status="reviewed",
+                score=8,
+                max_score=10,
+                passed=True,
+            ),
+            FakePracticalTaskAttempt(
+                id=2,
+                user_id=42,
+                course_slug="alpha",
+                lesson_slug="lesson_02",
+                task_title="Unscorable",
+                status="reviewed",
+                score=None,
+                max_score=None,
+                passed=False,
+            ),
+        ]
+
+        result = self.service.get_practical_task_analytics(42)
+
+        self.assertEqual(result.scorable_attempts_count, 1)
 
     def test_normalizes_score_percent_from_score_and_max_score(self) -> None:
         self.practical_repository._attempts = [

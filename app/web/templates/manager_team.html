@@ -57,6 +57,44 @@
         </div>
     </div>
 
+    <h3 class="section-subtitle">Практические задания</h3>
+    <div class="dashboard-metrics">
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Выполняли практические задания</span>
+            <span class="dashboard-metric-value">{{ team_analytics.members_with_practical_attempts_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Всего попыток</span>
+            <span class="dashboard-metric-value">{{ team_analytics.practical_attempts_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Проверено</span>
+            <span class="dashboard-metric-value">{{ team_analytics.practical_reviewed_attempts_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Принято</span>
+            <span class="dashboard-metric-value">{{ team_analytics.practical_passed_attempts_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Не принято</span>
+            <span class="dashboard-metric-value">{{ team_analytics.practical_failed_attempts_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Ожидает проверки</span>
+            <span class="dashboard-metric-value">{{ team_analytics.practical_pending_attempts_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Средний результат</span>
+            <span class="dashboard-metric-value">
+                {% if team_analytics.average_practical_score_percent is not none %}
+                {{ team_analytics.average_practical_score_percent }}%
+                {% else %}
+                —
+                {% endif %}
+            </span>
+        </div>
+    </div>
+
     <h3 class="section-subtitle">Зоны развития команды</h3>
     {% if team_analytics.development_topics %}
     <ul class="course-list admin-course-list">
@@ -95,6 +133,7 @@
         {% for row in member_rows %}
         {% set member = row.member %}
         {% set quiz_analytics = row.quiz_analytics %}
+        {% set practical_task_analytics = row.practical_task_analytics %}
         <li class="course-card admin-course-card">
             <div class="admin-course-body">
                 <header class="admin-course-header">
@@ -154,6 +193,45 @@
                         <span class="dashboard-metric-label">Статус</span>
                         <span class="dashboard-metric-value">
                             <span class="dashboard-status-badge dashboard-status-badge--not_started">Нет данных по тестам</span>
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="dashboard-metrics">
+                    {% if practical_task_analytics.total_attempts_count > 0 %}
+                    {% if practical_task_analytics.pending_attempts_count > 0 %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Практические задания</span>
+                        <span class="dashboard-metric-value">
+                            <span class="dashboard-status-badge dashboard-status-badge--in_progress">Ожидает проверки ({{ practical_task_analytics.pending_attempts_count }})</span>
+                        </span>
+                    </div>
+                    {% elif practical_task_analytics.failed_attempts_count > 0 %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Практические задания</span>
+                        <span class="dashboard-metric-value">
+                            <span class="dashboard-status-badge dashboard-status-badge--in_progress">Требует внимания</span>
+                        </span>
+                    </div>
+                    {% else %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Практические задания</span>
+                        <span class="dashboard-metric-value">
+                            <span class="dashboard-status-badge dashboard-status-badge--completed">Есть результаты</span>
+                        </span>
+                    </div>
+                    {% endif %}
+                    {% if practical_task_analytics.average_score_percent is not none %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Средний результат</span>
+                        <span class="dashboard-metric-value">{{ practical_task_analytics.average_score_percent }}%</span>
+                    </div>
+                    {% endif %}
+                    {% else %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Практические задания</span>
+                        <span class="dashboard-metric-value">
+                            <span class="dashboard-status-badge dashboard-status-badge--not_started">Нет практических заданий</span>
                         </span>
                     </div>
                     {% endif %}

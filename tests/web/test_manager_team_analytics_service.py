@@ -6,6 +6,7 @@ import unittest
 from typing import Optional
 
 from app.web.manager_employee_analytics_service import (
+    EmployeePracticalTaskAnalytics,
     EmployeeQuizAnalytics,
     EmployeeQuizTopicAnalytics,
     EmployeeQuizTopicsAnalytics,
@@ -63,6 +64,29 @@ def _topics_analytics(
     )
 
 
+def _practical_analytics(
+    *,
+    total: int = 0,
+    reviewed: int = 0,
+    passed: int = 0,
+    failed: int = 0,
+    pending: int = 0,
+    scorable: int = 0,
+    average: Optional[float] = None,
+) -> EmployeePracticalTaskAnalytics:
+    return EmployeePracticalTaskAnalytics(
+        total_attempts_count=total,
+        reviewed_attempts_count=reviewed,
+        passed_attempts_count=passed,
+        failed_attempts_count=failed,
+        pending_attempts_count=pending,
+        scorable_attempts_count=scorable,
+        average_score_percent=average,
+        best_score_percent=average,
+        recent_attempts=(),
+    )
+
+
 class FakeTeamService:
     def __init__(self, members: tuple[ManagerTeamMember, ...]) -> None:
         self.members = members
@@ -78,11 +102,14 @@ class FakeEmployeeAnalyticsService:
         self,
         quiz_by_user: dict[int, EmployeeQuizAnalytics] | None = None,
         topics_by_user: dict[int, EmployeeQuizTopicsAnalytics] | None = None,
+        practical_by_user: dict[int, EmployeePracticalTaskAnalytics] | None = None,
     ) -> None:
         self.quiz_by_user = quiz_by_user or {}
         self.topics_by_user = topics_by_user or {}
+        self.practical_by_user = practical_by_user or {}
         self.quiz_calls: list[int] = []
         self.topics_calls: list[int] = []
+        self.practical_calls: list[int] = []
 
     def get_quiz_analytics(self, user_id: int) -> EmployeeQuizAnalytics:
         self.quiz_calls.append(user_id)
@@ -91,6 +118,14 @@ class FakeEmployeeAnalyticsService:
     def get_quiz_topics_analytics(self, user_id: int) -> EmployeeQuizTopicsAnalytics:
         self.topics_calls.append(user_id)
         return self.topics_by_user.get(user_id, _topics_analytics())
+
+    def get_practical_task_analytics(
+        self,
+        user_id: int,
+        limit: int = 10,
+    ) -> EmployeePracticalTaskAnalytics:
+        self.practical_calls.append(user_id)
+        return self.practical_by_user.get(user_id, _practical_analytics())
 
 
 class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
@@ -110,9 +145,19 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
         self.assertEqual(result.members_without_quiz_data_count, 0)
         self.assertIsNone(result.average_quiz_score_percent)
         self.assertEqual(result.development_topics, ())
+        self.assertEqual(result.members_with_practical_attempts_count, 0)
+        self.assertEqual(result.members_with_pending_practical_tasks_count, 0)
+        self.assertEqual(result.members_with_failed_practical_tasks_count, 0)
+        self.assertEqual(result.practical_attempts_count, 0)
+        self.assertEqual(result.practical_reviewed_attempts_count, 0)
+        self.assertEqual(result.practical_passed_attempts_count, 0)
+        self.assertEqual(result.practical_failed_attempts_count, 0)
+        self.assertEqual(result.practical_pending_attempts_count, 0)
+        self.assertIsNone(result.average_practical_score_percent)
         self.assertEqual(team_service.calls, ["company-a"])
         self.assertEqual(employee_service.quiz_calls, [])
         self.assertEqual(employee_service.topics_calls, [])
+        self.assertEqual(employee_service.practical_calls, [])
 
     def test_aggregate_counts_and_averages(self) -> None:
         members = (
@@ -380,6 +425,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
 
         self.assertEqual(employee_service.quiz_calls, [10, 20])
         self.assertEqual(employee_service.topics_calls, [10, 20])
+        self.assertEqual(employee_service.practical_calls, [10, 20])
 
     def test_team_service_called_exactly_once(self) -> None:
         members = (_member(1),)
@@ -407,6 +453,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
         self.assertEqual(team_service.calls, ["company-a"])
         self.assertEqual(employee_service.quiz_calls, [1, 2])
         self.assertEqual(employee_service.topics_calls, [1, 2])
+        self.assertEqual(employee_service.practical_calls, [1, 2])
         self.assertEqual(len(overview.members), 2)
 
     def test_get_team_overview_member_rows_contain_quiz_analytics(self) -> None:
@@ -456,6 +503,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
         self.assertEqual(overview.analytics.members_count, 0)
         self.assertEqual(employee_service.quiz_calls, [])
         self.assertEqual(employee_service.topics_calls, [])
+        self.assertEqual(employee_service.practical_calls, [])
 
     def test_get_team_analytics_delegates_to_overview(self) -> None:
         members = (_member(1),)
@@ -467,7 +515,111 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
 
         self.assertEqual(team_service.calls, ["company-a"])
         self.assertEqual(employee_service.quiz_calls, [1])
+        self.assertEqual(employee_service.practical_calls, [1])
         self.assertEqual(result.members_count, 1)
+
+    def test_aggregates_practical_counts_across_multiple_employees(self) -> None:
+        members = (_member(1), _member(2))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            practical_by_user={
+                1: _practical_analytics(
+                    total=3,
+                    reviewed=2,
+                    passed=1,
+                    failed=1,
+                    pending=1,
+                    scorable=2,
+                    average=70.0,
+                ),
+                2: _practical_analytics(
+                    total=1,
+                    reviewed=1,
+                    passed=1,
+                    failed=0,
+                    pending=0,
+                    scorable=1,
+                    average=90.0,
+                ),
+            },
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        result = service.get_team_analytics("company-a")
+
+        self.assertEqual(result.members_with_practical_attempts_count, 2)
+        self.assertEqual(result.members_with_pending_practical_tasks_count, 1)
+        self.assertEqual(result.members_with_failed_practical_tasks_count, 1)
+        self.assertEqual(result.practical_attempts_count, 4)
+        self.assertEqual(result.practical_reviewed_attempts_count, 3)
+        self.assertEqual(result.practical_passed_attempts_count, 2)
+        self.assertEqual(result.practical_failed_attempts_count, 1)
+        self.assertEqual(result.practical_pending_attempts_count, 1)
+
+    def test_weighted_practical_average_uses_scorable_attempt_count(self) -> None:
+        members = (_member(1), _member(2))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            practical_by_user={
+                1: _practical_analytics(
+                    total=2,
+                    reviewed=2,
+                    passed=2,
+                    scorable=2,
+                    average=80.0,
+                ),
+                2: _practical_analytics(
+                    total=8,
+                    reviewed=8,
+                    passed=8,
+                    scorable=8,
+                    average=50.0,
+                ),
+            },
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        result = service.get_team_analytics("company-a")
+
+        # (80*2 + 50*8) / 10 = 56.0
+        self.assertAlmostEqual(result.average_practical_score_percent, 56.0)
+
+    def test_no_practical_attempts_yields_none_average(self) -> None:
+        members = (_member(1), _member(2))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService()
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        result = service.get_team_analytics("company-a")
+
+        self.assertIsNone(result.average_practical_score_percent)
+        self.assertEqual(result.members_with_practical_attempts_count, 0)
+
+    def test_get_team_overview_member_rows_contain_practical_analytics(self) -> None:
+        members = (_member(10),)
+        practical = _practical_analytics(total=2, reviewed=2, scorable=2, average=75.0)
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            practical_by_user={10: practical},
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        overview = service.get_team_overview("company-a")
+
+        self.assertEqual(len(overview.members), 1)
+        row = overview.members[0]
+        self.assertEqual(row.practical_task_analytics, practical)
+
+    def test_practical_analytics_called_once_per_member(self) -> None:
+        members = (_member(1), _member(2), _member(3))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService()
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        service.get_team_overview("company-a")
+
+        self.assertEqual(employee_service.practical_calls, [1, 2, 3])
+        self.assertEqual(len(employee_service.practical_calls), 3)
 
 
 if __name__ == "__main__":

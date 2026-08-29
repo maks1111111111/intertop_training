@@ -81,6 +81,7 @@ class EmployeePracticalTaskAnalytics:
     passed_attempts_count: int
     failed_attempts_count: int
     pending_attempts_count: int
+    scorable_attempts_count: int
     average_score_percent: Optional[float]
     best_score_percent: Optional[float]
     recent_attempts: tuple[EmployeePracticalTaskAttemptAnalytics, ...]
@@ -305,6 +306,7 @@ class ManagerEmployeeAnalyticsService:
             passed_attempts_count=aggregate.passed_attempts_count,
             failed_attempts_count=aggregate.failed_attempts_count,
             pending_attempts_count=aggregate.pending_attempts_count,
+            scorable_attempts_count=aggregate.scorable_attempts_count,
             average_score_percent=aggregate.average_score_percent,
             best_score_percent=aggregate.best_score_percent,
             recent_attempts=recent_attempts,

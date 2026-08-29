@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from app.web.manager_employee_analytics_service import (
+    EmployeePracticalTaskAnalytics,
     EmployeeQuizAnalytics,
     EmployeeQuizTopicsAnalytics,
     ManagerEmployeeAnalyticsService,
@@ -36,12 +37,22 @@ class ManagerTeamAnalytics:
     members_without_quiz_data_count: int
     average_quiz_score_percent: Optional[float]
     development_topics: tuple[ManagerTeamTopicAnalytics, ...]
+    members_with_practical_attempts_count: int
+    members_with_pending_practical_tasks_count: int
+    members_with_failed_practical_tasks_count: int
+    practical_attempts_count: int
+    practical_reviewed_attempts_count: int
+    practical_passed_attempts_count: int
+    practical_failed_attempts_count: int
+    practical_pending_attempts_count: int
+    average_practical_score_percent: Optional[float]
 
 
 @dataclass(frozen=True)
 class ManagerTeamMemberAnalytics:
     member: ManagerTeamMember
     quiz_analytics: EmployeeQuizAnalytics
+    practical_task_analytics: EmployeePracticalTaskAnalytics
 
 
 @dataclass(frozen=True)
@@ -75,6 +86,9 @@ class ManagerTeamAnalyticsService:
         topics_analytics_by_member: list[
             tuple[ManagerTeamMember, EmployeeQuizTopicsAnalytics]
         ] = []
+        practical_analytics_by_member: list[
+            tuple[ManagerTeamMember, EmployeePracticalTaskAnalytics]
+        ] = []
 
         for member in members:
             quiz_analytics = self._employee_analytics_service.get_quiz_analytics(
@@ -85,19 +99,29 @@ class ManagerTeamAnalyticsService:
                     member.user_id
                 )
             )
+            practical_task_analytics = (
+                self._employee_analytics_service.get_practical_task_analytics(
+                    member.user_id
+                )
+            )
             member_rows.append(
                 ManagerTeamMemberAnalytics(
                     member=member,
                     quiz_analytics=quiz_analytics,
+                    practical_task_analytics=practical_task_analytics,
                 )
             )
             quiz_analytics_by_member.append((member, quiz_analytics))
             topics_analytics_by_member.append((member, topics_analytics))
+            practical_analytics_by_member.append(
+                (member, practical_task_analytics)
+            )
 
         analytics = _build_team_analytics(
             members,
             quiz_analytics_by_member,
             topics_analytics_by_member,
+            practical_analytics_by_member,
         )
         return ManagerTeamOverview(
             analytics=analytics,
@@ -119,6 +143,15 @@ def _empty_team_analytics() -> ManagerTeamAnalytics:
         members_without_quiz_data_count=0,
         average_quiz_score_percent=None,
         development_topics=(),
+        members_with_practical_attempts_count=0,
+        members_with_pending_practical_tasks_count=0,
+        members_with_failed_practical_tasks_count=0,
+        practical_attempts_count=0,
+        practical_reviewed_attempts_count=0,
+        practical_passed_attempts_count=0,
+        practical_failed_attempts_count=0,
+        practical_pending_attempts_count=0,
+        average_practical_score_percent=None,
     )
 
 
@@ -127,6 +160,9 @@ def _build_team_analytics(
     quiz_analytics_by_member: list[tuple[ManagerTeamMember, EmployeeQuizAnalytics]],
     topics_analytics_by_member: list[
         tuple[ManagerTeamMember, EmployeeQuizTopicsAnalytics]
+    ],
+    practical_analytics_by_member: list[
+        tuple[ManagerTeamMember, EmployeePracticalTaskAnalytics]
     ],
 ) -> ManagerTeamAnalytics:
     members_count = len(members)
@@ -181,6 +217,54 @@ def _build_team_analytics(
         else None
     )
 
+    members_with_practical_attempts_count = 0
+    members_with_pending_practical_tasks_count = 0
+    members_with_failed_practical_tasks_count = 0
+    practical_attempts_count = 0
+    practical_reviewed_attempts_count = 0
+    practical_passed_attempts_count = 0
+    practical_failed_attempts_count = 0
+    practical_pending_attempts_count = 0
+    practical_weighted_score_total = 0.0
+    total_scorable_practical_attempts = 0
+
+    for _member, practical_analytics in practical_analytics_by_member:
+        if practical_analytics.total_attempts_count > 0:
+            members_with_practical_attempts_count += 1
+        if practical_analytics.pending_attempts_count > 0:
+            members_with_pending_practical_tasks_count += 1
+        if practical_analytics.failed_attempts_count > 0:
+            members_with_failed_practical_tasks_count += 1
+
+        practical_attempts_count += practical_analytics.total_attempts_count
+        practical_reviewed_attempts_count += (
+            practical_analytics.reviewed_attempts_count
+        )
+        practical_passed_attempts_count += practical_analytics.passed_attempts_count
+        practical_failed_attempts_count += practical_analytics.failed_attempts_count
+        practical_pending_attempts_count += practical_analytics.pending_attempts_count
+
+        if (
+            practical_analytics.average_score_percent is not None
+            and practical_analytics.scorable_attempts_count > 0
+        ):
+            practical_weighted_score_total += (
+                practical_analytics.average_score_percent
+                * practical_analytics.scorable_attempts_count
+            )
+            total_scorable_practical_attempts += (
+                practical_analytics.scorable_attempts_count
+            )
+
+    average_practical_score_percent = (
+        round(
+            practical_weighted_score_total / total_scorable_practical_attempts,
+            2,
+        )
+        if total_scorable_practical_attempts
+        else None
+    )
+
     development_topics = tuple(
         _build_team_topic_analytics(
             tag,
@@ -211,6 +295,19 @@ def _build_team_analytics(
         members_without_quiz_data_count=members_without_quiz_data_count,
         average_quiz_score_percent=average_quiz_score_percent,
         development_topics=development_topics,
+        members_with_practical_attempts_count=members_with_practical_attempts_count,
+        members_with_pending_practical_tasks_count=(
+            members_with_pending_practical_tasks_count
+        ),
+        members_with_failed_practical_tasks_count=(
+            members_with_failed_practical_tasks_count
+        ),
+        practical_attempts_count=practical_attempts_count,
+        practical_reviewed_attempts_count=practical_reviewed_attempts_count,
+        practical_passed_attempts_count=practical_passed_attempts_count,
+        practical_failed_attempts_count=practical_failed_attempts_count,
+        practical_pending_attempts_count=practical_pending_attempts_count,
+        average_practical_score_percent=average_practical_score_percent,
     )
 
 
