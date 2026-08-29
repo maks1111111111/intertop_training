@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import quote
 
 from app.web.manager_employee_analytics_service import (
     EmployeePracticalTaskAnalytics,
@@ -68,6 +69,8 @@ class ManagerTeamMemberAnalytics:
     member: ManagerTeamMember
     quiz_analytics: EmployeeQuizAnalytics
     practical_task_analytics: EmployeePracticalTaskAnalytics
+    topics_analytics: EmployeeQuizTopicsAnalytics
+    practical_signal_evidence: EmployeePracticalSignalEvidenceSet
 
 
 @dataclass(frozen=True)
@@ -77,7 +80,23 @@ class ManagerActionRecommendation:
     title: str
     description: str
     affected_employees_count: int
+    affected_user_ids: tuple[int, ...]
     target_url: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ManagerRecommendationAffectedMember:
+    user_id: int
+    display_name: str
+    username: Optional[str]
+    reason: str
+    profile_url: str
+
+
+@dataclass(frozen=True)
+class ManagerRecommendationDetail:
+    recommendation: ManagerActionRecommendation
+    members: tuple[ManagerRecommendationAffectedMember, ...]
 
 
 @dataclass(frozen=True)
@@ -144,6 +163,8 @@ class ManagerTeamAnalyticsService:
                     member=member,
                     quiz_analytics=quiz_analytics,
                     practical_task_analytics=practical_task_analytics,
+                    topics_analytics=topics_analytics,
+                    practical_signal_evidence=practical_signal_evidence,
                 )
             )
             quiz_analytics_by_member.append((member, quiz_analytics))
@@ -162,15 +183,60 @@ class ManagerTeamAnalyticsService:
             practical_analytics_by_member,
             practical_evidence_by_member,
         )
-        recommendations = _build_team_recommendations(analytics)
+        member_rows_tuple = tuple(member_rows)
+        recommendations = _build_team_recommendations(analytics, member_rows_tuple)
         return ManagerTeamOverview(
             analytics=analytics,
-            members=tuple(member_rows),
+            members=member_rows_tuple,
             recommendations=recommendations,
         )
 
     def get_team_analytics(self, company_id: str) -> ManagerTeamAnalytics:
         return self.get_team_overview(company_id).analytics
+
+    def get_recommendation_detail(
+        self,
+        company_id: str,
+        recommendation_code: str,
+    ) -> Optional[ManagerRecommendationDetail]:
+        overview = self.get_team_overview(company_id)
+        recommendation = next(
+            (
+                item
+                for item in overview.recommendations
+                if item.code == recommendation_code
+            ),
+            None,
+        )
+        if recommendation is None:
+            return None
+
+        members_by_id = {
+            row.member.user_id: row for row in overview.members
+        }
+        affected_members: list[ManagerRecommendationAffectedMember] = []
+        for user_id in recommendation.affected_user_ids:
+            row = members_by_id.get(user_id)
+            if row is None:
+                continue
+            affected_members.append(
+                ManagerRecommendationAffectedMember(
+                    user_id=user_id,
+                    display_name=row.member.display_name,
+                    username=row.member.username,
+                    reason=_member_recommendation_reason(
+                        recommendation,
+                        row,
+                        overview.analytics,
+                    ),
+                    profile_url=f"/manager/team/{user_id}",
+                )
+            )
+
+        return ManagerRecommendationDetail(
+            recommendation=recommendation,
+            members=tuple(affected_members),
+        )
 
 
 def _empty_team_analytics() -> ManagerTeamAnalytics:
@@ -473,8 +539,146 @@ def _safe_recommendation_code_fragment(text: str, *, fallback: str) -> str:
     return slug or fallback
 
 
+def _recommendation_target_url(code: str) -> str:
+    return f"/manager/team/recommendation?code={quote(code, safe='')}"
+
+
+def _sorted_user_ids(user_ids) -> tuple[int, ...]:
+    return tuple(sorted(set(user_ids)))
+
+
+def _make_recommendation(
+    *,
+    code: str,
+    priority: str,
+    title: str,
+    description: str,
+    affected_user_ids: tuple[int, ...],
+) -> ManagerActionRecommendation:
+    return ManagerActionRecommendation(
+        code=code,
+        priority=priority,
+        title=title,
+        description=description,
+        affected_employees_count=len(affected_user_ids),
+        affected_user_ids=affected_user_ids,
+        target_url=_recommendation_target_url(code),
+    )
+
+
+def _topic_tag_for_recommendation_code(
+    code: str,
+    analytics: ManagerTeamAnalytics,
+) -> Optional[str]:
+    if not code.startswith("quiz_topic:"):
+        return None
+    topic_slug = code[len("quiz_topic:") :]
+    for index, topic in enumerate(analytics.development_topics):
+        if (
+            _safe_recommendation_code_fragment(
+                topic.tag,
+                fallback=f"topic-{index + 1}",
+            )
+            == topic_slug
+        ):
+            return topic.tag
+    return None
+
+
+def _practical_signal_text_for_recommendation_code(
+    code: str,
+    analytics: ManagerTeamAnalytics,
+) -> Optional[str]:
+    if not code.startswith("practical_signal:"):
+        return None
+    signal_slug = code[len("practical_signal:") :]
+    for index, signal in enumerate(analytics.practical_development_areas):
+        if (
+            _safe_recommendation_code_fragment(
+                signal.text,
+                fallback=f"signal-{index + 1}",
+            )
+            == signal_slug
+        ):
+            return signal.text
+    return None
+
+
+def _member_topic_answers_count(
+    row: ManagerTeamMemberAnalytics,
+    topic_tag: str,
+) -> int:
+    for topic in row.topics_analytics.topics:
+        if topic.tag == topic_tag:
+            return topic.answers_count
+    return 0
+
+
+def _member_practical_signal_evidence_count(
+    row: ManagerTeamMemberAnalytics,
+    signal_text: str,
+) -> int:
+    signal_key = signal_text.casefold()
+    for signal in row.practical_signal_evidence.development_areas:
+        if signal.text.casefold() == signal_key:
+            return signal.evidence_count
+    return 0
+
+
+def _member_recommendation_reason(
+    recommendation: ManagerActionRecommendation,
+    row: ManagerTeamMemberAnalytics,
+    analytics: ManagerTeamAnalytics,
+) -> str:
+    code = recommendation.code
+    if code == "quiz_attention":
+        failed_count = row.quiz_analytics.latest_failed_courses_count
+        if failed_count > 0:
+            return f"Последних непройденных курсов: {failed_count}."
+        return (
+            "Есть последняя непройденная попытка по одному или нескольким курсам."
+        )
+
+    if code == "practical_attention":
+        failed_count = row.practical_task_analytics.failed_attempts_count
+        return f"Есть непринятые практические задания: {failed_count}."
+
+    if code == "practical_pending":
+        pending_count = row.practical_task_analytics.pending_attempts_count
+        return f"Практических заданий ожидает проверки: {pending_count}."
+
+    if code == "quiz_no_data":
+        return "Сотрудник ещё не проходил тестирование."
+
+    if code == "learning_not_started":
+        return "Сотрудник ещё не начал обучение."
+
+    topic_tag = _topic_tag_for_recommendation_code(code, analytics)
+    if topic_tag is not None:
+        answers_count = _member_topic_answers_count(row, topic_tag)
+        if answers_count > 0:
+            return (
+                f"У сотрудника есть ответы по теме «{topic_tag}». "
+                f"Ответов по теме: {answers_count}."
+            )
+        return f"У сотрудника есть ответы по теме «{topic_tag}»."
+
+    signal_text = _practical_signal_text_for_recommendation_code(code, analytics)
+    if signal_text is not None:
+        evidence_count = _member_practical_signal_evidence_count(row, signal_text)
+        if evidence_count > 0:
+            return (
+                "Сигнал встречался в проверенных практических заданиях сотрудника. "
+                f"Наблюдений: {evidence_count}."
+            )
+        return "Сигнал встречался в проверенных практических заданиях сотрудника."
+
+    return "Сотрудник попадает под это рекомендуемое действие."
+
+
 def _build_team_recommendations(
     analytics: ManagerTeamAnalytics,
+    members: tuple[ManagerTeamMemberAnalytics, ...],
 ) -> tuple[ManagerActionRecommendation, ...]:
     recommendations: list[ManagerActionRecommendation] = []
     seen_codes: set[str] = set()
@@ -482,12 +686,19 @@ def _build_team_recommendations(
     def add_recommendation(recommendation: ManagerActionRecommendation) -> None:
         if recommendation.code in seen_codes:
             return
+        if recommendation.affected_employees_count <= 0:
+            return
         seen_codes.add(recommendation.code)
         recommendations.append(recommendation)
 
-    if analytics.members_requiring_attention_count > 0:
+    quiz_attention_ids = _sorted_user_ids(
+        row.member.user_id
+        for row in members
+        if row.quiz_analytics.latest_failed_courses_count > 0
+    )
+    if quiz_attention_ids:
         add_recommendation(
-            ManagerActionRecommendation(
+            _make_recommendation(
                 code="quiz_attention",
                 priority="high",
                 title="Повторить обучение по непройденным тестам",
@@ -495,13 +706,18 @@ def _build_team_recommendations(
                     "У части сотрудников последние попытки по курсам не пройдены. "
                     "Проверьте результаты и назначьте повторное обучение."
                 ),
-                affected_employees_count=analytics.members_requiring_attention_count,
+                affected_user_ids=quiz_attention_ids,
             )
         )
 
-    if analytics.members_with_failed_practical_tasks_count > 0:
+    practical_attention_ids = _sorted_user_ids(
+        row.member.user_id
+        for row in members
+        if row.practical_task_analytics.failed_attempts_count > 0
+    )
+    if practical_attention_ids:
         add_recommendation(
-            ManagerActionRecommendation(
+            _make_recommendation(
                 code="practical_attention",
                 priority="high",
                 title="Разобрать непринятые практические задания",
@@ -509,15 +725,18 @@ def _build_team_recommendations(
                     "У части сотрудников есть непринятые практические задания. "
                     "Рекомендуется разобрать ошибки и повторить практику."
                 ),
-                affected_employees_count=(
-                    analytics.members_with_failed_practical_tasks_count
-                ),
+                affected_user_ids=practical_attention_ids,
             )
         )
 
-    if analytics.members_with_pending_practical_tasks_count > 0:
+    practical_pending_ids = _sorted_user_ids(
+        row.member.user_id
+        for row in members
+        if row.practical_task_analytics.pending_attempts_count > 0
+    )
+    if practical_pending_ids:
         add_recommendation(
-            ManagerActionRecommendation(
+            _make_recommendation(
                 code="practical_pending",
                 priority="medium",
                 title="Проверить ожидающие практические задания",
@@ -525,15 +744,18 @@ def _build_team_recommendations(
                     "Есть практические задания, которые ожидают проверки "
                     "или завершения review-процесса."
                 ),
-                affected_employees_count=(
-                    analytics.members_with_pending_practical_tasks_count
-                ),
+                affected_user_ids=practical_pending_ids,
             )
         )
 
-    if analytics.members_without_quiz_data_count > 0:
+    quiz_no_data_ids = _sorted_user_ids(
+        row.member.user_id
+        for row in members
+        if row.quiz_analytics.total_attempts_count == 0
+    )
+    if quiz_no_data_ids:
         add_recommendation(
-            ManagerActionRecommendation(
+            _make_recommendation(
                 code="quiz_no_data",
                 priority="medium",
                 title="Получить данные по знаниям сотрудников",
@@ -541,7 +763,7 @@ def _build_team_recommendations(
                     "Часть сотрудников ещё не проходила тестирование. "
                     "Без результатов сложно определить уровень знаний и зоны развития."
                 ),
-                affected_employees_count=analytics.members_without_quiz_data_count,
+                affected_user_ids=quiz_no_data_ids,
             )
         )
 
@@ -550,47 +772,69 @@ def _build_team_recommendations(
             topic.tag,
             fallback=f"topic-{index + 1}",
         )
-        add_recommendation(
-            ManagerActionRecommendation(
-                code=f"quiz_topic:{topic_slug}",
-                priority="high" if topic.accuracy_percent < 50.0 else "medium",
-                title=f"Повторить тему: {topic.tag}",
-                description=(
-                    f"Точность команды по теме — {topic.accuracy_percent}% "
-                    f"на основе {topic.answers_count} ответов "
-                    f"от {topic.employees_count} сотрудников."
-                ),
-                affected_employees_count=topic.employees_count,
-            )
+        topic_code = f"quiz_topic:{topic_slug}"
+        topic_user_ids = _sorted_user_ids(
+            row.member.user_id
+            for row in members
+            if _member_topic_answers_count(row, topic.tag) > 0
         )
+        if topic_user_ids:
+            add_recommendation(
+                _make_recommendation(
+                    code=topic_code,
+                    priority="high" if topic.accuracy_percent < 50.0 else "medium",
+                    title=f"Повторить тему: {topic.tag}",
+                    description=(
+                        f"Точность команды по теме — {topic.accuracy_percent}% "
+                        f"на основе {topic.answers_count} ответов "
+                        f"от {topic.employees_count} сотрудников."
+                    ),
+                    affected_user_ids=topic_user_ids,
+                )
+            )
 
     for index, signal in enumerate(analytics.practical_development_areas):
         signal_slug = _safe_recommendation_code_fragment(
             signal.text,
             fallback=f"signal-{index + 1}",
         )
-        add_recommendation(
-            ManagerActionRecommendation(
-                code=f"practical_signal:{signal_slug}",
-                priority="medium",
-                title=f"Усилить практический навык: {signal.text}",
-                description=(
-                    f"Сигнал повторяется у {signal.employees_count} сотрудников "
-                    f"и встречается в {signal.evidence_count} проверенных заданиях."
-                ),
-                affected_employees_count=signal.employees_count,
+        signal_code = f"practical_signal:{signal_slug}"
+        signal_key = signal.text.casefold()
+        signal_user_ids = _sorted_user_ids(
+            row.member.user_id
+            for row in members
+            if any(
+                item.text.casefold() == signal_key and item.evidence_count > 0
+                for item in row.practical_signal_evidence.development_areas
             )
         )
+        if signal_user_ids:
+            add_recommendation(
+                _make_recommendation(
+                    code=signal_code,
+                    priority="medium",
+                    title=f"Усилить практический навык: {signal.text}",
+                    description=(
+                        f"Сигнал повторяется у {signal.employees_count} сотрудников "
+                        f"и встречается в {signal.evidence_count} проверенных заданиях."
+                    ),
+                    affected_user_ids=signal_user_ids,
+                )
+            )
 
-    not_started_count = analytics.members_count - analytics.started_members_count
-    if not_started_count > 0:
+    learning_not_started_ids = _sorted_user_ids(
+        row.member.user_id
+        for row in members
+        if row.member.started_courses_count == 0
+    )
+    if learning_not_started_ids:
         add_recommendation(
-            ManagerActionRecommendation(
+            _make_recommendation(
                 code="learning_not_started",
                 priority="low",
                 title="Подключить сотрудников, которые ещё не начали обучение",
                 description="Часть сотрудников пока не начала ни одного курса.",
-                affected_employees_count=not_started_count,
+                affected_user_ids=learning_not_started_ids,
             )
         )
 

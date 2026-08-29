@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Optional
 
 from fastapi import Request
 from fastapi.testclient import TestClient
@@ -14,14 +15,19 @@ from app.web.manager_employee_analytics_service import (
     EmployeeCourseQuizAnalytics,
     EmployeeDevelopmentProfile,
     EmployeePracticalSignal,
+    EmployeePracticalSignalEvidence,
+    EmployeePracticalSignalEvidenceSet,
     EmployeePracticalTaskAttemptAnalytics,
     EmployeePracticalTaskAnalytics,
     EmployeeQuizAnalytics,
     EmployeeQuizTopicAnalytics,
+    EmployeeQuizTopicsAnalytics,
     EmployeeQuizTopicClassification,
 )
 from app.web.manager_team_analytics_service import (
     ManagerActionRecommendation,
+    ManagerRecommendationAffectedMember,
+    ManagerRecommendationDetail,
     ManagerTeamAnalytics,
     ManagerTeamMemberAnalytics,
     ManagerTeamOverview,
@@ -356,6 +362,7 @@ class FakeAnalyticsService:
 class FakeTeamAnalyticsService:
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.detail_calls: list[tuple[str, str]] = []
         self._empty = False
         self._quiz_analytics_override: EmployeeQuizAnalytics | None = None
         self._practical_analytics_override: EmployeePracticalTaskAnalytics | None = None
@@ -481,6 +488,8 @@ class FakeTeamAnalyticsService:
                     "Проверьте результаты и назначьте повторное обучение."
                 ),
                 affected_employees_count=1,
+                affected_user_ids=(2,),
+                target_url="/manager/team/recommendation?code=quiz_attention",
             ),
             ManagerActionRecommendation(
                 code="quiz_topic:vozvraty",
@@ -491,6 +500,8 @@ class FakeTeamAnalyticsService:
                     "на основе 8 ответов от 2 сотрудников."
                 ),
                 affected_employees_count=2,
+                affected_user_ids=(2,),
+                target_url="/manager/team/recommendation?code=quiz_topic%3Avozvraty",
             ),
             ManagerActionRecommendation(
                 code="practical_pending",
@@ -501,6 +512,8 @@ class FakeTeamAnalyticsService:
                     "или завершения review-процесса."
                 ),
                 affected_employees_count=1,
+                affected_user_ids=(2,),
+                target_url="/manager/team/recommendation?code=practical_pending",
             ),
             ManagerActionRecommendation(
                 code="learning_not_started",
@@ -508,6 +521,8 @@ class FakeTeamAnalyticsService:
                 title="Подключить сотрудников, которые ещё не начали обучение",
                 description="Часть сотрудников пока не начала ни одного курса.",
                 affected_employees_count=1,
+                affected_user_ids=(2,),
+                target_url="/manager/team/recommendation?code=learning_not_started",
             ),
         )
 
@@ -566,6 +581,15 @@ class FakeTeamAnalyticsService:
                     member=member,
                     quiz_analytics=quiz_analytics,
                     practical_task_analytics=practical_task_analytics,
+                    topics_analytics=EmployeeQuizTopicsAnalytics(
+                        total_tagged_answers_count=0,
+                        topics=(),
+                    ),
+                    practical_signal_evidence=EmployeePracticalSignalEvidenceSet(
+                        strengths=(),
+                        development_areas=(),
+                        reviewed_attempts_count=0,
+                    ),
                 ),
             ),
             recommendations=self._populated_recommendations(),
@@ -573,6 +597,37 @@ class FakeTeamAnalyticsService:
 
     def get_team_analytics(self, company_id: str) -> ManagerTeamAnalytics:
         return self.get_team_overview(company_id).analytics
+
+    def get_recommendation_detail(
+        self,
+        company_id: str,
+        recommendation_code: str,
+    ) -> Optional[ManagerRecommendationDetail]:
+        self.detail_calls.append((company_id, recommendation_code))
+        overview = self.get_team_overview(company_id)
+        recommendation = next(
+            (
+                item
+                for item in overview.recommendations
+                if item.code == recommendation_code
+            ),
+            None,
+        )
+        if recommendation is None:
+            return None
+        member = self._default_member()
+        return ManagerRecommendationDetail(
+            recommendation=recommendation,
+            members=(
+                ManagerRecommendationAffectedMember(
+                    user_id=member.user_id,
+                    display_name=member.display_name,
+                    username=member.username,
+                    reason="Последних непройденных курсов: 1.",
+                    profile_url=f"/manager/team/{member.user_id}",
+                ),
+            ),
+        )
 
 
 
@@ -696,6 +751,8 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Средний приоритет", response.text)
         self.assertIn("Низкий приоритет", response.text)
         self.assertIn("Сотрудников", response.text)
+        self.assertIn("Посмотреть сотрудников", response.text)
+        self.assertIn("/manager/team/recommendation?code=quiz_attention", response.text)
 
     def test_manager_team_page_renders_empty_recommendations_message(self) -> None:
         self._set_identity("manager")
@@ -995,6 +1052,75 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(self.analytics_service.development_profile_calls, [])
         self.assertEqual(self.analytics_service.practical_task_calls, [])
 
+    def test_manager_can_open_recommendation_detail_page(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get(
+            "/manager/team/recommendation",
+            params={"code": "quiz_attention"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Рекомендуемое действие", response.text)
+        self.assertIn("Повторить обучение по непройденным тестам", response.text)
+        self.assertIn("Высокий приоритет", response.text)
+        self.assertIn("E2E Student", response.text)
+        self.assertIn("Последних непройденных курсов: 1.", response.text)
+        self.assertIn("Открыть профиль", response.text)
+        self.assertIn("/manager/team/2", response.text)
+        self.assertEqual(self.team_analytics_service.detail_calls, [("intertop", "quiz_attention")])
+
+    def test_admin_can_open_recommendation_detail_page(self) -> None:
+        self._set_identity("admin")
+
+        response = self.client.get(
+            "/manager/team/recommendation",
+            params={"code": "quiz_attention"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_student_cannot_open_recommendation_detail_page(self) -> None:
+        self._set_identity("student")
+
+        response = self.client.get(
+            "/manager/team/recommendation",
+            params={"code": "quiz_attention"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.team_analytics_service.detail_calls, [])
+
+    def test_anonymous_cannot_open_recommendation_detail_page(self) -> None:
+        response = self.client.get(
+            "/manager/team/recommendation",
+            params={"code": "quiz_attention"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.team_analytics_service.detail_calls, [])
+
+    def test_unknown_recommendation_returns_404(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get(
+            "/manager/team/recommendation",
+            params={"code": "unknown-code"},
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.team_analytics_service.detail_calls, [("intertop", "unknown-code")])
+
+    def test_recommendation_detail_does_not_render_learner_answer(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get(
+            "/manager/team/recommendation",
+            params={"code": "quiz_attention"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("learner_answer", response.text.lower())
 
 
 if __name__ == "__main__":

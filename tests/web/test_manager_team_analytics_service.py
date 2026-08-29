@@ -17,6 +17,7 @@ from app.web.manager_employee_analytics_service import (
 from app.web.manager_team_analytics_service import (
     MIN_TEAM_PRACTICAL_SIGNAL_EMPLOYEES,
     ManagerActionRecommendation,
+    ManagerRecommendationDetail,
     ManagerTeamAnalytics,
     ManagerTeamAnalyticsService,
     ManagerTeamMemberAnalytics,
@@ -112,6 +113,34 @@ def _practical_evidence(
 
 def _signal_evidence(text: str, count: int) -> EmployeePracticalSignalEvidence:
     return EmployeePracticalSignalEvidence(text=text, evidence_count=count)
+
+
+def _member_row(
+    user_id: int,
+    *,
+    started: int = 1,
+    latest_failed: int = 0,
+    quiz_attempts: int = 1,
+    failed_practical: int = 0,
+    pending_practical: int = 0,
+    topics=(),
+    development_signals=(),
+) -> ManagerTeamMemberAnalytics:
+    return ManagerTeamMemberAnalytics(
+        member=_member(user_id, started=started),
+        quiz_analytics=_quiz_analytics(
+            attempts=quiz_attempts,
+            latest_failed=latest_failed,
+        ),
+        practical_task_analytics=_practical_analytics(
+            failed=failed_practical,
+            pending=pending_practical,
+        ),
+        topics_analytics=_topics_analytics(*topics),
+        practical_signal_evidence=_practical_evidence(
+            development_areas=development_signals,
+        ),
+    )
 
 
 class FakeTeamService:
@@ -975,12 +1004,17 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
         self.assertEqual(overview.recommendations, ())
 
     def test_quiz_attention_high_recommendation(self) -> None:
+        members = (
+            _member_row(1, latest_failed=1),
+            _member_row(2, latest_failed=1),
+        )
         recommendations = _build_team_recommendations(
             self._analytics(
                 members_requiring_attention_count=2,
                 members_count=2,
                 started_members_count=2,
-            )
+            ),
+            members,
         )
 
         self.assertEqual(len(recommendations), 1)
@@ -988,40 +1022,64 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
         self.assertEqual(rec.code, "quiz_attention")
         self.assertEqual(rec.priority, "high")
         self.assertEqual(rec.affected_employees_count, 2)
+        self.assertEqual(rec.affected_user_ids, (1, 2))
+        self.assertEqual(rec.affected_employees_count, len(rec.affected_user_ids))
 
     def test_practical_attention_high_recommendation(self) -> None:
+        members = (_member_row(1, failed_practical=1),)
         recommendations = _build_team_recommendations(
-            self._analytics(members_with_failed_practical_tasks_count=1)
+            self._analytics(members_with_failed_practical_tasks_count=1),
+            members,
         )
 
         self.assertEqual(recommendations[0].code, "practical_attention")
         self.assertEqual(recommendations[0].priority, "high")
+        self.assertEqual(recommendations[0].affected_user_ids, (1,))
 
     def test_practical_pending_medium_recommendation(self) -> None:
+        members = (
+            _member_row(1, pending_practical=1),
+            _member_row(2, pending_practical=1),
+            _member_row(3, pending_practical=1),
+        )
         recommendations = _build_team_recommendations(
-            self._analytics(members_with_pending_practical_tasks_count=3)
+            self._analytics(members_with_pending_practical_tasks_count=3),
+            members,
         )
 
         self.assertEqual(recommendations[0].code, "practical_pending")
         self.assertEqual(recommendations[0].priority, "medium")
         self.assertEqual(recommendations[0].affected_employees_count, 3)
+        self.assertEqual(recommendations[0].affected_user_ids, (1, 2, 3))
 
     def test_quiz_no_data_medium_recommendation(self) -> None:
+        members = tuple(_member_row(user_id, quiz_attempts=0) for user_id in range(1, 5))
         recommendations = _build_team_recommendations(
-            self._analytics(members_without_quiz_data_count=4)
+            self._analytics(members_without_quiz_data_count=4),
+            members,
         )
 
         self.assertEqual(recommendations[0].code, "quiz_no_data")
         self.assertEqual(recommendations[0].priority, "medium")
+        self.assertEqual(recommendations[0].affected_user_ids, (1, 2, 3, 4))
 
     def test_learning_not_started_low_recommendation(self) -> None:
+        members = (
+            _member_row(1, started=1),
+            _member_row(2, started=1),
+            _member_row(3, started=1),
+            _member_row(4, started=0),
+            _member_row(5, started=0),
+        )
         recommendations = _build_team_recommendations(
-            self._analytics(members_count=5, started_members_count=3)
+            self._analytics(members_count=5, started_members_count=3),
+            members,
         )
 
         rec = next(r for r in recommendations if r.code == "learning_not_started")
         self.assertEqual(rec.priority, "low")
         self.assertEqual(rec.affected_employees_count, 2)
+        self.assertEqual(rec.affected_user_ids, (4, 5))
 
     def test_quiz_development_topic_creates_recommendation(self) -> None:
         topic = ManagerTeamTopicAnalytics(
@@ -1031,13 +1089,39 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
             accuracy_percent=37.5,
             employees_count=2,
         )
+        members = (
+            _member_row(
+                1,
+                topics=(
+                    EmployeeQuizTopicAnalytics(
+                        tag="Возвраты",
+                        answers_count=3,
+                        correct_answers_count=1,
+                        accuracy_percent=33.33,
+                    ),
+                ),
+            ),
+            _member_row(
+                2,
+                topics=(
+                    EmployeeQuizTopicAnalytics(
+                        tag="Возвраты",
+                        answers_count=5,
+                        correct_answers_count=2,
+                        accuracy_percent=40.0,
+                    ),
+                ),
+            ),
+        )
         recommendations = _build_team_recommendations(
-            self._analytics(development_topics=(topic,))
+            self._analytics(development_topics=(topic,)),
+            members,
         )
 
         rec = next(r for r in recommendations if r.code.startswith("quiz_topic:"))
         self.assertEqual(rec.title, "Повторить тему: Возвраты")
         self.assertEqual(rec.affected_employees_count, 2)
+        self.assertEqual(rec.affected_user_ids, (1, 2))
 
     def test_topic_below_50_percent_gets_high_priority(self) -> None:
         topic = ManagerTeamTopicAnalytics(
@@ -1047,8 +1131,33 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
             accuracy_percent=40.0,
             employees_count=2,
         )
+        members = (
+            _member_row(
+                1,
+                topics=(
+                    EmployeeQuizTopicAnalytics(
+                        tag="Слабая",
+                        answers_count=3,
+                        correct_answers_count=1,
+                        accuracy_percent=33.33,
+                    ),
+                ),
+            ),
+            _member_row(
+                2,
+                topics=(
+                    EmployeeQuizTopicAnalytics(
+                        tag="Слабая",
+                        answers_count=2,
+                        correct_answers_count=1,
+                        accuracy_percent=50.0,
+                    ),
+                ),
+            ),
+        )
         recommendations = _build_team_recommendations(
-            self._analytics(development_topics=(topic,))
+            self._analytics(development_topics=(topic,)),
+            members,
         )
 
         rec = next(r for r in recommendations if r.code.startswith("quiz_topic:"))
@@ -1062,15 +1171,40 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
             accuracy_percent=60.0,
             employees_count=2,
         )
+        members = (
+            _member_row(
+                1,
+                topics=(
+                    EmployeeQuizTopicAnalytics(
+                        tag="Средняя",
+                        answers_count=3,
+                        correct_answers_count=2,
+                        accuracy_percent=66.67,
+                    ),
+                ),
+            ),
+            _member_row(
+                2,
+                topics=(
+                    EmployeeQuizTopicAnalytics(
+                        tag="Средняя",
+                        answers_count=2,
+                        correct_answers_count=1,
+                        accuracy_percent=50.0,
+                    ),
+                ),
+            ),
+        )
         recommendations = _build_team_recommendations(
-            self._analytics(development_topics=(topic,))
+            self._analytics(development_topics=(topic,)),
+            members,
         )
 
         rec = next(r for r in recommendations if r.code.startswith("quiz_topic:"))
         self.assertEqual(rec.priority, "medium")
 
     def test_neutral_topic_creates_no_recommendation(self) -> None:
-        recommendations = _build_team_recommendations(self._analytics())
+        recommendations = _build_team_recommendations(self._analytics(), ())
         topic_codes = [r.code for r in recommendations if r.code.startswith("quiz_topic:")]
         self.assertEqual(topic_codes, [])
 
@@ -1083,7 +1217,8 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
             employees_count=2,
         )
         recommendations = _build_team_recommendations(
-            self._analytics(strengths_topics=(strength,))
+            self._analytics(strengths_topics=(strength,)),
+            (),
         )
         topic_codes = [r.code for r in recommendations if r.code.startswith("quiz_topic:")]
         self.assertEqual(topic_codes, [])
@@ -1094,8 +1229,19 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
             evidence_count=5,
             employees_count=2,
         )
+        members = (
+            _member_row(
+                1,
+                development_signals=(_signal_evidence("Add detail", 2),),
+            ),
+            _member_row(
+                2,
+                development_signals=(_signal_evidence("Add detail", 3),),
+            ),
+        )
         recommendations = _build_team_recommendations(
-            self._analytics(practical_development_areas=(signal,))
+            self._analytics(practical_development_areas=(signal,)),
+            members,
         )
 
         rec = next(
@@ -1104,6 +1250,7 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
         self.assertEqual(rec.title, "Усилить практический навык: Add detail")
         self.assertEqual(rec.priority, "medium")
         self.assertEqual(rec.affected_employees_count, 2)
+        self.assertEqual(rec.affected_user_ids, (1, 2))
 
     def test_practical_strength_creates_no_recommendation(self) -> None:
         signal = ManagerTeamPracticalSignal(
@@ -1112,7 +1259,8 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
             employees_count=2,
         )
         recommendations = _build_team_recommendations(
-            self._analytics(practical_strengths=(signal,))
+            self._analytics(practical_strengths=(signal,)),
+            (),
         )
         signal_codes = [
             r.code for r in recommendations if r.code.startswith("practical_signal:")
@@ -1120,6 +1268,13 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
         self.assertEqual(signal_codes, [])
 
     def test_deterministic_priority_ordering(self) -> None:
+        members = (
+            _member_row(1, latest_failed=1),
+            _member_row(2, pending_practical=1),
+            _member_row(3, pending_practical=1),
+            _member_row(4, quiz_attempts=0),
+            _member_row(5, started=0),
+        )
         recommendations = _build_team_recommendations(
             self._analytics(
                 members_requiring_attention_count=1,
@@ -1127,18 +1282,26 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
                 members_without_quiz_data_count=1,
                 members_count=4,
                 started_members_count=3,
-            )
+            ),
+            members,
         )
 
         priorities = [rec.priority for rec in recommendations]
         self.assertEqual(priorities, sorted(priorities, key=lambda p: {"high": 0, "medium": 1, "low": 2}[p]))
 
     def test_same_priority_sorts_affected_count_descending(self) -> None:
+        members = (
+            _member_row(1, pending_practical=1),
+            _member_row(2, quiz_attempts=0),
+            _member_row(3, quiz_attempts=0),
+            _member_row(4, quiz_attempts=0),
+        )
         recommendations = _build_team_recommendations(
             self._analytics(
                 members_with_pending_practical_tasks_count=1,
                 members_without_quiz_data_count=3,
-            )
+            ),
+            members,
         )
 
         medium = [r for r in recommendations if r.priority == "medium"]
@@ -1146,8 +1309,13 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
         self.assertEqual(medium[1].affected_employees_count, 1)
 
     def test_duplicate_codes_prevented(self) -> None:
+        members = (
+            _member_row(1, latest_failed=1),
+            _member_row(2, latest_failed=1),
+        )
         recommendations = _build_team_recommendations(
-            self._analytics(members_requiring_attention_count=2)
+            self._analytics(members_requiring_attention_count=2),
+            members,
         )
         codes = [rec.code for rec in recommendations]
         self.assertEqual(len(codes), len(set(codes)))
@@ -1166,17 +1334,48 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
             accuracy_percent=40.0,
             employees_count=2,
         )
+        members = (
+            _member_row(
+                1,
+                topics=(
+                    EmployeeQuizTopicAnalytics(
+                        tag="Returns 101",
+                        answers_count=3,
+                        correct_answers_count=1,
+                        accuracy_percent=33.33,
+                    ),
+                ),
+            ),
+            _member_row(
+                2,
+                topics=(
+                    EmployeeQuizTopicAnalytics(
+                        tag="Returns 101",
+                        answers_count=2,
+                        correct_answers_count=1,
+                        accuracy_percent=50.0,
+                    ),
+                ),
+            ),
+        )
         recommendations = _build_team_recommendations(
-            self._analytics(development_topics=(topic,))
+            self._analytics(development_topics=(topic,)),
+            members,
         )
         self.assertEqual(recommendations[0].code, "quiz_topic:returns-101")
+        self.assertTrue(recommendations[0].target_url.startswith("/manager/team/recommendation?code="))
 
     def test_healthy_team_can_have_no_recommendations(self) -> None:
+        members = (
+            _member_row(1, started=1, latest_failed=0, quiz_attempts=2),
+            _member_row(2, started=1, latest_failed=0, quiz_attempts=2),
+        )
         recommendations = _build_team_recommendations(
             self._analytics(
                 members_count=2,
                 started_members_count=2,
-            )
+            ),
+            members,
         )
         self.assertEqual(recommendations, ())
 
@@ -1198,6 +1397,243 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
         self.assertEqual(employee_service.topics_calls, [1])
         self.assertEqual(employee_service.practical_calls, [1])
         self.assertEqual(employee_service.practical_evidence_calls, [1])
+
+
+class ManagerTeamRecommendationTargetingTests(unittest.TestCase):
+    def test_quiz_attention_targets_only_failed_latest_users(self) -> None:
+        members = (
+            _member(1),
+            _member(2),
+            _member(3),
+        )
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            quiz_by_user={
+                1: _quiz_analytics(attempts=2, latest_failed=1),
+                2: _quiz_analytics(attempts=2, latest_failed=0),
+                3: _quiz_analytics(attempts=2, latest_failed=2),
+            },
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        overview = service.get_team_overview("company-a")
+        rec = next(r for r in overview.recommendations if r.code == "quiz_attention")
+
+        self.assertEqual(rec.affected_user_ids, (1, 3))
+        self.assertEqual(rec.affected_employees_count, len(rec.affected_user_ids))
+
+    def test_practical_attention_targets_only_failed_users(self) -> None:
+        members = (_member(1), _member(2))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            practical_by_user={
+                1: _practical_analytics(total=2, failed=1),
+                2: _practical_analytics(total=2, failed=0),
+            },
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        overview = service.get_team_overview("company-a")
+        rec = next(r for r in overview.recommendations if r.code == "practical_attention")
+
+        self.assertEqual(rec.affected_user_ids, (1,))
+
+    def test_quiz_topic_targets_only_contributing_members(self) -> None:
+        members = (_member(1), _member(2), _member(3))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            topics_by_user={
+                1: _topics_analytics(
+                    EmployeeQuizTopicAnalytics(
+                        tag="Возвраты",
+                        answers_count=3,
+                        correct_answers_count=1,
+                        accuracy_percent=33.33,
+                    ),
+                ),
+                2: _topics_analytics(
+                    EmployeeQuizTopicAnalytics(
+                        tag="Возвраты",
+                        answers_count=3,
+                        correct_answers_count=0,
+                        accuracy_percent=0.0,
+                    ),
+                ),
+                3: _topics_analytics(),
+            },
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        overview = service.get_team_overview("company-a")
+        rec = next(r for r in overview.recommendations if r.code.startswith("quiz_topic:"))
+
+        self.assertEqual(rec.affected_user_ids, (1, 2))
+
+    def test_practical_signal_targets_only_contributing_members(self) -> None:
+        members = (_member(1), _member(2), _member(3))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            practical_evidence_by_user={
+                1: _practical_evidence(
+                    development_areas=(_signal_evidence("Needs detail", 2),),
+                    reviewed_attempts_count=2,
+                ),
+                2: _practical_evidence(
+                    development_areas=(_signal_evidence("Needs detail", 1),),
+                    reviewed_attempts_count=1,
+                ),
+                3: _practical_evidence(reviewed_attempts_count=1),
+            },
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        overview = service.get_team_overview("company-a")
+        rec = next(
+            r for r in overview.recommendations if r.code.startswith("practical_signal:")
+        )
+
+        self.assertEqual(rec.affected_user_ids, (1, 2))
+
+    def test_affected_user_ids_unique_and_sorted(self) -> None:
+        members = (_member(3), _member(1), _member(2))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            quiz_by_user={
+                1: _quiz_analytics(attempts=1, latest_failed=1),
+                2: _quiz_analytics(attempts=1, latest_failed=1),
+                3: _quiz_analytics(attempts=1, latest_failed=1),
+            },
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        overview = service.get_team_overview("company-a")
+        rec = overview.recommendations[0]
+
+        self.assertEqual(rec.affected_user_ids, (1, 2, 3))
+        self.assertEqual(len(rec.affected_user_ids), len(set(rec.affected_user_ids)))
+
+    def test_recommendation_targeting_does_not_add_extra_analytics_calls(self) -> None:
+        members = (_member(1), _member(2))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            quiz_by_user={
+                1: _quiz_analytics(attempts=1, latest_failed=1),
+                2: _quiz_analytics(attempts=0),
+            },
+            practical_by_user={
+                1: _practical_analytics(pending=1),
+                2: _practical_analytics(),
+            },
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        overview = service.get_team_overview("company-a")
+
+        self.assertGreater(len(overview.recommendations), 0)
+        self.assertEqual(employee_service.quiz_calls, [1, 2])
+        self.assertEqual(employee_service.topics_calls, [1, 2])
+        self.assertEqual(employee_service.practical_calls, [1, 2])
+        self.assertEqual(employee_service.practical_evidence_calls, [1, 2])
+
+
+class ManagerTeamRecommendationDetailTests(unittest.TestCase):
+    def test_get_recommendation_detail_returns_none_for_unknown_code(self) -> None:
+        team_service = FakeTeamService((_member(1),))
+        employee_service = FakeEmployeeAnalyticsService()
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        detail = service.get_recommendation_detail("company-a", "missing-code")
+
+        self.assertIsNone(detail)
+
+    def test_get_recommendation_detail_returns_tenant_scoped_members(self) -> None:
+        members = (_member(10), _member(20))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            quiz_by_user={
+                10: _quiz_analytics(attempts=2, latest_failed=1),
+                20: _quiz_analytics(attempts=2, latest_failed=0),
+            },
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        detail = service.get_recommendation_detail("company-a", "quiz_attention")
+
+        self.assertIsNotNone(detail)
+        assert detail is not None
+        self.assertIsInstance(detail, ManagerRecommendationDetail)
+        self.assertEqual(detail.recommendation.code, "quiz_attention")
+        self.assertEqual(len(detail.members), 1)
+        self.assertEqual(detail.members[0].user_id, 10)
+        self.assertEqual(detail.members[0].profile_url, "/manager/team/10")
+        self.assertIn("Последних непройденных курсов: 1", detail.members[0].reason)
+
+    def test_topic_reason_does_not_claim_individual_weakness(self) -> None:
+        members = (_member(1), _member(2))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            topics_by_user={
+                1: _topics_analytics(
+                    EmployeeQuizTopicAnalytics(
+                        tag="Возвраты",
+                        answers_count=3,
+                        correct_answers_count=3,
+                        accuracy_percent=100.0,
+                    ),
+                ),
+                2: _topics_analytics(
+                    EmployeeQuizTopicAnalytics(
+                        tag="Возвраты",
+                        answers_count=3,
+                        correct_answers_count=0,
+                        accuracy_percent=0.0,
+                    ),
+                ),
+            },
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        overview = service.get_team_overview("company-a")
+        topic_rec = next(
+            r for r in overview.recommendations if r.code.startswith("quiz_topic:")
+        )
+        detail = service.get_recommendation_detail("company-a", topic_rec.code)
+
+        assert detail is not None
+        reasons = {member.user_id: member.reason for member in detail.members}
+        self.assertIn("У сотрудника есть ответы по теме «Возвраты»", reasons[1])
+        self.assertNotIn("плохо знает", reasons[1].casefold())
+
+    def test_practical_signal_reason_does_not_claim_stable_weakness(self) -> None:
+        members = (_member(1), _member(2))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            practical_evidence_by_user={
+                1: _practical_evidence(
+                    development_areas=(_signal_evidence("Needs detail", 1),),
+                    reviewed_attempts_count=1,
+                ),
+                2: _practical_evidence(
+                    development_areas=(_signal_evidence("Needs detail", 1),),
+                    reviewed_attempts_count=1,
+                ),
+            },
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        overview = service.get_team_overview("company-a")
+        signal_rec = next(
+            r for r in overview.recommendations if r.code.startswith("practical_signal:")
+        )
+        detail = service.get_recommendation_detail("company-a", signal_rec.code)
+
+        assert detail is not None
+        for member in detail.members:
+            self.assertIn(
+                "Сигнал встречался в проверенных практических заданиях сотрудника",
+                member.reason,
+            )
+            self.assertNotIn("устойчив", member.reason.casefold())
 
 
 if __name__ == "__main__":

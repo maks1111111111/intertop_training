@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}{{ detail.recommendation.title }} — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="admin-breadcrumb" aria-label="Навигация">
+    <a href="/manager/team">Команда</a>
+    <span aria-hidden="true">/</span>
+    <span>Рекомендуемое действие</span>
+</nav>
+
+<section class="page-header">
+    <h1 class="page-title">{{ detail.recommendation.title }}</h1>
+    {% if detail.recommendation.priority == "high" %}
+    <span class="dashboard-status-badge dashboard-status-badge--in_progress">Высокий приоритет</span>
+    {% elif detail.recommendation.priority == "medium" %}
+    <span class="dashboard-status-badge dashboard-status-badge--not_started">Средний приоритет</span>
+    {% else %}
+    <span class="dashboard-status-badge dashboard-status-badge--completed">Низкий приоритет</span>
+    {% endif %}
+    <p class="page-lead">{{ detail.recommendation.description }}</p>
+    <div class="dashboard-metrics">
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Сотрудников</span>
+            <span class="dashboard-metric-value">{{ detail.recommendation.affected_employees_count }}</span>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <h2 class="section-title">Сотрудники</h2>
+    {% if detail.members %}
+    <ul class="course-list admin-course-list">
+        {% for member in detail.members %}
+        <li class="course-card admin-course-card">
+            <div class="admin-course-body">
+                <header class="admin-course-header">
+                    <h3 class="course-card-title">{{ member.display_name }}</h3>
+                </header>
+                {% if member.username %}
+                <p class="page-meta">{{ member.username }}</p>
+                {% endif %}
+                <p class="page-meta">{{ member.reason }}</p>
+                <p class="page-meta">
+                    <a href="{{ member.profile_url }}">Открыть профиль</a>
+                </p>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="page-meta">Нет сотрудников для отображения по этой рекомендации.</p>
+    {% endif %}
+</section>
+{% endblock %}

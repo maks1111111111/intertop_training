@@ -118,6 +118,11 @@
                         <span class="dashboard-metric-value">{{ recommendation.affected_employees_count }}</span>
                     </div>
                 </div>
+                {% if recommendation.target_url %}
+                <p class="page-meta">
+                    <a href="{{ recommendation.target_url }}">Посмотреть сотрудников</a>
+                </p>
+                {% endif %}
             </div>
         </li>
         {% endfor %}

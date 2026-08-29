@@ -799,6 +799,36 @@ def manager_team_page(
 
 
 @router.get(
+    "/manager/team/recommendation",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def manager_team_recommendation_page(
+    request: Request,
+    code: str,
+    team_analytics_service: ManagerTeamAnalyticsService = Depends(
+        get_manager_team_analytics_service
+    ),
+    identity: WebIdentity = Depends(require_web_management_identity),
+) -> HTMLResponse:
+    """Render tenant-scoped drill-down for one manager action recommendation."""
+    detail = team_analytics_service.get_recommendation_detail(
+        identity.company_id,
+        code,
+    )
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Recommendation not found")
+    return templates.TemplateResponse(
+        request,
+        "manager_team_recommendation.html",
+        {
+            "active_nav": "team",
+            "detail": detail,
+        },
+    )
+
+
+@router.get(
     "/manager/team/{user_id}",
     response_class=HTMLResponse,
     include_in_schema=False,
