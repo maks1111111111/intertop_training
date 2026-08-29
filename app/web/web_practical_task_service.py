@@ -154,6 +154,24 @@ class WebPracticalTaskService:
             limit=limit,
         )
 
+    def get_attempt_for_user(
+        self,
+        user_id: int,
+        attempt_id: int,
+    ):
+        normalized_user_id = _validate_user_id(user_id)
+        if (
+            not isinstance(attempt_id, int)
+            or isinstance(attempt_id, bool)
+            or attempt_id <= 0
+        ):
+            return None
+
+        attempt = self._repository.get_attempt(self._db_path, attempt_id)
+        if attempt is None or attempt.user_id != normalized_user_id:
+            return None
+        return attempt
+
 
 def _validate_user_id(user_id: int) -> int:
     if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:

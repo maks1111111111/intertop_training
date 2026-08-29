@@ -179,6 +179,41 @@ class WebPracticalTaskServiceTests(unittest.TestCase):
         )
         self.assertEqual(attempts, [])
 
+    def test_get_attempt_for_user_returns_owned_attempt(self) -> None:
+        result = self.service.submit_and_review(
+            self.user_id,
+            "safety",
+            "lesson_01",
+            "Ответ",
+        )
+
+        attempt = self.service.get_attempt_for_user(
+            self.user_id,
+            result.attempt_id,
+        )
+
+        self.assertIsNotNone(attempt)
+        assert attempt is not None
+        self.assertEqual(attempt.user_id, self.user_id)
+        self.assertEqual(attempt.id, result.attempt_id)
+
+    def test_get_attempt_for_user_rejects_other_user(self) -> None:
+        result = self.service.submit_and_review(
+            self.user_id,
+            "safety",
+            "lesson_01",
+            "Ответ",
+        )
+
+        self.assertIsNone(
+            self.service.get_attempt_for_user(999, result.attempt_id)
+        )
+
+    def test_get_attempt_for_user_rejects_invalid_attempt_id(self) -> None:
+        self.assertIsNone(
+            self.service.get_attempt_for_user(self.user_id, 0)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

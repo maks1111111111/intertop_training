@@ -37,7 +37,103 @@
         </div>
         {% endif %}
 
-        {% if lesson.practical_task %}
+        {% if structured_practical_task %}
+        <section class="lesson-block lesson-block--practical lesson-practical-task">
+            <h2 class="lesson-block-title">Практическое задание</h2>
+            <div class="lesson-practical-task-body">
+                <h3 class="lesson-practical-task-title">{{ structured_practical_task.title }}</h3>
+                <div class="lesson-block-body">{{ structured_practical_task.description }}</div>
+                {% if structured_practical_task.expected_result %}
+                <div class="lesson-practical-task-expected">
+                    <p class="lesson-practical-task-expected-label">Ожидаемый результат</p>
+                    <div class="lesson-block-body">{{ structured_practical_task.expected_result }}</div>
+                </div>
+                {% endif %}
+                {% if structured_practical_task.estimated_minutes %}
+                <p class="lesson-practical-task-meta">Ориентировочное время: {{ structured_practical_task.estimated_minutes }} мин.</p>
+                {% endif %}
+            </div>
+
+            {% if not preview %}
+            {% if practical_task_attempt and practical_task_attempt.status == "reviewed" %}
+            <section
+                class="lesson-practical-task-result{% if practical_task_attempt.passed %} lesson-practical-task-result--passed{% else %} lesson-practical-task-result--failed{% endif %}"
+                aria-labelledby="practical-task-result-heading"
+            >
+                <h3 class="lesson-practical-task-result-title" id="practical-task-result-heading">Результат проверки</h3>
+                <div class="lesson-practical-task-score">
+                    <span class="lesson-practical-task-score-label">Оценка</span>
+                    <span class="lesson-practical-task-score-value">
+                        {{ practical_task_attempt.score }} / {{ practical_task_attempt.max_score }}
+                    </span>
+                </div>
+                {% if practical_task_attempt.passed %}
+                <p class="lesson-practical-task-status lesson-practical-task-status--passed" role="status">Задание принято</p>
+                {% else %}
+                <p class="lesson-practical-task-status lesson-practical-task-status--failed" role="status">Задание не принято</p>
+                {% endif %}
+                {% if practical_task_attempt.feedback_summary %}
+                <div class="lesson-practical-task-feedback">
+                    <p class="lesson-practical-task-feedback-label">Комментарий</p>
+                    <p class="lesson-practical-task-feedback-text">{{ practical_task_attempt.feedback_summary }}</p>
+                </div>
+                {% endif %}
+                {% if practical_task_attempt.strengths %}
+                <div class="lesson-practical-task-feedback">
+                    <p class="lesson-practical-task-feedback-label">Сильные стороны</p>
+                    <ul class="lesson-block-list">
+                        {% for item in practical_task_attempt.strengths %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+                {% if practical_task_attempt.improvements %}
+                <div class="lesson-practical-task-feedback">
+                    <p class="lesson-practical-task-feedback-label">Что улучшить</p>
+                    <ul class="lesson-block-list">
+                        {% for item in practical_task_attempt.improvements %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </section>
+            {% endif %}
+
+            {% if practical_task_error %}
+            <div class="lesson-practical-task-alert lesson-practical-task-alert--error" role="alert">
+                {{ practical_task_error }}
+            </div>
+            {% endif %}
+            {% if practical_task_notice %}
+            <div class="lesson-practical-task-alert lesson-practical-task-alert--notice" role="status">
+                {{ practical_task_notice }}
+            </div>
+            {% endif %}
+
+            <form
+                class="lesson-practical-task-form"
+                method="post"
+                action="/courses/{{ course.slug }}/lessons/{{ lesson.id }}/practical-task"
+            >
+                <label class="lesson-practical-task-form-label" for="learner-answer">
+                    Ваш ответ
+                </label>
+                <textarea
+                    class="lesson-practical-task-input"
+                    id="learner-answer"
+                    name="learner_answer"
+                    rows="8"
+                    required
+                >{{ form_learner_answer }}</textarea>
+                <button class="button button-primary lesson-practical-task-submit" type="submit">
+                    Отправить на проверку
+                </button>
+            </form>
+            {% endif %}
+        </section>
+        {% elif lesson.practical_task %}
         <section class="lesson-block lesson-block--practical">
             <h2 class="lesson-block-title">Практическое задание</h2>
             <div class="lesson-block-body">{{ lesson.practical_task }}</div>

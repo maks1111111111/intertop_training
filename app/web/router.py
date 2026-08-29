@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import os
 from pathlib import Path
 from typing import Optional, Union
 
@@ -110,6 +112,7 @@ from app.web.admin_upload_service import (
     parse_admin_course_form,
 )
 from app.ai.config import OpenAIConfig
+from app.ai.bootstrap import create_practical_task_review_service
 from app.knowledge.question_answering_bootstrap import (
     create_knowledge_question_answering_service,
 )
@@ -133,6 +136,14 @@ from app.web.manager_team_analytics_service import ManagerTeamAnalyticsService
 from app.web.manager_team_service import ManagerTeamService
 from app.web.password_hashing_service import PasswordHashingService
 from app.web.progress_service import WebProgressService
+from app.web.web_practical_task_service import (
+    WebPracticalTaskAttemptCreationError,
+    WebPracticalTaskNotFoundError,
+    WebPracticalTaskReviewCompletionError,
+    WebPracticalTaskReviewUnavailableError,
+    WebPracticalTaskService,
+    WebPracticalTaskValidationError,
+)
 from app.web.web_authentication_service import WebAuthenticationService
 from app.web.web_authorization_service import WebAuthorizationService
 from app.web.web_identity_service import WebIdentity, WebIdentityService
@@ -144,6 +155,8 @@ from app.web.quiz_scoring import (
     format_score_percent,
     score_web_quiz,
 )
+
+_logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["web"])
 
@@ -301,6 +314,36 @@ def get_progress_service(
         db_path,
         ProgressRepository(),
         identity.user_id,
+    )
+
+
+def _optional_practical_task_review_service():
+    """Return AI review service when configured, otherwise ``None``."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key is None or not api_key.strip():
+        return None
+    try:
+        return create_practical_task_review_service()
+    except Exception:
+        _logger.exception(
+            "Failed to bootstrap practical-task AI review service"
+        )
+        return None
+
+
+def get_web_practical_task_service(
+    request: Request,
+    runtime: ContentRuntime = Depends(get_content_runtime),
+    db_path: Path = Depends(get_db_path),
+) -> WebPracticalTaskService:
+    """Return the canonical-user Web practical-task service."""
+    override = getattr(request.app.state, "web_practical_task_service", None)
+    if override is not None:
+        return override
+    return WebPracticalTaskService(
+        runtime,
+        _optional_practical_task_review_service(),
+        db_path,
     )
 
 
@@ -1610,6 +1653,11 @@ def admin_lesson_preview_page(
                     "preview": preview,
                     "course_has_quiz": course.quiz is not None,
                     "active_nav": "admin",
+                    "structured_practical_task": lesson.structured_practical_task,
+                    "practical_task_attempt": None,
+                    "form_learner_answer": "",
+                    "practical_task_error": None,
+                    "practical_task_notice": None,
                 },
             )
 
@@ -3135,6 +3183,90 @@ def course_detail_page(
     )
 
 
+def _parse_practical_task_attempt_id(raw_value: Optional[str]) -> Optional[int]:
+    if raw_value is None or not str(raw_value).strip():
+        return None
+    try:
+        attempt_id = int(raw_value)
+    except ValueError:
+        return None
+    if attempt_id <= 0:
+        return None
+    return attempt_id
+
+
+def _resolve_practical_task_display_attempt(
+    practical_task_service: WebPracticalTaskService,
+    identity: WebIdentity,
+    course_slug: str,
+    lesson_id: str,
+    attempt_id: Optional[int],
+):
+    if attempt_id is not None:
+        attempt = practical_task_service.get_attempt_for_user(
+            identity.user_id,
+            attempt_id,
+        )
+        if (
+            attempt is not None
+            and attempt.course_slug == course_slug
+            and attempt.lesson_slug == lesson_id
+        ):
+            return attempt
+
+    attempts = practical_task_service.get_attempts_for_lesson(
+        identity.user_id,
+        course_slug,
+        lesson_id,
+        limit=1,
+    )
+    if not attempts:
+        return None
+    latest = attempts[0]
+    if latest.status != "reviewed":
+        return None
+    return latest
+
+
+def _render_learner_lesson_page(
+    request: Request,
+    course,
+    lesson,
+    *,
+    identity: WebIdentity,
+    practical_task_service: WebPracticalTaskService,
+    attempt_id: Optional[int] = None,
+    form_learner_answer: Optional[str] = None,
+    practical_task_error: Optional[str] = None,
+    practical_task_notice: Optional[str] = None,
+) -> HTMLResponse:
+    lesson_detail = course_mapper.to_lesson_detail(course, lesson)
+    structured_task = lesson.structured_practical_task
+    display_attempt = None
+    if structured_task is not None:
+        display_attempt = _resolve_practical_task_display_attempt(
+            practical_task_service,
+            identity,
+            course.slug,
+            lesson.path.name,
+            attempt_id,
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "lesson_detail.html",
+        {
+            "course": course_mapper.to_detail(course),
+            "lesson": lesson_detail,
+            "structured_practical_task": structured_task,
+            "practical_task_attempt": display_attempt,
+            "form_learner_answer": form_learner_answer or "",
+            "practical_task_error": practical_task_error,
+            "practical_task_notice": practical_task_notice,
+        },
+    )
+
+
 @router.get(
     "/courses/{slug}/lessons/{lesson_id}",
     response_class=HTMLResponse,
@@ -3146,6 +3278,10 @@ def lesson_detail_page(
     request: Request,
     content_runtime: ContentRuntime = Depends(get_content_runtime),
     progress_service: WebProgressService = Depends(get_progress_service),
+    identity: WebIdentity = Depends(require_web_identity),
+    practical_task_service: WebPracticalTaskService = Depends(
+        get_web_practical_task_service
+    ),
 ) -> HTMLResponse:
     """Render one published lesson."""
     course = content_runtime.get_course(slug)
@@ -3163,14 +3299,16 @@ def lesson_detail_page(
     for lesson in course.lessons:
         if lesson.path.name == lesson_id:
             progress_service.mark_lesson_completed(slug, lesson_id)
-            lesson_detail = course_mapper.to_lesson_detail(course, lesson)
-            return templates.TemplateResponse(
+            attempt_id = _parse_practical_task_attempt_id(
+                request.query_params.get("attempt")
+            )
+            return _render_learner_lesson_page(
                 request,
-                "lesson_detail.html",
-                {
-                    "course": course_mapper.to_detail(course),
-                    "lesson": lesson_detail,
-                },
+                course,
+                lesson,
+                identity=identity,
+                practical_task_service=practical_task_service,
+                attempt_id=attempt_id,
             )
 
     return templates.TemplateResponse(
@@ -3181,6 +3319,143 @@ def lesson_detail_page(
             "message": "Запрошенный урок недоступен или не существует.",
         },
         status_code=404,
+    )
+
+
+@router.post(
+    "/courses/{slug}/lessons/{lesson_id}/practical-task",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def lesson_practical_task_submit(
+    slug: str,
+    lesson_id: str,
+    request: Request,
+    content_runtime: ContentRuntime = Depends(get_content_runtime),
+    identity: WebIdentity = Depends(require_web_identity),
+    practical_task_service: WebPracticalTaskService = Depends(
+        get_web_practical_task_service
+    ),
+) -> HTMLResponse:
+    """Submit a learner practical-task answer for AI review."""
+    course = content_runtime.get_course(slug)
+    if course is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    lesson = next(
+        (item for item in course.lessons if item.path.name == lesson_id),
+        None,
+    )
+    if lesson is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Урок не найден",
+                "message": "Запрошенный урок недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    form = await request.form()
+    learner_answer = str(form.get("learner_answer") or "")
+
+    try:
+        result = practical_task_service.submit_and_review(
+            identity.user_id,
+            slug,
+            lesson_id,
+            learner_answer,
+        )
+    except WebPracticalTaskValidationError:
+        return _render_learner_lesson_page(
+            request,
+            course,
+            lesson,
+            identity=identity,
+            practical_task_service=practical_task_service,
+            form_learner_answer=learner_answer,
+            practical_task_error="Введите ответ на практическое задание.",
+        )
+    except WebPracticalTaskNotFoundError:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Практическое задание недоступно",
+                "message": "Для этого урока практическое задание недоступно.",
+            },
+            status_code=404,
+        )
+    except WebPracticalTaskReviewUnavailableError:
+        return _render_learner_lesson_page(
+            request,
+            course,
+            lesson,
+            identity=identity,
+            practical_task_service=practical_task_service,
+            form_learner_answer=learner_answer,
+            practical_task_notice=(
+                "AI-проверка практических заданий сейчас недоступна. "
+                "Попробуйте позже."
+            ),
+        )
+    except WebPracticalTaskAttemptCreationError:
+        return _render_learner_lesson_page(
+            request,
+            course,
+            lesson,
+            identity=identity,
+            practical_task_service=practical_task_service,
+            form_learner_answer=learner_answer,
+            practical_task_notice=(
+                "Не удалось сохранить ответ. Попробуйте отправить его позже."
+            ),
+        )
+    except WebPracticalTaskReviewCompletionError:
+        return _render_learner_lesson_page(
+            request,
+            course,
+            lesson,
+            identity=identity,
+            practical_task_service=practical_task_service,
+            form_learner_answer=learner_answer,
+            practical_task_notice=(
+                "Не удалось завершить проверку ответа. "
+                "Попробуйте отправить ответ позже."
+            ),
+        )
+    except Exception:
+        _logger.exception(
+            "Unexpected practical-task review failure course_slug=%s lesson_id=%s user_id=%s",
+            slug,
+            lesson_id,
+            identity.user_id,
+        )
+        return _render_learner_lesson_page(
+            request,
+            course,
+            lesson,
+            identity=identity,
+            practical_task_service=practical_task_service,
+            form_learner_answer=learner_answer,
+            practical_task_notice=(
+                "Не удалось завершить проверку ответа. "
+                "Попробуйте отправить ответ позже."
+            ),
+        )
+
+    return RedirectResponse(
+        url=f"/courses/{slug}/lessons/{lesson_id}?attempt={result.attempt_id}",
+        status_code=303,
     )
 
 
