@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient
 from app.web.dashboard_service import CourseDashboardItem
 from app.web.manager_employee_analytics_service import (
     EmployeeCourseQuizAnalytics,
+    EmployeeDevelopmentProfile,
+    EmployeePracticalSignal,
     EmployeePracticalTaskAttemptAnalytics,
     EmployeePracticalTaskAnalytics,
     EmployeeQuizAnalytics,
@@ -80,10 +82,12 @@ class FakeAnalyticsService:
     def __init__(self) -> None:
         self.calls: list[int] = []
         self.topic_classification_calls: list[int] = []
+        self.development_profile_calls: list[int] = []
         self.practical_task_calls: list[int] = []
         self._empty_practical_task_analytics = False
         self._pending_practical_task = False
         self._unknown_practical_task_status = False
+        self._empty_development_profile = False
 
     def get_quiz_analytics(self, user_id: int) -> EmployeeQuizAnalytics:
         self.calls.append(user_id)
@@ -141,6 +145,46 @@ class FakeAnalyticsService:
                 ),
             ),
             unclassified_topics_count=1,
+        )
+
+    def get_development_profile(
+        self,
+        user_id: int,
+    ) -> EmployeeDevelopmentProfile:
+        self.development_profile_calls.append(user_id)
+        if self._empty_development_profile:
+            return FakeAnalyticsService.empty_development_profile()
+        return EmployeeDevelopmentProfile(
+            quiz_strengths=(
+                EmployeeQuizTopicAnalytics(
+                    tag="Работа с клиентом",
+                    answers_count=5,
+                    correct_answers_count=5,
+                    accuracy_percent=100.0,
+                ),
+            ),
+            quiz_development_areas=(
+                EmployeeQuizTopicAnalytics(
+                    tag="Возвраты",
+                    answers_count=4,
+                    correct_answers_count=2,
+                    accuracy_percent=50.0,
+                ),
+            ),
+            practical_strengths=(
+                EmployeePracticalSignal(
+                    text="Чёткая структура ответа",
+                    evidence_count=2,
+                ),
+            ),
+            practical_development_areas=(
+                EmployeePracticalSignal(
+                    text="Добавить больше деталей",
+                    evidence_count=3,
+                ),
+            ),
+            reviewed_practical_attempts_count=3,
+            has_sufficient_practical_evidence=True,
         )
 
     def get_practical_task_analytics(
@@ -271,6 +315,17 @@ class FakeAnalyticsService:
             best_score_percent=None,
             average_score_percent=None,
             courses=(),
+        )
+
+    @staticmethod
+    def empty_development_profile() -> EmployeeDevelopmentProfile:
+        return EmployeeDevelopmentProfile(
+            quiz_strengths=(),
+            quiz_development_areas=(),
+            practical_strengths=(),
+            practical_development_areas=(),
+            reviewed_practical_attempts_count=0,
+            has_sufficient_practical_evidence=False,
         )
 
     @staticmethod
@@ -707,10 +762,16 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Возвраты", response.text)
         self.assertIn("100.0%", response.text)
         self.assertIn("50.0%", response.text)
-        self.assertIn("Недостаточно данных или нейтральный результат по темам: 1", response.text)
-        self.assertEqual(self.analytics_service.topic_classification_calls, [2])
+        self.assertEqual(self.analytics_service.development_profile_calls, [2])
         self.assertEqual(self.analytics_service.practical_task_calls, [2])
         self.assertIn("Практические задания", response.text)
+        self.assertIn("По практическим заданиям", response.text)
+        self.assertIn("Повторяющиеся сильные стороны", response.text)
+        self.assertIn("Повторяющиеся зоны развития", response.text)
+        self.assertIn("Чёткая структура ответа", response.text)
+        self.assertIn("Добавить больше деталей", response.text)
+        self.assertIn("Наблюдений: 2", response.text)
+        self.assertIn("Наблюдений: 3", response.text)
         self.assertIn("Inspect the work area", response.text)
         self.assertIn("Handle customer complaint", response.text)
         self.assertIn("Strong practical answer.", response.text)
@@ -770,17 +831,19 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Результаты тестов", response.text)
         self.assertIn("Сотрудник пока не проходил тесты", response.text)
 
-    def test_team_member_page_renders_empty_topic_classification(self) -> None:
+    def test_team_member_page_renders_empty_development_profile(self) -> None:
         self._set_identity("manager")
-        self.analytics_service.get_quiz_topic_classification = (
-            lambda user_id: FakeAnalyticsService.empty_topic_classification()
-        )
+        self.analytics_service._empty_development_profile = True
 
         response = self.client.get("/manager/team/2")
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(
             "Пока недостаточно данных для определения сильных сторон и зон развития",
+            response.text,
+        )
+        self.assertIn(
+            "Недостаточно проверенных практических заданий для устойчивых выводов.",
             response.text,
         )
 
@@ -793,7 +856,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(self.team_service.calls, ["intertop:99"])
         self.assertEqual(self.dashboard_service.calls, [])
         self.assertEqual(self.analytics_service.calls, [])
-        self.assertEqual(self.analytics_service.topic_classification_calls, [])
+        self.assertEqual(self.analytics_service.development_profile_calls, [])
         self.assertEqual(self.analytics_service.practical_task_calls, [])
 
 
@@ -807,7 +870,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(self.team_service.calls, [])
         self.assertEqual(self.dashboard_service.calls, [])
         self.assertEqual(self.analytics_service.calls, [])
-        self.assertEqual(self.analytics_service.topic_classification_calls, [])
+        self.assertEqual(self.analytics_service.development_profile_calls, [])
         self.assertEqual(self.analytics_service.practical_task_calls, [])
 
     def test_anonymous_cannot_open_team_member_page(self) -> None:
@@ -817,7 +880,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(self.team_service.calls, [])
         self.assertEqual(self.dashboard_service.calls, [])
         self.assertEqual(self.analytics_service.calls, [])
-        self.assertEqual(self.analytics_service.topic_classification_calls, [])
+        self.assertEqual(self.analytics_service.development_profile_calls, [])
         self.assertEqual(self.analytics_service.practical_task_calls, [])
 
 

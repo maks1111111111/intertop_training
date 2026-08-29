@@ -794,6 +794,118 @@ class PracticalTaskAttemptRepositoryTests(unittest.TestCase):
                         user_id=invalid_user_id,
                     )
 
+    def _create_reviewed_attempt_for_user(
+        self,
+        *,
+        user_id: int,
+        course_slug: str = "web-course",
+        lesson_slug: str = "lesson_01",
+        strengths: tuple[str, ...] = ("Clear communication",),
+        improvements: tuple[str, ...] = ("Add more detail",),
+    ) -> int:
+        attempt_id = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=user_id,
+            course_slug=course_slug,
+            lesson_slug=lesson_slug,
+            task_title="Reviewed task",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Secret learner answer must not leak",
+        )
+        assert attempt_id is not None
+        repository.complete_review(
+            self.db_path,
+            attempt_id,
+            _sample_review_result(
+                strengths=strengths,
+                improvements=improvements,
+            ),
+        )
+        return attempt_id
+
+    def test_get_reviewed_feedback_for_user_returns_reviewed_feedback_only(self) -> None:
+        reviewed_id = self._create_reviewed_attempt_for_user(
+            user_id=self.web_user_id,
+            strengths=("Strong empathy",),
+            improvements=("Improve closing",),
+        )
+        pending_id = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_02",
+            task_title="Pending task",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Pending answer",
+        )
+        assert pending_id is not None
+
+        feedback_rows = repository.get_reviewed_feedback_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+        )
+
+        self.assertEqual(len(feedback_rows), 1)
+        self.assertEqual(feedback_rows[0].id, reviewed_id)
+        self.assertEqual(feedback_rows[0].status, "reviewed")
+        self.assertEqual(feedback_rows[0].strengths, ("Strong empathy",))
+        self.assertEqual(feedback_rows[0].improvements, ("Improve closing",))
+        self.assertFalse(hasattr(feedback_rows[0], "learner_answer"))
+
+    def test_get_reviewed_feedback_for_user_excludes_other_users(self) -> None:
+        self._create_reviewed_attempt_for_user(user_id=self.web_user_id)
+        self._create_reviewed_attempt_for_user(user_id=self.other_user_id)
+
+        feedback_rows = repository.get_reviewed_feedback_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+        )
+
+        self.assertEqual(len(feedback_rows), 1)
+
+    def test_get_reviewed_feedback_for_user_excludes_pending_status(self) -> None:
+        self._create_reviewed_attempt_for_user(user_id=self.web_user_id)
+        pending_id = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_03",
+            task_title="Pending task",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Pending answer",
+        )
+        assert pending_id is not None
+
+        feedback_rows = repository.get_reviewed_feedback_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+        )
+
+        self.assertEqual(len(feedback_rows), 1)
+        self.assertEqual(feedback_rows[0].status, "reviewed")
+
+    def test_get_reviewed_feedback_for_user_works_for_web_only_user(self) -> None:
+        self._create_reviewed_attempt_for_user(user_id=self.web_user_id)
+
+        feedback_rows = repository.get_reviewed_feedback_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+        )
+
+        self.assertEqual(len(feedback_rows), 1)
+
+    def test_get_reviewed_feedback_for_user_rejects_invalid_user_id(self) -> None:
+        for invalid_user_id in (0, -1, True):
+            with self.subTest(user_id=invalid_user_id):
+                with self.assertRaises(ValueError):
+                    repository.get_reviewed_feedback_for_user(
+                        self.db_path,
+                        user_id=invalid_user_id,
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()

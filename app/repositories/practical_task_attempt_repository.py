@@ -22,6 +22,16 @@ _USER_LESSON_ATTEMPTS_FROM = """
 
 
 @dataclass(frozen=True)
+class PracticalTaskReviewFeedback:
+    """Reviewed practical-task feedback fields for development-profile analytics."""
+
+    id: int
+    status: str
+    strengths: Tuple[str, ...]
+    improvements: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class PracticalTaskAttemptAggregate:
     """Aggregate practical-task attempt metrics for one canonical user."""
 
@@ -453,3 +463,37 @@ def get_attempts_for_user(
         ).fetchall()
 
     return [_row_to_attempt(row) for row in rows]
+
+
+def get_reviewed_feedback_for_user(
+    db_path: Path,
+    user_id: int,
+) -> list[PracticalTaskReviewFeedback]:
+    """Return reviewed practical-task feedback for one canonical user."""
+    normalized_user_id = _validate_user_id(user_id)
+
+    with get_connection(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                status,
+                feedback_strengths_json,
+                feedback_improvements_json
+            FROM practical_task_attempts
+            WHERE user_id = ?
+              AND status = 'reviewed'
+            ORDER BY reviewed_at ASC, id ASC
+            """,
+            (normalized_user_id,),
+        ).fetchall()
+
+    return [
+        PracticalTaskReviewFeedback(
+            id=int(row["id"]),
+            status=str(row["status"]),
+            strengths=_deserialize_string_list(row["feedback_strengths_json"]),
+            improvements=_deserialize_string_list(row["feedback_improvements_json"]),
+        )
+        for row in rows
+    ]

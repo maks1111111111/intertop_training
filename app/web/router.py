@@ -822,9 +822,7 @@ def manager_team_member_page(
 
     courses = dashboard_service.get_courses_for_user(member.user_id)
     quiz_analytics = analytics_service.get_quiz_analytics(member.user_id)
-    topic_classification = analytics_service.get_quiz_topic_classification(
-        member.user_id
-    )
+    development_profile = analytics_service.get_development_profile(member.user_id)
     practical_task_analytics = analytics_service.get_practical_task_analytics(
         member.user_id
     )
@@ -837,7 +835,7 @@ def manager_team_member_page(
             "courses": courses,
             "courses_count": len(courses),
             "quiz_analytics": quiz_analytics,
-            "topic_classification": topic_classification,
+            "development_profile": development_profile,
             "practical_task_analytics": practical_task_analytics,
         },
     )

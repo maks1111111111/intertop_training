@@ -75,6 +75,22 @@ class EmployeePracticalTaskAttemptAnalytics:
 
 
 @dataclass(frozen=True)
+class EmployeePracticalSignal:
+    text: str
+    evidence_count: int
+
+
+@dataclass(frozen=True)
+class EmployeeDevelopmentProfile:
+    quiz_strengths: tuple[EmployeeQuizTopicAnalytics, ...]
+    quiz_development_areas: tuple[EmployeeQuizTopicAnalytics, ...]
+    practical_strengths: tuple[EmployeePracticalSignal, ...]
+    practical_development_areas: tuple[EmployeePracticalSignal, ...]
+    reviewed_practical_attempts_count: int
+    has_sufficient_practical_evidence: bool
+
+
+@dataclass(frozen=True)
 class EmployeePracticalTaskAnalytics:
     total_attempts_count: int
     reviewed_attempts_count: int
@@ -90,6 +106,7 @@ class EmployeePracticalTaskAnalytics:
 MIN_TOPIC_ANSWERS = 3
 STRONG_TOPIC_ACCURACY_PERCENT = 80.0
 DEVELOPMENT_TOPIC_ACCURACY_PERCENT = 70.0
+MIN_PRACTICAL_SIGNAL_OCCURRENCES = 2
 
 
 class ManagerEmployeeAnalyticsService:
@@ -312,6 +329,85 @@ class ManagerEmployeeAnalyticsService:
             recent_attempts=recent_attempts,
         )
 
+    def get_development_profile(self, user_id: int) -> EmployeeDevelopmentProfile:
+        normalized_user_id = _validate_user_id(user_id)
+        topic_classification = self.get_quiz_topic_classification(normalized_user_id)
+        feedback_rows = (
+            self._practical_task_attempt_repository.get_reviewed_feedback_for_user(
+                self._db_path,
+                normalized_user_id,
+            )
+        )
+        reviewed_practical_attempts_count = len(feedback_rows)
+
+        return EmployeeDevelopmentProfile(
+            quiz_strengths=topic_classification.strengths,
+            quiz_development_areas=topic_classification.development_areas,
+            practical_strengths=_aggregate_practical_signals(
+                feedback_rows,
+                "strengths",
+            ),
+            practical_development_areas=_aggregate_practical_signals(
+                feedback_rows,
+                "improvements",
+            ),
+            reviewed_practical_attempts_count=reviewed_practical_attempts_count,
+            has_sufficient_practical_evidence=(
+                reviewed_practical_attempts_count >= MIN_PRACTICAL_SIGNAL_OCCURRENCES
+            ),
+        )
+
+
+def _normalize_practical_signal(text: object) -> Optional[str]:
+    if not isinstance(text, str):
+        return None
+    normalized = " ".join(text.split())
+    if not normalized:
+        return None
+    return normalized
+
+
+def _aggregate_practical_signals(
+    feedback_rows,
+    field: str,
+) -> tuple[EmployeePracticalSignal, ...]:
+    evidence: dict[str, dict[str, object]] = {}
+
+    for row in feedback_rows:
+        signals_in_attempt: set[str] = set()
+        for item in getattr(row, field):
+            normalized = _normalize_practical_signal(item)
+            if normalized is None:
+                continue
+
+            signal_key = normalized.casefold()
+            if signal_key in signals_in_attempt:
+                continue
+
+            signals_in_attempt.add(signal_key)
+            if signal_key not in evidence:
+                evidence[signal_key] = {"display": normalized, "count": 0}
+            evidence[signal_key]["count"] = int(evidence[signal_key]["count"]) + 1
+
+    qualifying = [
+        EmployeePracticalSignal(
+            text=str(info["display"]),
+            evidence_count=int(info["count"]),
+        )
+        for info in evidence.values()
+        if int(info["count"]) >= MIN_PRACTICAL_SIGNAL_OCCURRENCES
+    ]
+
+    return tuple(
+        sorted(
+            qualifying,
+            key=lambda signal: (
+                -signal.evidence_count,
+                signal.text.casefold(),
+                signal.text,
+            ),
+        )
+    )
 
 
 def _validate_recent_attempts_limit(limit: int) -> int:

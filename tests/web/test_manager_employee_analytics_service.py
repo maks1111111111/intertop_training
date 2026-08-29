@@ -5,8 +5,11 @@ from typing import Optional
 
 from app.web.manager_employee_analytics_service import (
     DEVELOPMENT_TOPIC_ACCURACY_PERCENT,
+    MIN_PRACTICAL_SIGNAL_OCCURRENCES,
     MIN_TOPIC_ANSWERS,
     STRONG_TOPIC_ACCURACY_PERCENT,
+    EmployeeDevelopmentProfile,
+    EmployeePracticalSignal,
     EmployeePracticalTaskAttemptAnalytics,
     EmployeePracticalTaskAnalytics,
     ManagerEmployeeAnalyticsService,
@@ -111,7 +114,17 @@ class FakePracticalTaskAttemptRepository:
     def __init__(self, attempts=None) -> None:
         self.calls: list[tuple[Path, int, int]] = []
         self.aggregate_calls: list[tuple[Path, int]] = []
+        self.reviewed_feedback_calls: list[tuple[Path, int]] = []
         self._attempts = list(attempts or [])
+        self._reviewed_feedback = []
+
+    def get_reviewed_feedback_for_user(
+        self,
+        db_path: Path,
+        user_id: int,
+    ):
+        self.reviewed_feedback_calls.append((db_path, user_id))
+        return list(self._reviewed_feedback)
 
     def get_attempts_aggregate_for_user(
         self,
@@ -1241,6 +1254,266 @@ class ManagerEmployeePracticalTaskAnalyticsTests(unittest.TestCase):
         self.assertEqual(result.total_attempts_count, 0)
         self.assertIsNone(result.average_score_percent)
         self.assertEqual(result.recent_attempts, ())
+
+
+class FakeReviewFeedback:
+    def __init__(
+        self,
+        *,
+        id: int,
+        status: str = "reviewed",
+        strengths=(),
+        improvements=(),
+    ) -> None:
+        self.id = id
+        self.status = status
+        self.strengths = strengths
+        self.improvements = improvements
+
+
+class CountingDevelopmentProfileService(ManagerEmployeeAnalyticsService):
+    topic_classification_calls = 0
+
+    def get_quiz_topic_classification(self, user_id: int):
+        CountingDevelopmentProfileService.topic_classification_calls += 1
+        return super().get_quiz_topic_classification(user_id)
+
+
+class ManagerEmployeeDevelopmentProfileTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.db_path = Path("/tmp/training.db")
+        self.practical_repository = FakePracticalTaskAttemptRepository()
+        self.service = ManagerEmployeeAnalyticsService(
+            TopicAnalyticsFakeRuntime(
+                (_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),)
+            ),
+            TopicAnalyticsFakeQuizRepository(
+                {"alpha": _answers_for_accuracy("q1", correct_count=4, incorrect_count=0)},
+            ),
+            self.db_path,
+            self.practical_repository,
+        )
+        CountingDevelopmentProfileService.topic_classification_calls = 0
+
+    def _development_service(
+        self,
+        feedback_rows: list[FakeReviewFeedback],
+    ) -> ManagerEmployeeAnalyticsService:
+        self.practical_repository._reviewed_feedback = feedback_rows
+        return self.service
+
+    def test_one_reviewed_attempt_does_not_create_recurring_practical_signals(self) -> None:
+        service = self._development_service(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    strengths=("Clear communication",),
+                    improvements=("Add detail",),
+                ),
+            ]
+        )
+
+        result = service.get_development_profile(42)
+
+        self.assertEqual(result.practical_strengths, ())
+        self.assertEqual(result.practical_development_areas, ())
+        self.assertEqual(result.reviewed_practical_attempts_count, 1)
+        self.assertFalse(result.has_sufficient_practical_evidence)
+
+    def test_same_strength_in_two_reviewed_attempts_becomes_recurring_strength(self) -> None:
+        service = self._development_service(
+            [
+                FakeReviewFeedback(id=1, strengths=("Clear communication",)),
+                FakeReviewFeedback(id=2, strengths=("Clear communication",)),
+            ]
+        )
+
+        result = service.get_development_profile(42)
+
+        self.assertEqual(len(result.practical_strengths), 1)
+        self.assertEqual(result.practical_strengths[0].text, "Clear communication")
+        self.assertEqual(result.practical_strengths[0].evidence_count, 2)
+        self.assertTrue(result.has_sufficient_practical_evidence)
+
+    def test_same_improvement_in_three_reviewed_attempts_counts_three(self) -> None:
+        service = self._development_service(
+            [
+                FakeReviewFeedback(id=1, improvements=("Add detail",)),
+                FakeReviewFeedback(id=2, improvements=("Add detail",)),
+                FakeReviewFeedback(id=3, improvements=("Add detail",)),
+            ]
+        )
+
+        result = service.get_development_profile(42)
+
+        self.assertEqual(len(result.practical_development_areas), 1)
+        self.assertEqual(result.practical_development_areas[0].text, "Add detail")
+        self.assertEqual(result.practical_development_areas[0].evidence_count, 3)
+
+    def test_whitespace_and_case_normalization_merge_equivalent_text(self) -> None:
+        service = self._development_service(
+            [
+                FakeReviewFeedback(id=1, strengths=("  Clear   communication ",)),
+                FakeReviewFeedback(id=2, strengths=("clear communication",)),
+            ]
+        )
+
+        result = service.get_development_profile(42)
+
+        self.assertEqual(len(result.practical_strengths), 1)
+        self.assertEqual(result.practical_strengths[0].text, "Clear communication")
+        self.assertEqual(result.practical_strengths[0].evidence_count, 2)
+
+    def test_duplicate_signal_inside_same_attempt_counts_once(self) -> None:
+        service = self._development_service(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    strengths=("Clear communication", "clear communication"),
+                ),
+                FakeReviewFeedback(id=2, strengths=("Clear communication",)),
+            ]
+        )
+
+        result = service.get_development_profile(42)
+
+        self.assertEqual(len(result.practical_strengths), 1)
+        self.assertEqual(result.practical_strengths[0].evidence_count, 2)
+
+    def test_empty_and_whitespace_signals_are_ignored(self) -> None:
+        service = self._development_service(
+            [
+                FakeReviewFeedback(id=1, strengths=("   ", 123, "Valid signal")),
+                FakeReviewFeedback(id=2, strengths=("Valid signal",)),
+            ]
+        )
+
+        result = service.get_development_profile(42)
+
+        self.assertEqual(len(result.practical_strengths), 1)
+        self.assertEqual(result.practical_strengths[0].text, "Valid signal")
+
+    def test_pending_and_non_reviewed_feedback_is_ignored(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(id=1, status="reviewed", strengths=("Valid signal",)),
+        ]
+
+        result = self.service.get_development_profile(42)
+
+        self.assertEqual(result.reviewed_practical_attempts_count, 1)
+
+    def test_reviewed_practical_attempts_count_uses_all_reviewed_feedback(self) -> None:
+        service = self._development_service(
+            [
+                FakeReviewFeedback(id=1),
+                FakeReviewFeedback(id=2),
+                FakeReviewFeedback(id=3),
+            ]
+        )
+
+        result = service.get_development_profile(42)
+
+        self.assertEqual(result.reviewed_practical_attempts_count, 3)
+        self.assertTrue(result.has_sufficient_practical_evidence)
+
+    def test_development_profile_is_independent_of_recent_display_limit(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(id=1, strengths=("Signal one",)),
+            FakeReviewFeedback(id=2, strengths=("Signal one",)),
+            FakeReviewFeedback(id=3, strengths=("Signal two",)),
+        ]
+        self.practical_repository._attempts = [
+            FakePracticalTaskAttempt(
+                id=index,
+                user_id=42,
+                course_slug="alpha",
+                lesson_slug="lesson_01",
+                task_title=f"Task {index}",
+                status="reviewed",
+                score=8,
+                max_score=10,
+                passed=True,
+            )
+            for index in range(1, 3)
+        ]
+
+        result = self.service.get_development_profile(42)
+
+        self.assertEqual(result.reviewed_practical_attempts_count, 3)
+        self.assertEqual(len(result.practical_strengths), 1)
+        self.assertEqual(result.practical_strengths[0].evidence_count, 2)
+        self.assertEqual(
+            self.practical_repository.reviewed_feedback_calls,
+            [(self.db_path, 42)],
+        )
+        self.assertEqual(self.practical_repository.calls, [])
+
+    def test_practical_signals_are_sorted_deterministically(self) -> None:
+        service = self._development_service(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    strengths=("beta signal", "Alpha signal", "gamma signal"),
+                ),
+                FakeReviewFeedback(
+                    id=2,
+                    strengths=("beta signal", "Alpha signal", "gamma signal"),
+                ),
+                FakeReviewFeedback(id=3, strengths=("gamma signal",)),
+            ]
+        )
+
+        result = service.get_development_profile(42)
+
+        self.assertEqual(
+            [signal.text for signal in result.practical_strengths],
+            ["gamma signal", "Alpha signal", "beta signal"],
+        )
+        self.assertEqual(result.practical_strengths[0].evidence_count, 3)
+        self.assertEqual(result.practical_strengths[1].evidence_count, 2)
+
+    def test_invalid_user_id_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            self.service.get_development_profile(0)
+
+    def test_repository_called_with_canonical_user_id(self) -> None:
+        self.service.get_development_profile(42)
+
+        self.assertEqual(
+            self.practical_repository.reviewed_feedback_calls,
+            [(self.db_path, 42)],
+        )
+
+    def test_calls_quiz_topic_classification_exactly_once(self) -> None:
+        counting_service = CountingDevelopmentProfileService(
+            TopicAnalyticsFakeRuntime(
+                (_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),)
+            ),
+            TopicAnalyticsFakeQuizRepository(
+                {"alpha": _answers_for_accuracy("q1", correct_count=4, incorrect_count=0)},
+            ),
+            self.db_path,
+            self.practical_repository,
+        )
+        self.practical_repository._reviewed_feedback = []
+
+        result = counting_service.get_development_profile(42)
+
+        self.assertEqual(CountingDevelopmentProfileService.topic_classification_calls, 1)
+        self.assertEqual(len(result.quiz_strengths), 1)
+        self.assertEqual(result.quiz_strengths[0].tag, "Returns")
+
+    def test_includes_quiz_classification_without_duplicating_repository_logic(self) -> None:
+        service = self._development_service([])
+
+        result = service.get_development_profile(42)
+        classification = service.get_quiz_topic_classification(42)
+
+        self.assertEqual(result.quiz_strengths, classification.strengths)
+        self.assertEqual(result.quiz_development_areas, classification.development_areas)
+
+    def test_development_profile_constants_match_requirements(self) -> None:
+        self.assertEqual(MIN_PRACTICAL_SIGNAL_OCCURRENCES, 2)
 
 
 if __name__ == "__main__":
