@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.api.mappers import course_mapper
 from app.content.runtime import ContentRuntime
-from app.repositories import quiz_repository
+from app.repositories import practical_task_attempt_repository, quiz_repository
 from app.repositories.company_membership_repository import CompanyMembershipRepository
 from app.repositories.company_repository import CompanyRepository
 from app.repositories.company_team_repository import CompanyTeamRepository
@@ -379,6 +379,7 @@ def get_manager_employee_analytics_service(
         runtime,
         quiz_repository,
         db_path,
+        practical_task_attempt_repository,
     )
 
 
@@ -824,6 +825,9 @@ def manager_team_member_page(
     topic_classification = analytics_service.get_quiz_topic_classification(
         member.user_id
     )
+    practical_task_analytics = analytics_service.get_practical_task_analytics(
+        member.user_id
+    )
     return templates.TemplateResponse(
         request,
         "manager_team_member.html",
@@ -834,6 +838,7 @@ def manager_team_member_page(
             "courses_count": len(courses),
             "quiz_analytics": quiz_analytics,
             "topic_classification": topic_classification,
+            "practical_task_analytics": practical_task_analytics,
         },
     )
 

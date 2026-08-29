@@ -235,4 +235,91 @@
     <p class="page-meta">Недостаточно данных или нейтральный результат по темам: {{ topic_classification.unclassified_topics_count }}</p>
     {% endif %}
 </section>
+
+<section class="section">
+    <h2>Практические задания</h2>
+    {% if practical_task_analytics.total_attempts_count > 0 %}
+    <div class="dashboard-metrics">
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Попыток</span>
+            <span class="dashboard-metric-value">{{ practical_task_analytics.total_attempts_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Проверено</span>
+            <span class="dashboard-metric-value">{{ practical_task_analytics.reviewed_attempts_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Принято</span>
+            <span class="dashboard-metric-value">{{ practical_task_analytics.passed_attempts_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Не принято</span>
+            <span class="dashboard-metric-value">{{ practical_task_analytics.failed_attempts_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Ожидает проверки</span>
+            <span class="dashboard-metric-value">{{ practical_task_analytics.pending_attempts_count }}</span>
+        </div>
+        {% if practical_task_analytics.average_score_percent is not none %}
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Средний результат</span>
+            <span class="dashboard-metric-value">{{ practical_task_analytics.average_score_percent }}%</span>
+        </div>
+        {% endif %}
+    </div>
+
+    <ul class="course-list dashboard-course-list">
+        {% for attempt in practical_task_analytics.recent_attempts %}
+        <li class="course-card dashboard-course-card">
+            <div class="dashboard-course-body">
+                <header class="dashboard-course-header">
+                    <h3 class="course-card-title">{{ attempt.task_title }}</h3>
+                    <span class="dashboard-status-badge dashboard-status-badge--{% if attempt.status == 'pending' %}not_started{% elif attempt.status == 'reviewed' and attempt.passed %}completed{% elif attempt.status == 'reviewed' and attempt.passed == false %}in_progress{% else %}not_started{% endif %}">
+                        {% if attempt.status == 'pending' %}
+                        Ожидает проверки
+                        {% elif attempt.status == 'reviewed' and attempt.passed %}
+                        Принято
+                        {% elif attempt.status == 'reviewed' and attempt.passed == false %}
+                        Не принято
+                        {% else %}
+                        Статус недоступен
+                        {% endif %}
+                    </span>
+                </header>
+                <p class="page-meta">{{ attempt.course_title }} / {{ attempt.lesson_title }}</p>
+                {% if attempt.score is not none and attempt.max_score is not none %}
+                <div class="dashboard-metrics">
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Результат</span>
+                        <span class="dashboard-metric-value">{{ attempt.score }}/{{ attempt.max_score }}{% if attempt.score_percent is not none %} ({{ attempt.score_percent }}%){% endif %}</span>
+                    </div>
+                </div>
+                {% endif %}
+                {% if attempt.feedback_summary %}
+                <p class="page-meta">{{ attempt.feedback_summary }}</p>
+                {% endif %}
+                {% if attempt.strengths %}
+                <ul class="page-meta">
+                    {% for item in attempt.strengths %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+                {% if attempt.improvements %}
+                <ul class="page-meta">
+                    {% for item in attempt.improvements %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state dashboard-empty-state">
+        <p class="dashboard-empty-state-message">Сотрудник пока не выполнял практические задания</p>
+    </div>
+    {% endif %}
+</section>
 {% endblock %}

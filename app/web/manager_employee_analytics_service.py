@@ -54,6 +54,38 @@ class EmployeeQuizTopicClassification:
     unclassified_topics_count: int
 
 
+@dataclass(frozen=True)
+class EmployeePracticalTaskAttemptAnalytics:
+    attempt_id: int
+    course_slug: str
+    course_title: str
+    lesson_slug: str
+    lesson_title: str
+    task_title: str
+    status: str
+    score: Optional[int]
+    max_score: Optional[int]
+    score_percent: Optional[float]
+    passed: Optional[bool]
+    feedback_summary: Optional[str]
+    strengths: tuple[str, ...]
+    improvements: tuple[str, ...]
+    started_at: str
+    reviewed_at: Optional[str]
+
+
+@dataclass(frozen=True)
+class EmployeePracticalTaskAnalytics:
+    total_attempts_count: int
+    reviewed_attempts_count: int
+    passed_attempts_count: int
+    failed_attempts_count: int
+    pending_attempts_count: int
+    average_score_percent: Optional[float]
+    best_score_percent: Optional[float]
+    recent_attempts: tuple[EmployeePracticalTaskAttemptAnalytics, ...]
+
+
 MIN_TOPIC_ANSWERS = 3
 STRONG_TOPIC_ACCURACY_PERCENT = 80.0
 DEVELOPMENT_TOPIC_ACCURACY_PERCENT = 70.0
@@ -67,10 +99,16 @@ class ManagerEmployeeAnalyticsService:
         runtime: ContentRuntime,
         quiz_repository: ModuleType,
         db_path: Path,
+        practical_task_attempt_repository: Optional[ModuleType] = None,
     ) -> None:
         self._runtime = runtime
         self._quiz_repository = quiz_repository
         self._db_path = db_path
+        if practical_task_attempt_repository is None:
+            from app.repositories import practical_task_attempt_repository as default_repo
+
+            practical_task_attempt_repository = default_repo
+        self._practical_task_attempt_repository = practical_task_attempt_repository
 
     def get_quiz_analytics(self, user_id: int) -> EmployeeQuizAnalytics:
         normalized_user_id = _validate_user_id(user_id)
@@ -230,6 +268,106 @@ class ManagerEmployeeAnalyticsService:
             ),
             unclassified_topics_count=unclassified_topics_count,
         )
+
+    def get_practical_task_analytics(
+        self,
+        user_id: int,
+        limit: int = 10,
+    ) -> EmployeePracticalTaskAnalytics:
+        normalized_user_id = _validate_user_id(user_id)
+        normalized_limit = _validate_recent_attempts_limit(limit)
+
+        aggregate = (
+            self._practical_task_attempt_repository.get_attempts_aggregate_for_user(
+                self._db_path,
+                normalized_user_id,
+            )
+        )
+        recent_rows = self._practical_task_attempt_repository.get_attempts_for_user(
+            self._db_path,
+            normalized_user_id,
+            limit=normalized_limit,
+        )
+        course_titles, lesson_titles = _build_course_lesson_title_maps(self._runtime)
+
+        recent_attempts = tuple(
+            _build_practical_task_attempt_analytics(
+                attempt,
+                course_titles,
+                lesson_titles,
+            )
+            for attempt in recent_rows
+        )
+
+        return EmployeePracticalTaskAnalytics(
+            total_attempts_count=aggregate.total_attempts_count,
+            reviewed_attempts_count=aggregate.reviewed_attempts_count,
+            passed_attempts_count=aggregate.passed_attempts_count,
+            failed_attempts_count=aggregate.failed_attempts_count,
+            pending_attempts_count=aggregate.pending_attempts_count,
+            average_score_percent=aggregate.average_score_percent,
+            best_score_percent=aggregate.best_score_percent,
+            recent_attempts=recent_attempts,
+        )
+
+
+
+def _validate_recent_attempts_limit(limit: int) -> int:
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
+        raise ValueError("limit must be a positive integer")
+    return limit
+
+
+def _build_course_lesson_title_maps(
+    runtime: ContentRuntime,
+) -> tuple[dict[str, str], dict[tuple[str, str], str]]:
+    course_titles: dict[str, str] = {}
+    lesson_titles: dict[tuple[str, str], str] = {}
+
+    for course in runtime.get_courses():
+        course_titles[course.slug] = course.title
+        for lesson in getattr(course, "lessons", ()):
+            lesson_titles[(course.slug, lesson.path.name)] = lesson.title
+
+    return course_titles, lesson_titles
+
+
+def _attempt_score_percent(attempt) -> Optional[float]:
+    if attempt.score is None or attempt.max_score is None:
+        return None
+    if attempt.max_score <= 0:
+        return None
+    return round(attempt.score * 100 / attempt.max_score, 2)
+
+
+def _build_practical_task_attempt_analytics(
+    attempt,
+    course_titles: dict[str, str],
+    lesson_titles: dict[tuple[str, str], str],
+) -> EmployeePracticalTaskAttemptAnalytics:
+    course_title = course_titles.get(attempt.course_slug, attempt.course_slug)
+    lesson_title = lesson_titles.get(
+        (attempt.course_slug, attempt.lesson_slug),
+        attempt.lesson_slug,
+    )
+    return EmployeePracticalTaskAttemptAnalytics(
+        attempt_id=attempt.id,
+        course_slug=attempt.course_slug,
+        course_title=course_title,
+        lesson_slug=attempt.lesson_slug,
+        lesson_title=lesson_title,
+        task_title=attempt.task_title,
+        status=attempt.status,
+        score=attempt.score,
+        max_score=attempt.max_score,
+        score_percent=_attempt_score_percent(attempt),
+        passed=attempt.passed,
+        feedback_summary=attempt.feedback_summary,
+        strengths=attempt.strengths,
+        improvements=attempt.improvements,
+        started_at=attempt.started_at,
+        reviewed_at=attempt.reviewed_at,
+    )
 
 
 def _normalize_question_tags(tags: list[str]) -> set[str]:

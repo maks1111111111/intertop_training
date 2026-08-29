@@ -578,6 +578,221 @@ class PracticalTaskAttemptRepositoryTests(unittest.TestCase):
             "Қауіпсіздік талаптарын тексердім.",
         )
 
+    def test_get_attempts_for_user_returns_only_canonical_user_attempts(self) -> None:
+        own_first = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+            task_title="Own task",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Own answer",
+        )
+        repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.other_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+            task_title="Other user",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Other answer",
+        )
+
+        attempts = repository.get_attempts_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+        )
+
+        self.assertEqual(len(attempts), 1)
+        self.assertEqual(attempts[0].id, own_first)
+        self.assertEqual(attempts[0].user_id, self.web_user_id)
+        self.assertIsNone(attempts[0].telegram_id)
+
+    def test_get_attempts_for_user_returns_newest_first(self) -> None:
+        first = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+            task_title="First",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="First answer",
+        )
+        second = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_02",
+            task_title="Second",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Second answer",
+        )
+
+        attempts = repository.get_attempts_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+        )
+
+        self.assertEqual([attempt.id for attempt in attempts], [second, first])
+
+    def test_get_attempts_for_user_works_for_web_only_user(self) -> None:
+        attempt_id = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+            task_title="Web-only task",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Answer",
+        )
+
+        attempts = repository.get_attempts_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+        )
+
+        self.assertEqual(len(attempts), 1)
+        self.assertEqual(attempts[0].id, attempt_id)
+        self.assertIsNone(attempts[0].telegram_id)
+
+    def test_get_attempts_for_user_rejects_invalid_user_id(self) -> None:
+        for invalid_user_id in (0, -1, False):
+            with self.subTest(user_id=invalid_user_id):
+                with self.assertRaises(ValueError):
+                    repository.get_attempts_for_user(
+                        self.db_path,
+                        user_id=invalid_user_id,
+                    )
+
+    def test_get_attempts_for_user_returns_empty_for_non_positive_limit(self) -> None:
+        repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+            task_title="Task",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Answer",
+        )
+
+        self.assertEqual(
+            repository.get_attempts_for_user(
+                self.db_path,
+                user_id=self.web_user_id,
+                limit=0,
+            ),
+            [],
+        )
+
+    def test_get_attempts_aggregate_for_user_returns_all_attempt_counts(self) -> None:
+        passed_id = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+            task_title="Passed",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Passed answer",
+        )
+        failed_id = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_02",
+            task_title="Failed",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Failed answer",
+        )
+        pending_id = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_03",
+            task_title="Pending",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Pending answer",
+        )
+        assert passed_id is not None
+        assert failed_id is not None
+        assert pending_id is not None
+
+        repository.complete_review(
+            self.db_path,
+            passed_id,
+            _sample_review_result(score=9, max_score=10, passed=True),
+        )
+        repository.complete_review(
+            self.db_path,
+            failed_id,
+            _sample_review_result(score=4, max_score=10, passed=False),
+        )
+
+        aggregate = repository.get_attempts_aggregate_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+        )
+
+        self.assertEqual(aggregate.total_attempts_count, 3)
+        self.assertEqual(aggregate.reviewed_attempts_count, 2)
+        self.assertEqual(aggregate.passed_attempts_count, 1)
+        self.assertEqual(aggregate.failed_attempts_count, 1)
+        self.assertEqual(aggregate.pending_attempts_count, 1)
+        self.assertEqual(aggregate.average_score_percent, 65.0)
+        self.assertEqual(aggregate.best_score_percent, 90.0)
+
+    def test_get_attempts_aggregate_for_user_is_not_limited_by_recent_query(
+        self,
+    ) -> None:
+        for index in range(3):
+            attempt_id = repository.create_attempt_for_user(
+                self.db_path,
+                user_id=self.web_user_id,
+                course_slug="web-course",
+                lesson_slug=f"lesson_{index:02d}",
+                task_title=f"Task {index}",
+                task_description="Description",
+                expected_result="Expected",
+                learner_answer=f"Answer {index}",
+            )
+            assert attempt_id is not None
+            repository.complete_review(
+                self.db_path,
+                attempt_id,
+                _sample_review_result(score=8, max_score=10, passed=True),
+            )
+
+        aggregate = repository.get_attempts_aggregate_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+        )
+        recent = repository.get_attempts_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            limit=1,
+        )
+
+        self.assertEqual(aggregate.total_attempts_count, 3)
+        self.assertEqual(aggregate.reviewed_attempts_count, 3)
+        self.assertEqual(len(recent), 1)
+
+    def test_get_attempts_aggregate_for_user_rejects_invalid_user_id(self) -> None:
+        for invalid_user_id in (0, -1, True):
+            with self.subTest(user_id=invalid_user_id):
+                with self.assertRaises(ValueError):
+                    repository.get_attempts_aggregate_for_user(
+                        self.db_path,
+                        user_id=invalid_user_id,
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()

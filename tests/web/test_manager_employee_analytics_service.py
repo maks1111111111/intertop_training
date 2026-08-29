@@ -7,6 +7,8 @@ from app.web.manager_employee_analytics_service import (
     DEVELOPMENT_TOPIC_ACCURACY_PERCENT,
     MIN_TOPIC_ANSWERS,
     STRONG_TOPIC_ACCURACY_PERCENT,
+    EmployeePracticalTaskAttemptAnalytics,
+    EmployeePracticalTaskAnalytics,
     ManagerEmployeeAnalyticsService,
 )
 
@@ -14,9 +16,15 @@ from app.web.manager_employee_analytics_service import (
 class FakeRuntime:
     def get_courses(self):
         return (
-            SimpleNamespace(slug="alpha", title="Alpha Course"),
-            SimpleNamespace(slug="beta", title="Beta Course"),
-            SimpleNamespace(slug="gamma", title="Gamma Course"),
+            SimpleNamespace(
+                slug="alpha",
+                title="Alpha Course",
+                lessons=(
+                    SimpleNamespace(path=SimpleNamespace(name="lesson_01"), title="Lesson One"),
+                ),
+            ),
+            SimpleNamespace(slug="beta", title="Beta Course", lessons=()),
+            SimpleNamespace(slug="gamma", title="Gamma Course", lessons=()),
         )
 
 
@@ -62,6 +70,106 @@ class FakeQuizRepository:
             },
         }
         return stats[course_slug]
+
+
+class FakePracticalTaskAttempt:
+    def __init__(
+        self,
+        *,
+        id: int,
+        user_id: int,
+        course_slug: str,
+        lesson_slug: str,
+        task_title: str,
+        status: str,
+        score=None,
+        max_score=None,
+        passed=None,
+        feedback_summary=None,
+        strengths=(),
+        improvements=(),
+        started_at: str = "2026-08-20 12:00:00",
+        reviewed_at=None,
+    ) -> None:
+        self.id = id
+        self.user_id = user_id
+        self.course_slug = course_slug
+        self.lesson_slug = lesson_slug
+        self.task_title = task_title
+        self.status = status
+        self.score = score
+        self.max_score = max_score
+        self.passed = passed
+        self.feedback_summary = feedback_summary
+        self.strengths = strengths
+        self.improvements = improvements
+        self.started_at = started_at
+        self.reviewed_at = reviewed_at
+
+
+class FakePracticalTaskAttemptRepository:
+    def __init__(self, attempts=None) -> None:
+        self.calls: list[tuple[Path, int, int]] = []
+        self.aggregate_calls: list[tuple[Path, int]] = []
+        self._attempts = list(attempts or [])
+
+    def get_attempts_aggregate_for_user(
+        self,
+        db_path: Path,
+        user_id: int,
+    ):
+        self.aggregate_calls.append((db_path, user_id))
+
+        reviewed_attempts_count = 0
+        passed_attempts_count = 0
+        failed_attempts_count = 0
+        pending_attempts_count = 0
+        score_percents: list[float] = []
+
+        for attempt in self._attempts:
+            if attempt.status == "reviewed":
+                reviewed_attempts_count += 1
+                if (
+                    attempt.score is not None
+                    and attempt.max_score is not None
+                    and attempt.max_score > 0
+                ):
+                    score_percents.append(
+                        round(attempt.score * 100 / attempt.max_score, 2)
+                    )
+                if attempt.passed is True:
+                    passed_attempts_count += 1
+                elif attempt.passed is False:
+                    failed_attempts_count += 1
+            elif attempt.status == "pending":
+                pending_attempts_count += 1
+
+        from app.repositories.practical_task_attempt_repository import (
+            PracticalTaskAttemptAggregate,
+        )
+
+        return PracticalTaskAttemptAggregate(
+            total_attempts_count=len(self._attempts),
+            reviewed_attempts_count=reviewed_attempts_count,
+            passed_attempts_count=passed_attempts_count,
+            failed_attempts_count=failed_attempts_count,
+            pending_attempts_count=pending_attempts_count,
+            average_score_percent=(
+                round(sum(score_percents) / len(score_percents), 2)
+                if score_percents
+                else None
+            ),
+            best_score_percent=max(score_percents) if score_percents else None,
+        )
+
+    def get_attempts_for_user(
+        self,
+        db_path: Path,
+        user_id: int,
+        limit: int = 10,
+    ):
+        self.calls.append((db_path, user_id, limit))
+        return self._attempts[:limit]
 
 
 class ManagerEmployeeAnalyticsServiceTests(unittest.TestCase):
@@ -857,6 +965,250 @@ class ManagerEmployeeTopicClassificationServiceTests(unittest.TestCase):
         self.assertEqual(MIN_TOPIC_ANSWERS, 3)
         self.assertEqual(STRONG_TOPIC_ACCURACY_PERCENT, 80.0)
         self.assertEqual(DEVELOPMENT_TOPIC_ACCURACY_PERCENT, 70.0)
+
+
+class ManagerEmployeePracticalTaskAnalyticsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.db_path = Path("/tmp/training.db")
+        self.practical_repository = FakePracticalTaskAttemptRepository()
+        self.service = ManagerEmployeeAnalyticsService(
+            FakeRuntime(),
+            FakeQuizRepository(),
+            self.db_path,
+            self.practical_repository,
+        )
+
+    def test_builds_practical_task_aggregate_counts(self) -> None:
+        self.practical_repository._attempts = [
+            FakePracticalTaskAttempt(
+                id=1,
+                user_id=42,
+                course_slug="alpha",
+                lesson_slug="lesson_01",
+                task_title="Passed task",
+                status="reviewed",
+                score=8,
+                max_score=10,
+                passed=True,
+                feedback_summary="Good work",
+            ),
+            FakePracticalTaskAttempt(
+                id=2,
+                user_id=42,
+                course_slug="alpha",
+                lesson_slug="lesson_01",
+                task_title="Failed task",
+                status="reviewed",
+                score=4,
+                max_score=10,
+                passed=False,
+                feedback_summary="Needs improvement",
+            ),
+            FakePracticalTaskAttempt(
+                id=3,
+                user_id=42,
+                course_slug="stale-course",
+                lesson_slug="missing-lesson",
+                task_title="Pending task",
+                status="pending",
+            ),
+        ]
+
+        result = self.service.get_practical_task_analytics(42)
+
+        self.assertEqual(result.total_attempts_count, 3)
+        self.assertEqual(result.reviewed_attempts_count, 2)
+        self.assertEqual(result.passed_attempts_count, 1)
+        self.assertEqual(result.failed_attempts_count, 1)
+        self.assertEqual(result.pending_attempts_count, 1)
+        self.assertEqual(result.average_score_percent, 60.0)
+        self.assertEqual(result.best_score_percent, 80.0)
+
+    def test_normalizes_score_percent_from_score_and_max_score(self) -> None:
+        self.practical_repository._attempts = [
+            FakePracticalTaskAttempt(
+                id=1,
+                user_id=42,
+                course_slug="alpha",
+                lesson_slug="lesson_01",
+                task_title="Scored task",
+                status="reviewed",
+                score=7,
+                max_score=8,
+                passed=True,
+            ),
+        ]
+
+        result = self.service.get_practical_task_analytics(42)
+
+        self.assertEqual(result.recent_attempts[0].score_percent, 87.5)
+
+    def test_average_percent_excludes_pending_and_unscorable_rows(self) -> None:
+        self.practical_repository._attempts = [
+            FakePracticalTaskAttempt(
+                id=1,
+                user_id=42,
+                course_slug="alpha",
+                lesson_slug="lesson_01",
+                task_title="Scored task",
+                status="reviewed",
+                score=10,
+                max_score=10,
+                passed=True,
+            ),
+            FakePracticalTaskAttempt(
+                id=2,
+                user_id=42,
+                course_slug="alpha",
+                lesson_slug="lesson_01",
+                task_title="Pending task",
+                status="pending",
+            ),
+            FakePracticalTaskAttempt(
+                id=3,
+                user_id=42,
+                course_slug="alpha",
+                lesson_slug="lesson_01",
+                task_title="Broken score",
+                status="reviewed",
+                score=None,
+                max_score=10,
+                passed=False,
+            ),
+        ]
+
+        result = self.service.get_practical_task_analytics(42)
+
+        self.assertEqual(result.average_score_percent, 100.0)
+        self.assertEqual(result.best_score_percent, 100.0)
+
+    def test_recent_rows_resolve_course_and_lesson_titles(self) -> None:
+        self.practical_repository._attempts = [
+            FakePracticalTaskAttempt(
+                id=1,
+                user_id=42,
+                course_slug="alpha",
+                lesson_slug="lesson_01",
+                task_title="Resolved task",
+                status="reviewed",
+                score=8,
+                max_score=10,
+                passed=True,
+            ),
+        ]
+
+        result = self.service.get_practical_task_analytics(42)
+
+        self.assertEqual(result.recent_attempts[0].course_title, "Alpha Course")
+        self.assertEqual(result.recent_attempts[0].lesson_title, "Lesson One")
+
+    def test_stale_course_and_lesson_references_do_not_crash(self) -> None:
+        self.practical_repository._attempts = [
+            FakePracticalTaskAttempt(
+                id=1,
+                user_id=42,
+                course_slug="missing-course",
+                lesson_slug="missing-lesson",
+                task_title="Stored title",
+                status="pending",
+            ),
+        ]
+
+        result = self.service.get_practical_task_analytics(42)
+
+        self.assertEqual(result.recent_attempts[0].course_title, "missing-course")
+        self.assertEqual(result.recent_attempts[0].lesson_title, "missing-lesson")
+        self.assertEqual(result.recent_attempts[0].task_title, "Stored title")
+
+    def test_invalid_user_id_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            self.service.get_practical_task_analytics(0)
+
+    def test_repository_called_with_canonical_user_id(self) -> None:
+        self.service.get_practical_task_analytics(42)
+
+        self.assertEqual(
+            self.practical_repository.aggregate_calls,
+            [(self.db_path, 42)],
+        )
+        self.assertEqual(
+            self.practical_repository.calls,
+            [(self.db_path, 42, 10)],
+        )
+
+    def test_aggregates_are_not_limited_by_recent_display_limit(self) -> None:
+        self.practical_repository._attempts = [
+            FakePracticalTaskAttempt(
+                id=index,
+                user_id=42,
+                course_slug="alpha",
+                lesson_slug="lesson_01",
+                task_title=f"Task {index}",
+                status="reviewed",
+                score=8,
+                max_score=10,
+                passed=True,
+            )
+            for index in range(1, 6)
+        ]
+
+        result = self.service.get_practical_task_analytics(42, limit=2)
+
+        self.assertEqual(result.total_attempts_count, 5)
+        self.assertEqual(result.reviewed_attempts_count, 5)
+        self.assertEqual(len(result.recent_attempts), 2)
+        self.assertEqual(
+            self.practical_repository.aggregate_calls,
+            [(self.db_path, 42)],
+        )
+        self.assertEqual(
+            self.practical_repository.calls,
+            [(self.db_path, 42, 2)],
+        )
+
+    def test_unknown_statuses_are_not_counted_as_failed(self) -> None:
+        self.practical_repository._attempts = [
+            FakePracticalTaskAttempt(
+                id=1,
+                user_id=42,
+                course_slug="alpha",
+                lesson_slug="lesson_01",
+                task_title="Legacy task",
+                status="legacy",
+            ),
+        ]
+
+        result = self.service.get_practical_task_analytics(42)
+
+        self.assertEqual(result.total_attempts_count, 1)
+        self.assertEqual(result.failed_attempts_count, 0)
+        self.assertEqual(result.pending_attempts_count, 0)
+        self.assertEqual(result.reviewed_attempts_count, 0)
+
+    def test_recent_attempts_respect_limit(self) -> None:
+        self.practical_repository._attempts = [
+            FakePracticalTaskAttempt(
+                id=index,
+                user_id=42,
+                course_slug="alpha",
+                lesson_slug="lesson_01",
+                task_title=f"Task {index}",
+                status="pending",
+            )
+            for index in range(1, 4)
+        ]
+
+        result = self.service.get_practical_task_analytics(42, limit=2)
+
+        self.assertEqual(len(result.recent_attempts), 2)
+        self.assertEqual(result.total_attempts_count, 3)
+
+    def test_empty_result_when_no_attempts(self) -> None:
+        result = self.service.get_practical_task_analytics(42)
+
+        self.assertEqual(result.total_attempts_count, 0)
+        self.assertIsNone(result.average_score_percent)
+        self.assertEqual(result.recent_attempts, ())
 
 
 if __name__ == "__main__":

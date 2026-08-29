@@ -22,6 +22,19 @@ _USER_LESSON_ATTEMPTS_FROM = """
 
 
 @dataclass(frozen=True)
+class PracticalTaskAttemptAggregate:
+    """Aggregate practical-task attempt metrics for one canonical user."""
+
+    total_attempts_count: int
+    reviewed_attempts_count: int
+    passed_attempts_count: int
+    failed_attempts_count: int
+    pending_attempts_count: int
+    average_score_percent: Optional[float]
+    best_score_percent: Optional[float]
+
+
+@dataclass(frozen=True)
 class PracticalTaskAttempt:
     """A stored practical-task attempt with task snapshot and review outcome."""
 
@@ -333,6 +346,106 @@ def get_attempts_for_lesson_for_user(
                 normalized_user_id,
                 course_slug,
                 lesson_slug,
+                limit,
+            ),
+        ).fetchall()
+
+    return [_row_to_attempt(row) for row in rows]
+
+
+def get_attempts_aggregate_for_user(
+    db_path: Path,
+    user_id: int,
+) -> PracticalTaskAttemptAggregate:
+    """Return aggregate practical-task metrics for one canonical user."""
+    normalized_user_id = _validate_user_id(user_id)
+
+    with get_connection(db_path) as connection:
+        counts_row = connection.execute(
+            """
+            SELECT
+                COUNT(*) AS total_attempts_count,
+                SUM(CASE WHEN status = 'reviewed' THEN 1 ELSE 0 END)
+                    AS reviewed_attempts_count,
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END)
+                    AS pending_attempts_count,
+                SUM(
+                    CASE
+                        WHEN status = 'reviewed' AND passed = 1 THEN 1
+                        ELSE 0
+                    END
+                ) AS passed_attempts_count,
+                SUM(
+                    CASE
+                        WHEN status = 'reviewed' AND passed = 0 THEN 1
+                        ELSE 0
+                    END
+                ) AS failed_attempts_count
+            FROM practical_task_attempts
+            WHERE user_id = ?
+            """,
+            (normalized_user_id,),
+        ).fetchone()
+
+        score_rows = connection.execute(
+            """
+            SELECT score, max_score
+            FROM practical_task_attempts
+            WHERE user_id = ?
+              AND status = 'reviewed'
+              AND score IS NOT NULL
+              AND max_score IS NOT NULL
+              AND max_score > 0
+            """,
+            (normalized_user_id,),
+        ).fetchall()
+
+    score_percents = [
+        round(int(row["score"]) * 100 / int(row["max_score"]), 2)
+        for row in score_rows
+    ]
+
+    return PracticalTaskAttemptAggregate(
+        total_attempts_count=int(counts_row["total_attempts_count"]),
+        reviewed_attempts_count=int(counts_row["reviewed_attempts_count"] or 0),
+        passed_attempts_count=int(counts_row["passed_attempts_count"] or 0),
+        failed_attempts_count=int(counts_row["failed_attempts_count"] or 0),
+        pending_attempts_count=int(counts_row["pending_attempts_count"] or 0),
+        average_score_percent=(
+            round(sum(score_percents) / len(score_percents), 2)
+            if score_percents
+            else None
+        ),
+        best_score_percent=max(score_percents) if score_percents else None,
+    )
+
+
+def get_attempts_for_user(
+    db_path: Path,
+    user_id: int,
+    limit: int = 10,
+) -> list[PracticalTaskAttempt]:
+    """Return recent practical-task attempts for one canonical user."""
+    normalized_user_id = _validate_user_id(user_id)
+    if limit <= 0:
+        return []
+
+    with get_connection(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                practical_task_attempts.*,
+                users.telegram_id
+            FROM practical_task_attempts
+            JOIN users
+                ON users.id = practical_task_attempts.user_id
+            WHERE practical_task_attempts.user_id = ?
+            ORDER BY practical_task_attempts.started_at DESC,
+                     practical_task_attempts.id DESC
+            LIMIT ?
+            """,
+            (
+                normalized_user_id,
                 limit,
             ),
         ).fetchall()

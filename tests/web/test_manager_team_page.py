@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient
 from app.web.dashboard_service import CourseDashboardItem
 from app.web.manager_employee_analytics_service import (
     EmployeeCourseQuizAnalytics,
+    EmployeePracticalTaskAttemptAnalytics,
+    EmployeePracticalTaskAnalytics,
     EmployeeQuizAnalytics,
     EmployeeQuizTopicAnalytics,
     EmployeeQuizTopicClassification,
@@ -78,6 +80,10 @@ class FakeAnalyticsService:
     def __init__(self) -> None:
         self.calls: list[int] = []
         self.topic_classification_calls: list[int] = []
+        self.practical_task_calls: list[int] = []
+        self._empty_practical_task_analytics = False
+        self._pending_practical_task = False
+        self._unknown_practical_task_status = False
 
     def get_quiz_analytics(self, user_id: int) -> EmployeeQuizAnalytics:
         self.calls.append(user_id)
@@ -137,6 +143,121 @@ class FakeAnalyticsService:
             unclassified_topics_count=1,
         )
 
+    def get_practical_task_analytics(
+        self,
+        user_id: int,
+    ) -> EmployeePracticalTaskAnalytics:
+        self.practical_task_calls.append(user_id)
+        if self._empty_practical_task_analytics:
+            return FakeAnalyticsService.empty_practical_task_analytics()
+        if self._pending_practical_task:
+            return EmployeePracticalTaskAnalytics(
+                total_attempts_count=1,
+                reviewed_attempts_count=0,
+                passed_attempts_count=0,
+                failed_attempts_count=0,
+                pending_attempts_count=1,
+                average_score_percent=None,
+                best_score_percent=None,
+                recent_attempts=(
+                    EmployeePracticalTaskAttemptAnalytics(
+                        attempt_id=101,
+                        course_slug="alpha",
+                        course_title="Alpha Course",
+                        lesson_slug="lesson_01",
+                        lesson_title="Lesson One",
+                        task_title="Pending practical task",
+                        status="pending",
+                        score=None,
+                        max_score=None,
+                        score_percent=None,
+                        passed=None,
+                        feedback_summary=None,
+                        strengths=(),
+                        improvements=(),
+                        started_at="2026-08-20 12:00:00",
+                        reviewed_at=None,
+                    ),
+                ),
+            )
+        if self._unknown_practical_task_status:
+            return EmployeePracticalTaskAnalytics(
+                total_attempts_count=1,
+                reviewed_attempts_count=0,
+                passed_attempts_count=0,
+                failed_attempts_count=0,
+                pending_attempts_count=0,
+                average_score_percent=None,
+                best_score_percent=None,
+                recent_attempts=(
+                    EmployeePracticalTaskAttemptAnalytics(
+                        attempt_id=102,
+                        course_slug="alpha",
+                        course_title="Alpha Course",
+                        lesson_slug="lesson_01",
+                        lesson_title="Lesson One",
+                        task_title="Legacy practical task",
+                        status="legacy",
+                        score=None,
+                        max_score=None,
+                        score_percent=None,
+                        passed=None,
+                        feedback_summary=None,
+                        strengths=(),
+                        improvements=(),
+                        started_at="2026-08-20 12:00:00",
+                        reviewed_at=None,
+                    ),
+                ),
+            )
+        return EmployeePracticalTaskAnalytics(
+            total_attempts_count=2,
+            reviewed_attempts_count=2,
+            passed_attempts_count=1,
+            failed_attempts_count=1,
+            pending_attempts_count=0,
+            average_score_percent=75.0,
+            best_score_percent=90.0,
+            recent_attempts=(
+                EmployeePracticalTaskAttemptAnalytics(
+                    attempt_id=1,
+                    course_slug="alpha",
+                    course_title="Alpha Course",
+                    lesson_slug="lesson_01",
+                    lesson_title="Lesson One",
+                    task_title="Inspect the work area",
+                    status="reviewed",
+                    score=9,
+                    max_score=10,
+                    score_percent=90.0,
+                    passed=True,
+                    feedback_summary="Strong practical answer.",
+                    strengths=("Identified hazards",),
+                    improvements=("Add more detail",),
+                    started_at="2026-08-20 12:00:00",
+                    reviewed_at="2026-08-20 12:05:00",
+                ),
+                EmployeePracticalTaskAttemptAnalytics(
+                    attempt_id=2,
+                    course_slug="alpha",
+                    course_title="Alpha Course",
+                    lesson_slug="lesson_02",
+                    lesson_title="Lesson Two",
+                    task_title="Handle customer complaint",
+                    status="reviewed",
+                    score=6,
+                    max_score=10,
+                    score_percent=60.0,
+                    passed=False,
+                    feedback_summary="Needs clearer steps.",
+                    strengths=(),
+                    improvements=("Use the service script",),
+                    started_at="2026-08-19 12:00:00",
+                    reviewed_at="2026-08-19 12:05:00",
+                ),
+            ),
+        )
+
     @staticmethod
     def empty_analytics() -> EmployeeQuizAnalytics:
         return EmployeeQuizAnalytics(
@@ -155,6 +276,19 @@ class FakeAnalyticsService:
             strengths=(),
             development_areas=(),
             unclassified_topics_count=0,
+        )
+
+    @staticmethod
+    def empty_practical_task_analytics() -> EmployeePracticalTaskAnalytics:
+        return EmployeePracticalTaskAnalytics(
+            total_attempts_count=0,
+            reviewed_attempts_count=0,
+            passed_attempts_count=0,
+            failed_attempts_count=0,
+            pending_attempts_count=0,
+            average_score_percent=None,
+            best_score_percent=None,
+            recent_attempts=(),
         )
 
 
@@ -469,6 +603,54 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("50.0%", response.text)
         self.assertIn("Недостаточно данных или нейтральный результат по темам: 1", response.text)
         self.assertEqual(self.analytics_service.topic_classification_calls, [2])
+        self.assertEqual(self.analytics_service.practical_task_calls, [2])
+        self.assertIn("Практические задания", response.text)
+        self.assertIn("Inspect the work area", response.text)
+        self.assertIn("Handle customer complaint", response.text)
+        self.assertIn("Strong practical answer.", response.text)
+        self.assertIn("Identified hazards", response.text)
+        self.assertIn("Add more detail", response.text)
+        self.assertIn("75.0%", response.text)
+        self.assertIn("Принято", response.text)
+        self.assertIn("Не принято", response.text)
+
+    def test_team_member_page_renders_empty_practical_task_analytics(self) -> None:
+        self._set_identity("manager")
+        self.analytics_service._empty_practical_task_analytics = True
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Практические задания", response.text)
+        self.assertIn("Сотрудник пока не выполнял практические задания", response.text)
+
+    def test_team_member_page_does_not_render_learner_answer(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("learner_answer", response.text.lower())
+
+    def test_team_member_page_renders_pending_practical_task_state(self) -> None:
+        self._set_identity("manager")
+        self.analytics_service._pending_practical_task = True
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Pending practical task", response.text)
+        self.assertIn("Ожидает проверки", response.text)
+
+    def test_team_member_page_renders_unknown_practical_task_status_safely(self) -> None:
+        self._set_identity("manager")
+        self.analytics_service._unknown_practical_task_status = True
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Legacy practical task", response.text)
+        self.assertIn("Статус недоступен", response.text)
 
     def test_team_member_page_renders_zero_attempt_analytics(self) -> None:
         self._set_identity("manager")
@@ -506,6 +688,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(self.dashboard_service.calls, [])
         self.assertEqual(self.analytics_service.calls, [])
         self.assertEqual(self.analytics_service.topic_classification_calls, [])
+        self.assertEqual(self.analytics_service.practical_task_calls, [])
 
 
 
@@ -519,6 +702,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(self.dashboard_service.calls, [])
         self.assertEqual(self.analytics_service.calls, [])
         self.assertEqual(self.analytics_service.topic_classification_calls, [])
+        self.assertEqual(self.analytics_service.practical_task_calls, [])
 
     def test_anonymous_cannot_open_team_member_page(self) -> None:
         response = self.client.get("/manager/team/2")
@@ -528,6 +712,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(self.dashboard_service.calls, [])
         self.assertEqual(self.analytics_service.calls, [])
         self.assertEqual(self.analytics_service.topic_classification_calls, [])
+        self.assertEqual(self.analytics_service.practical_task_calls, [])
 
 
 
