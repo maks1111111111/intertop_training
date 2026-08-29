@@ -792,6 +792,7 @@ def manager_team_page(
             "member_rows": overview.members,
             "members_count": len(overview.members),
             "team_analytics": overview.analytics,
+            "recommendations": overview.recommendations,
         },
     )
 

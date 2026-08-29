@@ -95,6 +95,37 @@
         </div>
     </div>
 
+    <h3 class="section-subtitle">Рекомендуемые действия</h3>
+    {% if recommendations %}
+    <ul class="course-list admin-course-list">
+        {% for recommendation in recommendations %}
+        <li class="course-card admin-course-card">
+            <div class="admin-course-body">
+                <header class="admin-course-header">
+                    <h4 class="course-card-title">{{ recommendation.title }}</h4>
+                    {% if recommendation.priority == "high" %}
+                    <span class="dashboard-status-badge dashboard-status-badge--in_progress">Высокий приоритет</span>
+                    {% elif recommendation.priority == "medium" %}
+                    <span class="dashboard-status-badge dashboard-status-badge--not_started">Средний приоритет</span>
+                    {% else %}
+                    <span class="dashboard-status-badge dashboard-status-badge--completed">Низкий приоритет</span>
+                    {% endif %}
+                </header>
+                <p class="page-meta">{{ recommendation.description }}</p>
+                <div class="dashboard-metrics">
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Сотрудников</span>
+                        <span class="dashboard-metric-value">{{ recommendation.affected_employees_count }}</span>
+                    </div>
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="page-meta">Сейчас нет действий, требующих внимания по доступным данным.</p>
+    {% endif %}
+
     <h3 class="section-subtitle">Сильные стороны и зоны развития команды</h3>
 
     <h4 class="section-subtitle">Сильные стороны по тестам</h4>

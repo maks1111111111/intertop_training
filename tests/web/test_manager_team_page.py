@@ -21,6 +21,7 @@ from app.web.manager_employee_analytics_service import (
     EmployeeQuizTopicClassification,
 )
 from app.web.manager_team_analytics_service import (
+    ManagerActionRecommendation,
     ManagerTeamAnalytics,
     ManagerTeamMemberAnalytics,
     ManagerTeamOverview,
@@ -469,6 +470,47 @@ class FakeTeamAnalyticsService:
             reviewed_practical_attempts_count=4,
         )
 
+    def _populated_recommendations(self) -> tuple[ManagerActionRecommendation, ...]:
+        return (
+            ManagerActionRecommendation(
+                code="quiz_attention",
+                priority="high",
+                title="Повторить обучение по непройденным тестам",
+                description=(
+                    "У части сотрудников последние попытки по курсам не пройдены. "
+                    "Проверьте результаты и назначьте повторное обучение."
+                ),
+                affected_employees_count=1,
+            ),
+            ManagerActionRecommendation(
+                code="quiz_topic:vozvraty",
+                priority="high",
+                title="Повторить тему: Возвраты",
+                description=(
+                    "Точность команды по теме — 37.5% "
+                    "на основе 8 ответов от 2 сотрудников."
+                ),
+                affected_employees_count=2,
+            ),
+            ManagerActionRecommendation(
+                code="practical_pending",
+                priority="medium",
+                title="Проверить ожидающие практические задания",
+                description=(
+                    "Есть практические задания, которые ожидают проверки "
+                    "или завершения review-процесса."
+                ),
+                affected_employees_count=1,
+            ),
+            ManagerActionRecommendation(
+                code="learning_not_started",
+                priority="low",
+                title="Подключить сотрудников, которые ещё не начали обучение",
+                description="Часть сотрудников пока не начала ни одного курса.",
+                affected_employees_count=1,
+            ),
+        )
+
     @staticmethod
     def _default_member_practical_analytics() -> EmployeePracticalTaskAnalytics:
         return EmployeePracticalTaskAnalytics(
@@ -512,6 +554,7 @@ class FakeTeamAnalyticsService:
                     reviewed_practical_attempts_count=0,
                 ),
                 members=(),
+                recommendations=(),
             )
         member = self._default_member()
         quiz_analytics = self._resolve_member_quiz_analytics()
@@ -525,6 +568,7 @@ class FakeTeamAnalyticsService:
                     practical_task_analytics=practical_task_analytics,
                 ),
             ),
+            recommendations=self._populated_recommendations(),
         )
 
     def get_team_analytics(self, company_id: str) -> ManagerTeamAnalytics:
@@ -645,6 +689,26 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Выполняли практические задания", response.text)
         self.assertIn("72.5%", response.text)
         self.assertIn("Есть результаты", response.text)
+        self.assertIn("Рекомендуемые действия", response.text)
+        self.assertIn("Повторить обучение по непройденным тестам", response.text)
+        self.assertIn("Повторить тему: Возвраты", response.text)
+        self.assertIn("Высокий приоритет", response.text)
+        self.assertIn("Средний приоритет", response.text)
+        self.assertIn("Низкий приоритет", response.text)
+        self.assertIn("Сотрудников", response.text)
+
+    def test_manager_team_page_renders_empty_recommendations_message(self) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._empty = True
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Рекомендуемые действия", response.text)
+        self.assertIn(
+            "Сейчас нет действий, требующих внимания по доступным данным.",
+            response.text,
+        )
 
     def test_manager_team_page_renders_empty_team_analytics(self) -> None:
         self._set_identity("manager")

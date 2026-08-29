@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -70,9 +71,20 @@ class ManagerTeamMemberAnalytics:
 
 
 @dataclass(frozen=True)
+class ManagerActionRecommendation:
+    code: str
+    priority: str
+    title: str
+    description: str
+    affected_employees_count: int
+    target_url: Optional[str] = None
+
+
+@dataclass(frozen=True)
 class ManagerTeamOverview:
     analytics: ManagerTeamAnalytics
     members: tuple[ManagerTeamMemberAnalytics, ...]
+    recommendations: tuple[ManagerActionRecommendation, ...]
 
 
 class ManagerTeamAnalyticsService:
@@ -93,6 +105,7 @@ class ManagerTeamAnalyticsService:
             return ManagerTeamOverview(
                 analytics=_empty_team_analytics(),
                 members=(),
+                recommendations=(),
             )
 
         member_rows: list[ManagerTeamMemberAnalytics] = []
@@ -149,9 +162,11 @@ class ManagerTeamAnalyticsService:
             practical_analytics_by_member,
             practical_evidence_by_member,
         )
+        recommendations = _build_team_recommendations(analytics)
         return ManagerTeamOverview(
             analytics=analytics,
             members=tuple(member_rows),
+            recommendations=recommendations,
         )
 
     def get_team_analytics(self, company_id: str) -> ManagerTeamAnalytics:
@@ -446,6 +461,150 @@ def _merge_employee_practical_signals(
         employee_ids = aggregated[signal_key]["employee_ids"]
         assert isinstance(employee_ids, set)
         employee_ids.add(user_id)
+
+
+def _recommendation_priority_rank(priority: str) -> int:
+    return {"high": 0, "medium": 1, "low": 2}[priority]
+
+
+def _safe_recommendation_code_fragment(text: str, *, fallback: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.casefold().strip())
+    slug = slug.strip("-")
+    return slug or fallback
+
+
+def _build_team_recommendations(
+    analytics: ManagerTeamAnalytics,
+) -> tuple[ManagerActionRecommendation, ...]:
+    recommendations: list[ManagerActionRecommendation] = []
+    seen_codes: set[str] = set()
+
+    def add_recommendation(recommendation: ManagerActionRecommendation) -> None:
+        if recommendation.code in seen_codes:
+            return
+        seen_codes.add(recommendation.code)
+        recommendations.append(recommendation)
+
+    if analytics.members_requiring_attention_count > 0:
+        add_recommendation(
+            ManagerActionRecommendation(
+                code="quiz_attention",
+                priority="high",
+                title="Повторить обучение по непройденным тестам",
+                description=(
+                    "У части сотрудников последние попытки по курсам не пройдены. "
+                    "Проверьте результаты и назначьте повторное обучение."
+                ),
+                affected_employees_count=analytics.members_requiring_attention_count,
+            )
+        )
+
+    if analytics.members_with_failed_practical_tasks_count > 0:
+        add_recommendation(
+            ManagerActionRecommendation(
+                code="practical_attention",
+                priority="high",
+                title="Разобрать непринятые практические задания",
+                description=(
+                    "У части сотрудников есть непринятые практические задания. "
+                    "Рекомендуется разобрать ошибки и повторить практику."
+                ),
+                affected_employees_count=(
+                    analytics.members_with_failed_practical_tasks_count
+                ),
+            )
+        )
+
+    if analytics.members_with_pending_practical_tasks_count > 0:
+        add_recommendation(
+            ManagerActionRecommendation(
+                code="practical_pending",
+                priority="medium",
+                title="Проверить ожидающие практические задания",
+                description=(
+                    "Есть практические задания, которые ожидают проверки "
+                    "или завершения review-процесса."
+                ),
+                affected_employees_count=(
+                    analytics.members_with_pending_practical_tasks_count
+                ),
+            )
+        )
+
+    if analytics.members_without_quiz_data_count > 0:
+        add_recommendation(
+            ManagerActionRecommendation(
+                code="quiz_no_data",
+                priority="medium",
+                title="Получить данные по знаниям сотрудников",
+                description=(
+                    "Часть сотрудников ещё не проходила тестирование. "
+                    "Без результатов сложно определить уровень знаний и зоны развития."
+                ),
+                affected_employees_count=analytics.members_without_quiz_data_count,
+            )
+        )
+
+    for index, topic in enumerate(analytics.development_topics):
+        topic_slug = _safe_recommendation_code_fragment(
+            topic.tag,
+            fallback=f"topic-{index + 1}",
+        )
+        add_recommendation(
+            ManagerActionRecommendation(
+                code=f"quiz_topic:{topic_slug}",
+                priority="high" if topic.accuracy_percent < 50.0 else "medium",
+                title=f"Повторить тему: {topic.tag}",
+                description=(
+                    f"Точность команды по теме — {topic.accuracy_percent}% "
+                    f"на основе {topic.answers_count} ответов "
+                    f"от {topic.employees_count} сотрудников."
+                ),
+                affected_employees_count=topic.employees_count,
+            )
+        )
+
+    for index, signal in enumerate(analytics.practical_development_areas):
+        signal_slug = _safe_recommendation_code_fragment(
+            signal.text,
+            fallback=f"signal-{index + 1}",
+        )
+        add_recommendation(
+            ManagerActionRecommendation(
+                code=f"practical_signal:{signal_slug}",
+                priority="medium",
+                title=f"Усилить практический навык: {signal.text}",
+                description=(
+                    f"Сигнал повторяется у {signal.employees_count} сотрудников "
+                    f"и встречается в {signal.evidence_count} проверенных заданиях."
+                ),
+                affected_employees_count=signal.employees_count,
+            )
+        )
+
+    not_started_count = analytics.members_count - analytics.started_members_count
+    if not_started_count > 0:
+        add_recommendation(
+            ManagerActionRecommendation(
+                code="learning_not_started",
+                priority="low",
+                title="Подключить сотрудников, которые ещё не начали обучение",
+                description="Часть сотрудников пока не начала ни одного курса.",
+                affected_employees_count=not_started_count,
+            )
+        )
+
+    return tuple(
+        sorted(
+            recommendations,
+            key=lambda recommendation: (
+                _recommendation_priority_rank(recommendation.priority),
+                -recommendation.affected_employees_count,
+                recommendation.code.casefold(),
+                recommendation.code,
+            ),
+        )
+    )
 
 
 def _qualifying_team_practical_signals(
