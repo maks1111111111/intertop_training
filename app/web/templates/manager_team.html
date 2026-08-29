@@ -95,7 +95,40 @@
         </div>
     </div>
 
-    <h3 class="section-subtitle">Зоны развития команды</h3>
+    <h3 class="section-subtitle">Сильные стороны и зоны развития команды</h3>
+
+    <h4 class="section-subtitle">Сильные стороны по тестам</h4>
+    {% if team_analytics.strengths_topics %}
+    <ul class="course-list admin-course-list">
+        {% for topic in team_analytics.strengths_topics %}
+        <li class="course-card admin-course-card">
+            <div class="admin-course-body">
+                <header class="admin-course-header">
+                    <h4 class="course-card-title">{{ topic.tag }}</h4>
+                </header>
+                <div class="dashboard-metrics">
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Точность</span>
+                        <span class="dashboard-metric-value">{{ topic.accuracy_percent }}%</span>
+                    </div>
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Ответов</span>
+                        <span class="dashboard-metric-value">{{ topic.answers_count }}</span>
+                    </div>
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Сотрудников</span>
+                        <span class="dashboard-metric-value">{{ topic.employees_count }}</span>
+                    </div>
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="page-meta">Пока недостаточно данных для определения сильных сторон команды по тестам</p>
+    {% endif %}
+
+    <h4 class="section-subtitle">Зоны развития по тестам</h4>
     {% if team_analytics.development_topics %}
     <ul class="course-list admin-course-list">
         {% for topic in team_analytics.development_topics %}
@@ -123,7 +156,63 @@
         {% endfor %}
     </ul>
     {% else %}
-    <p class="page-meta">Пока недостаточно данных для определения зон развития команды</p>
+    <p class="page-meta">Пока недостаточно данных для определения зон развития команды по тестам</p>
+    {% endif %}
+
+    <h4 class="section-subtitle">По практическим заданиям</h4>
+    {% if team_analytics.practical_strengths or team_analytics.practical_development_areas %}
+    {% if team_analytics.practical_strengths %}
+    <h5 class="section-subtitle">Повторяющиеся сильные стороны команды</h5>
+    <ul class="course-list admin-course-list">
+        {% for signal in team_analytics.practical_strengths %}
+        <li class="course-card admin-course-card">
+            <div class="admin-course-body">
+                <header class="admin-course-header">
+                    <h4 class="course-card-title">{{ signal.text }}</h4>
+                </header>
+                <div class="dashboard-metrics">
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Наблюдений</span>
+                        <span class="dashboard-metric-value">{{ signal.evidence_count }}</span>
+                    </div>
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Сотрудников</span>
+                        <span class="dashboard-metric-value">{{ signal.employees_count }}</span>
+                    </div>
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    {% if team_analytics.practical_development_areas %}
+    <h5 class="section-subtitle">Повторяющиеся зоны развития команды</h5>
+    <ul class="course-list admin-course-list">
+        {% for signal in team_analytics.practical_development_areas %}
+        <li class="course-card admin-course-card">
+            <div class="admin-course-body">
+                <header class="admin-course-header">
+                    <h4 class="course-card-title">{{ signal.text }}</h4>
+                </header>
+                <div class="dashboard-metrics">
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Наблюдений</span>
+                        <span class="dashboard-metric-value">{{ signal.evidence_count }}</span>
+                    </div>
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Сотрудников</span>
+                        <span class="dashboard-metric-value">{{ signal.employees_count }}</span>
+                    </div>
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    {% elif team_analytics.reviewed_practical_attempts_count > 0 %}
+    <p class="page-meta">Проверенные практические задания есть, но устойчивые общекомандные сигналы пока не сформировались.</p>
+    {% else %}
+    <p class="page-meta">Пока недостаточно данных по практическим заданиям для командных выводов.</p>
     {% endif %}
 </section>
 

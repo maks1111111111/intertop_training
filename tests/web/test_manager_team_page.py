@@ -24,6 +24,7 @@ from app.web.manager_team_analytics_service import (
     ManagerTeamAnalytics,
     ManagerTeamMemberAnalytics,
     ManagerTeamOverview,
+    ManagerTeamPracticalSignal,
     ManagerTeamTopicAnalytics,
 )
 from app.web.manager_team_service import ManagerTeamMember
@@ -424,6 +425,15 @@ class FakeTeamAnalyticsService:
             members_requiring_attention_count=1,
             members_without_quiz_data_count=1,
             average_quiz_score_percent=78.5,
+            strengths_topics=(
+                ManagerTeamTopicAnalytics(
+                    tag="Работа с клиентом",
+                    answers_count=10,
+                    correct_answers_count=9,
+                    accuracy_percent=90.0,
+                    employees_count=2,
+                ),
+            ),
             development_topics=(
                 ManagerTeamTopicAnalytics(
                     tag="Возвраты",
@@ -442,6 +452,21 @@ class FakeTeamAnalyticsService:
             practical_failed_attempts_count=2,
             practical_pending_attempts_count=1,
             average_practical_score_percent=72.5,
+            practical_strengths=(
+                ManagerTeamPracticalSignal(
+                    text="Чёткая структура ответа",
+                    evidence_count=4,
+                    employees_count=2,
+                ),
+            ),
+            practical_development_areas=(
+                ManagerTeamPracticalSignal(
+                    text="Добавить больше деталей",
+                    evidence_count=5,
+                    employees_count=2,
+                ),
+            ),
+            reviewed_practical_attempts_count=4,
         )
 
     @staticmethod
@@ -471,6 +496,7 @@ class FakeTeamAnalyticsService:
                     members_requiring_attention_count=0,
                     members_without_quiz_data_count=0,
                     average_quiz_score_percent=None,
+                    strengths_topics=(),
                     development_topics=(),
                     members_with_practical_attempts_count=0,
                     members_with_pending_practical_tasks_count=0,
@@ -481,6 +507,9 @@ class FakeTeamAnalyticsService:
                     practical_failed_attempts_count=0,
                     practical_pending_attempts_count=0,
                     average_practical_score_percent=None,
+                    practical_strengths=(),
+                    practical_development_areas=(),
+                    reviewed_practical_attempts_count=0,
                 ),
                 members=(),
             )
@@ -595,9 +624,20 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("66.67%", response.text)
         self.assertIn("78.5%", response.text)
         self.assertIn("Требуют внимания", response.text)
-        self.assertIn("Зоны развития команды", response.text)
+        self.assertIn("Сильные стороны и зоны развития команды", response.text)
+        self.assertIn("Сильные стороны по тестам", response.text)
+        self.assertIn("Зоны развития по тестам", response.text)
+        self.assertIn("Работа с клиентом", response.text)
+        self.assertIn("90.0%", response.text)
         self.assertIn("Возвраты", response.text)
         self.assertIn("37.5%", response.text)
+        self.assertIn("По практическим заданиям", response.text)
+        self.assertIn("Повторяющиеся сильные стороны команды", response.text)
+        self.assertIn("Повторяющиеся зоны развития команды", response.text)
+        self.assertIn("Чёткая структура ответа", response.text)
+        self.assertIn("Добавить больше деталей", response.text)
+        self.assertIn("Наблюдений", response.text)
+        self.assertIn("Сотрудников", response.text)
         self.assertIn("Протестировано курсов", response.text)
         self.assertIn("75.0%", response.text)
         self.assertIn("Требует внимания", response.text)
@@ -616,7 +656,15 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Аналитика команды", response.text)
         self.assertIn("—", response.text)
         self.assertIn(
-            "Пока недостаточно данных для определения зон развития команды",
+            "Пока недостаточно данных для определения сильных сторон команды по тестам",
+            response.text,
+        )
+        self.assertIn(
+            "Пока недостаточно данных для определения зон развития команды по тестам",
+            response.text,
+        )
+        self.assertIn(
+            "Пока недостаточно данных по практическим заданиям для командных выводов.",
             response.text,
         )
         self.assertIn("—", response.text)

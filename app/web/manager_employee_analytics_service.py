@@ -81,6 +81,19 @@ class EmployeePracticalSignal:
 
 
 @dataclass(frozen=True)
+class EmployeePracticalSignalEvidence:
+    text: str
+    evidence_count: int
+
+
+@dataclass(frozen=True)
+class EmployeePracticalSignalEvidenceSet:
+    strengths: tuple[EmployeePracticalSignalEvidence, ...]
+    development_areas: tuple[EmployeePracticalSignalEvidence, ...]
+    reviewed_attempts_count: int
+
+
+@dataclass(frozen=True)
 class EmployeeDevelopmentProfile:
     quiz_strengths: tuple[EmployeeQuizTopicAnalytics, ...]
     quiz_development_areas: tuple[EmployeeQuizTopicAnalytics, ...]
@@ -329,31 +342,47 @@ class ManagerEmployeeAnalyticsService:
             recent_attempts=recent_attempts,
         )
 
-    def get_development_profile(self, user_id: int) -> EmployeeDevelopmentProfile:
+    def get_practical_signal_evidence(
+        self,
+        user_id: int,
+    ) -> EmployeePracticalSignalEvidenceSet:
         normalized_user_id = _validate_user_id(user_id)
-        topic_classification = self.get_quiz_topic_classification(normalized_user_id)
         feedback_rows = (
             self._practical_task_attempt_repository.get_reviewed_feedback_for_user(
                 self._db_path,
                 normalized_user_id,
             )
         )
-        reviewed_practical_attempts_count = len(feedback_rows)
+
+        return EmployeePracticalSignalEvidenceSet(
+            strengths=_collect_practical_signal_evidence(feedback_rows, "strengths"),
+            development_areas=_collect_practical_signal_evidence(
+                feedback_rows,
+                "improvements",
+            ),
+            reviewed_attempts_count=len(feedback_rows),
+        )
+
+    def get_development_profile(self, user_id: int) -> EmployeeDevelopmentProfile:
+        normalized_user_id = _validate_user_id(user_id)
+        topic_classification = self.get_quiz_topic_classification(normalized_user_id)
+        signal_evidence = self.get_practical_signal_evidence(normalized_user_id)
 
         return EmployeeDevelopmentProfile(
             quiz_strengths=topic_classification.strengths,
             quiz_development_areas=topic_classification.development_areas,
-            practical_strengths=_aggregate_practical_signals(
-                feedback_rows,
-                "strengths",
+            practical_strengths=_filter_recurring_practical_signals(
+                signal_evidence.strengths,
             ),
-            practical_development_areas=_aggregate_practical_signals(
-                feedback_rows,
-                "improvements",
+            practical_development_areas=_filter_recurring_practical_signals(
+                signal_evidence.development_areas,
             ),
-            reviewed_practical_attempts_count=reviewed_practical_attempts_count,
+            reviewed_practical_attempts_count=(
+                signal_evidence.reviewed_attempts_count
+            ),
             has_sufficient_practical_evidence=(
-                reviewed_practical_attempts_count >= MIN_PRACTICAL_SIGNAL_OCCURRENCES
+                signal_evidence.reviewed_attempts_count
+                >= MIN_PRACTICAL_SIGNAL_OCCURRENCES
             ),
         )
 
@@ -367,10 +396,10 @@ def _normalize_practical_signal(text: object) -> Optional[str]:
     return normalized
 
 
-def _aggregate_practical_signals(
+def _collect_practical_signal_evidence(
     feedback_rows,
     field: str,
-) -> tuple[EmployeePracticalSignal, ...]:
+) -> tuple[EmployeePracticalSignalEvidence, ...]:
     evidence: dict[str, dict[str, object]] = {}
 
     for row in feedback_rows:
@@ -389,24 +418,34 @@ def _aggregate_practical_signals(
                 evidence[signal_key] = {"display": normalized, "count": 0}
             evidence[signal_key]["count"] = int(evidence[signal_key]["count"]) + 1
 
-    qualifying = [
-        EmployeePracticalSignal(
-            text=str(info["display"]),
-            evidence_count=int(info["count"]),
-        )
-        for info in evidence.values()
-        if int(info["count"]) >= MIN_PRACTICAL_SIGNAL_OCCURRENCES
-    ]
-
     return tuple(
         sorted(
-            qualifying,
+            (
+                EmployeePracticalSignalEvidence(
+                    text=str(info["display"]),
+                    evidence_count=int(info["count"]),
+                )
+                for info in evidence.values()
+            ),
             key=lambda signal: (
                 -signal.evidence_count,
                 signal.text.casefold(),
                 signal.text,
             ),
         )
+    )
+
+
+def _filter_recurring_practical_signals(
+    evidence: tuple[EmployeePracticalSignalEvidence, ...],
+) -> tuple[EmployeePracticalSignal, ...]:
+    return tuple(
+        EmployeePracticalSignal(
+            text=signal.text,
+            evidence_count=signal.evidence_count,
+        )
+        for signal in evidence
+        if signal.evidence_count >= MIN_PRACTICAL_SIGNAL_OCCURRENCES
     )
 
 

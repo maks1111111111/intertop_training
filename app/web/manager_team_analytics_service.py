@@ -7,14 +7,17 @@ from typing import Optional
 
 from app.web.manager_employee_analytics_service import (
     EmployeePracticalTaskAnalytics,
+    EmployeePracticalSignalEvidenceSet,
     EmployeeQuizAnalytics,
     EmployeeQuizTopicsAnalytics,
     ManagerEmployeeAnalyticsService,
+    STRONG_TOPIC_ACCURACY_PERCENT,
 )
 from app.web.manager_team_service import ManagerTeamMember, ManagerTeamService
 
 DEVELOPMENT_TOPIC_ACCURACY_PERCENT = 70.0
 MIN_TEAM_TOPIC_ANSWERS = 3
+MIN_TEAM_PRACTICAL_SIGNAL_EMPLOYEES = 2
 
 
 @dataclass(frozen=True)
@@ -23,6 +26,13 @@ class ManagerTeamTopicAnalytics:
     answers_count: int
     correct_answers_count: int
     accuracy_percent: float
+    employees_count: int
+
+
+@dataclass(frozen=True)
+class ManagerTeamPracticalSignal:
+    text: str
+    evidence_count: int
     employees_count: int
 
 
@@ -36,6 +46,7 @@ class ManagerTeamAnalytics:
     members_requiring_attention_count: int
     members_without_quiz_data_count: int
     average_quiz_score_percent: Optional[float]
+    strengths_topics: tuple[ManagerTeamTopicAnalytics, ...]
     development_topics: tuple[ManagerTeamTopicAnalytics, ...]
     members_with_practical_attempts_count: int
     members_with_pending_practical_tasks_count: int
@@ -46,6 +57,9 @@ class ManagerTeamAnalytics:
     practical_failed_attempts_count: int
     practical_pending_attempts_count: int
     average_practical_score_percent: Optional[float]
+    practical_strengths: tuple[ManagerTeamPracticalSignal, ...]
+    practical_development_areas: tuple[ManagerTeamPracticalSignal, ...]
+    reviewed_practical_attempts_count: int
 
 
 @dataclass(frozen=True)
@@ -89,6 +103,9 @@ class ManagerTeamAnalyticsService:
         practical_analytics_by_member: list[
             tuple[ManagerTeamMember, EmployeePracticalTaskAnalytics]
         ] = []
+        practical_evidence_by_member: list[
+            tuple[ManagerTeamMember, EmployeePracticalSignalEvidenceSet]
+        ] = []
 
         for member in members:
             quiz_analytics = self._employee_analytics_service.get_quiz_analytics(
@@ -104,6 +121,11 @@ class ManagerTeamAnalyticsService:
                     member.user_id
                 )
             )
+            practical_signal_evidence = (
+                self._employee_analytics_service.get_practical_signal_evidence(
+                    member.user_id
+                )
+            )
             member_rows.append(
                 ManagerTeamMemberAnalytics(
                     member=member,
@@ -116,12 +138,16 @@ class ManagerTeamAnalyticsService:
             practical_analytics_by_member.append(
                 (member, practical_task_analytics)
             )
+            practical_evidence_by_member.append(
+                (member, practical_signal_evidence)
+            )
 
         analytics = _build_team_analytics(
             members,
             quiz_analytics_by_member,
             topics_analytics_by_member,
             practical_analytics_by_member,
+            practical_evidence_by_member,
         )
         return ManagerTeamOverview(
             analytics=analytics,
@@ -142,6 +168,7 @@ def _empty_team_analytics() -> ManagerTeamAnalytics:
         members_requiring_attention_count=0,
         members_without_quiz_data_count=0,
         average_quiz_score_percent=None,
+        strengths_topics=(),
         development_topics=(),
         members_with_practical_attempts_count=0,
         members_with_pending_practical_tasks_count=0,
@@ -152,6 +179,9 @@ def _empty_team_analytics() -> ManagerTeamAnalytics:
         practical_failed_attempts_count=0,
         practical_pending_attempts_count=0,
         average_practical_score_percent=None,
+        practical_strengths=(),
+        practical_development_areas=(),
+        reviewed_practical_attempts_count=0,
     )
 
 
@@ -163,6 +193,9 @@ def _build_team_analytics(
     ],
     practical_analytics_by_member: list[
         tuple[ManagerTeamMember, EmployeePracticalTaskAnalytics]
+    ],
+    practical_evidence_by_member: list[
+        tuple[ManagerTeamMember, EmployeePracticalSignalEvidenceSet]
     ],
 ) -> ManagerTeamAnalytics:
     members_count = len(members)
@@ -265,6 +298,31 @@ def _build_team_analytics(
         else None
     )
 
+    reviewed_practical_attempts_count = sum(
+        evidence.reviewed_attempts_count
+        for _member, evidence in practical_evidence_by_member
+    )
+
+    strengths_topics = tuple(
+        _build_team_topic_analytics(
+            tag,
+            stats,
+            len(tag_employee_ids[tag]),
+        )
+        for tag, stats in sorted(
+            tag_stats.items(),
+            key=lambda item: (
+                -_team_topic_accuracy_percent(item[1]),
+                -item[1]["answers_count"],
+                -len(tag_employee_ids[item[0]]),
+                item[0].casefold(),
+                item[0],
+            ),
+        )
+        if stats["answers_count"] >= MIN_TEAM_TOPIC_ANSWERS
+        and _team_topic_accuracy_percent(stats) >= STRONG_TOPIC_ACCURACY_PERCENT
+    )
+
     development_topics = tuple(
         _build_team_topic_analytics(
             tag,
@@ -285,6 +343,10 @@ def _build_team_analytics(
         and _team_topic_accuracy_percent(stats) < DEVELOPMENT_TOPIC_ACCURACY_PERCENT
     )
 
+    practical_strengths, practical_development_areas = (
+        _aggregate_team_practical_signals(practical_evidence_by_member)
+    )
+
     return ManagerTeamAnalytics(
         members_count=members_count,
         started_members_count=started_members_count,
@@ -294,6 +356,7 @@ def _build_team_analytics(
         members_requiring_attention_count=members_requiring_attention_count,
         members_without_quiz_data_count=members_without_quiz_data_count,
         average_quiz_score_percent=average_quiz_score_percent,
+        strengths_topics=strengths_topics,
         development_topics=development_topics,
         members_with_practical_attempts_count=members_with_practical_attempts_count,
         members_with_pending_practical_tasks_count=(
@@ -308,6 +371,9 @@ def _build_team_analytics(
         practical_failed_attempts_count=practical_failed_attempts_count,
         practical_pending_attempts_count=practical_pending_attempts_count,
         average_practical_score_percent=average_practical_score_percent,
+        practical_strengths=practical_strengths,
+        practical_development_areas=practical_development_areas,
+        reviewed_practical_attempts_count=reviewed_practical_attempts_count,
     )
 
 
@@ -329,4 +395,80 @@ def _build_team_topic_analytics(
         correct_answers_count=stats["correct_answers_count"],
         accuracy_percent=_team_topic_accuracy_percent(stats),
         employees_count=employees_count,
+    )
+
+
+def _aggregate_team_practical_signals(
+    practical_evidence_by_member: list[
+        tuple[ManagerTeamMember, EmployeePracticalSignalEvidenceSet]
+    ],
+) -> tuple[
+    tuple[ManagerTeamPracticalSignal, ...],
+    tuple[ManagerTeamPracticalSignal, ...],
+]:
+    strength_stats: dict[str, dict[str, object]] = {}
+    development_stats: dict[str, dict[str, object]] = {}
+
+    for member, evidence in practical_evidence_by_member:
+        _merge_employee_practical_signals(
+            strength_stats,
+            evidence.strengths,
+            member.user_id,
+        )
+        _merge_employee_practical_signals(
+            development_stats,
+            evidence.development_areas,
+            member.user_id,
+        )
+
+    return (
+        _qualifying_team_practical_signals(strength_stats),
+        _qualifying_team_practical_signals(development_stats),
+    )
+
+
+def _merge_employee_practical_signals(
+    aggregated: dict[str, dict[str, object]],
+    signals,
+    user_id: int,
+) -> None:
+    for signal in signals:
+        signal_key = signal.text.casefold()
+        if signal_key not in aggregated:
+            aggregated[signal_key] = {
+                "display": signal.text,
+                "evidence_count": 0,
+                "employee_ids": set(),
+            }
+        aggregated[signal_key]["evidence_count"] = (
+            int(aggregated[signal_key]["evidence_count"]) + signal.evidence_count
+        )
+        employee_ids = aggregated[signal_key]["employee_ids"]
+        assert isinstance(employee_ids, set)
+        employee_ids.add(user_id)
+
+
+def _qualifying_team_practical_signals(
+    aggregated: dict[str, dict[str, object]],
+) -> tuple[ManagerTeamPracticalSignal, ...]:
+    qualifying = [
+        ManagerTeamPracticalSignal(
+            text=str(info["display"]),
+            evidence_count=int(info["evidence_count"]),
+            employees_count=len(info["employee_ids"]),
+        )
+        for info in aggregated.values()
+        if len(info["employee_ids"]) >= MIN_TEAM_PRACTICAL_SIGNAL_EMPLOYEES
+    ]
+
+    return tuple(
+        sorted(
+            qualifying,
+            key=lambda signal: (
+                -signal.employees_count,
+                -signal.evidence_count,
+                signal.text.casefold(),
+                signal.text,
+            ),
+        )
     )

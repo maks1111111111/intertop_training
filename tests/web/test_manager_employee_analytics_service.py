@@ -1516,5 +1516,130 @@ class ManagerEmployeeDevelopmentProfileTests(unittest.TestCase):
         self.assertEqual(MIN_PRACTICAL_SIGNAL_OCCURRENCES, 2)
 
 
+class ManagerEmployeePracticalSignalEvidenceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.db_path = Path("/tmp/training.db")
+        self.practical_repository = FakePracticalTaskAttemptRepository()
+        self.service = ManagerEmployeeAnalyticsService(
+            TopicAnalyticsFakeRuntime(()),
+            TopicAnalyticsFakeQuizRepository({}),
+            self.db_path,
+            self.practical_repository,
+        )
+
+    def test_returns_single_occurrence_signals_without_filtering(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(id=1, strengths=("Single signal",)),
+        ]
+
+        result = self.service.get_practical_signal_evidence(42)
+
+        self.assertEqual(len(result.strengths), 1)
+        self.assertEqual(result.strengths[0].text, "Single signal")
+        self.assertEqual(result.strengths[0].evidence_count, 1)
+
+    def test_duplicate_signal_inside_same_attempt_counts_once(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(
+                id=1,
+                strengths=("Clear communication", "clear communication"),
+            ),
+        ]
+
+        result = self.service.get_practical_signal_evidence(42)
+
+        self.assertEqual(len(result.strengths), 1)
+        self.assertEqual(result.strengths[0].evidence_count, 1)
+
+    def test_same_normalized_signal_across_attempts_increments_evidence(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(id=1, improvements=("Add detail",)),
+            FakeReviewFeedback(id=2, improvements=("Add detail",)),
+            FakeReviewFeedback(id=3, improvements=("Add detail",)),
+        ]
+
+        result = self.service.get_practical_signal_evidence(42)
+
+        self.assertEqual(len(result.development_areas), 1)
+        self.assertEqual(result.development_areas[0].evidence_count, 3)
+
+    def test_case_and_whitespace_variants_merge(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(id=1, strengths=("  Clear   communication ",)),
+            FakeReviewFeedback(id=2, strengths=("clear communication",)),
+        ]
+
+        result = self.service.get_practical_signal_evidence(42)
+
+        self.assertEqual(len(result.strengths), 1)
+        self.assertEqual(result.strengths[0].text, "Clear communication")
+        self.assertEqual(result.strengths[0].evidence_count, 2)
+
+    def test_empty_values_are_ignored(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(id=1, strengths=("   ", 123, "Valid signal")),
+        ]
+
+        result = self.service.get_practical_signal_evidence(42)
+
+        self.assertEqual(len(result.strengths), 1)
+        self.assertEqual(result.strengths[0].text, "Valid signal")
+
+    def test_invalid_user_id_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            self.service.get_practical_signal_evidence(0)
+
+    def test_repository_called_with_canonical_user_id(self) -> None:
+        self.service.get_practical_signal_evidence(42)
+
+        self.assertEqual(
+            self.practical_repository.reviewed_feedback_calls,
+            [(self.db_path, 42)],
+        )
+
+    def test_reviewed_attempts_count_reflects_all_feedback_rows(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(id=1),
+            FakeReviewFeedback(id=2),
+        ]
+
+        result = self.service.get_practical_signal_evidence(42)
+
+        self.assertEqual(result.reviewed_attempts_count, 2)
+
+    def test_strengths_and_development_areas_are_separate(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(
+                id=1,
+                strengths=("Strength signal",),
+                improvements=("Improvement signal",),
+            ),
+        ]
+
+        result = self.service.get_practical_signal_evidence(42)
+
+        self.assertEqual([signal.text for signal in result.strengths], ["Strength signal"])
+        self.assertEqual(
+            [signal.text for signal in result.development_areas],
+            ["Improvement signal"],
+        )
+
+    def test_development_profile_reuses_evidence_api(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(id=1, strengths=("Recurring signal",)),
+            FakeReviewFeedback(id=2, strengths=("Recurring signal",)),
+        ]
+
+        evidence = self.service.get_practical_signal_evidence(42)
+        profile = self.service.get_development_profile(42)
+
+        self.assertEqual(len(profile.practical_strengths), 1)
+        self.assertEqual(profile.practical_strengths[0].text, "Recurring signal")
+        self.assertEqual(
+            profile.practical_strengths[0].evidence_count,
+            evidence.strengths[0].evidence_count,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
