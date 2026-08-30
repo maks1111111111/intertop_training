@@ -60,6 +60,36 @@ class CanonicalUserProgressRepositoryTests(unittest.TestCase):
                 sort_order=index,
             )
 
+        self.beta_course_id = course_repository.save(
+            self.db_path,
+            slug="beta",
+            title="Beta",
+            cover_path=None,
+            sort_order=1,
+        )
+
+    def _enrollment_row(self, course_slug: str) -> dict:
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    enrollments.status,
+                    enrollments.progress_percent,
+                    enrollments.assigned_at,
+                    enrollments.started_at,
+                    enrollments.completed_at
+                FROM enrollments
+                JOIN courses
+                    ON courses.id = enrollments.course_id
+                WHERE enrollments.user_id = ?
+                  AND courses.slug = ?
+                """,
+                (self.user_id, course_slug),
+            ).fetchone()
+
+        self.assertIsNotNone(row)
+        return dict(row)
+
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
@@ -234,6 +264,251 @@ class CanonicalUserProgressRepositoryTests(unittest.TestCase):
                         invalid,  # type: ignore[arg-type]
                         "alpha",
                     )
+
+    def test_assign_course_creates_assigned_enrollment(self) -> None:
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+            )
+        )
+
+        enrollment = self._enrollment_row("alpha")
+        self.assertEqual(enrollment["status"], "assigned")
+        self.assertEqual(enrollment["progress_percent"], 0)
+        self.assertIsNone(enrollment["started_at"])
+        self.assertIsNone(enrollment["completed_at"])
+
+        assigned = self.repository.get_assigned_courses_for_user(
+            self.db_path,
+            self.user_id,
+        )
+        self.assertEqual(len(assigned), 1)
+        self.assertEqual(assigned[0][0], "alpha")
+        self.assertEqual(assigned[0][1], "Alpha")
+        self.assertEqual(assigned[0][2], enrollment["assigned_at"])
+
+    def test_assign_course_unknown_user_returns_false(self) -> None:
+        self.assertFalse(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                999999,
+                "alpha",
+            )
+        )
+
+        with get_connection(self.db_path) as connection:
+            count = connection.execute(
+                "SELECT COUNT(*) FROM enrollments"
+            ).fetchone()[0]
+
+        self.assertEqual(count, 0)
+
+    def test_assign_course_unknown_course_returns_false(self) -> None:
+        self.assertFalse(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "missing-course",
+            )
+        )
+
+        with get_connection(self.db_path) as connection:
+            count = connection.execute(
+                "SELECT COUNT(*) FROM enrollments WHERE user_id = ?",
+                (self.user_id,),
+            ).fetchone()[0]
+
+        self.assertEqual(count, 0)
+
+    def test_repeated_assignment_is_idempotent(self) -> None:
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+            )
+        )
+        first_assigned_at = self._enrollment_row("alpha")["assigned_at"]
+
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+            )
+        )
+
+        with get_connection(self.db_path) as connection:
+            count = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM enrollments
+                WHERE user_id = ?
+                """,
+                (self.user_id,),
+            ).fetchone()[0]
+
+        enrollment = self._enrollment_row("alpha")
+        self.assertEqual(count, 1)
+        self.assertEqual(enrollment["status"], "assigned")
+        self.assertEqual(enrollment["assigned_at"], first_assigned_at)
+
+    def test_assign_does_not_downgrade_in_progress_course(self) -> None:
+        self.repository.start_course_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+        self.repository.complete_lesson_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+            "lesson_01",
+        )
+        before = self._enrollment_row("alpha")
+
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+            )
+        )
+
+        after = self._enrollment_row("alpha")
+        self.assertEqual(after["status"], "in_progress")
+        self.assertEqual(after["progress_percent"], before["progress_percent"])
+        self.assertEqual(after["started_at"], before["started_at"])
+
+    def test_assign_does_not_downgrade_completed_course(self) -> None:
+        self.repository.start_course_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+        self.repository.complete_course_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+        before = self._enrollment_row("alpha")
+
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+            )
+        )
+
+        after = self._enrollment_row("alpha")
+        self.assertEqual(after["status"], "completed")
+        self.assertEqual(after["progress_percent"], before["progress_percent"])
+        self.assertEqual(after["started_at"], before["started_at"])
+        self.assertEqual(after["completed_at"], before["completed_at"])
+
+    def test_start_course_after_assignment_preserves_assigned_at(self) -> None:
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+            )
+        )
+        assigned_at = self._enrollment_row("alpha")["assigned_at"]
+
+        self.repository.start_course_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+
+        enrollment = self._enrollment_row("alpha")
+        self.assertEqual(enrollment["status"], "in_progress")
+        self.assertEqual(enrollment["assigned_at"], assigned_at)
+        self.assertIsNotNone(enrollment["started_at"])
+        self.assertEqual(
+            self.repository.get_assigned_courses_for_user(
+                self.db_path,
+                self.user_id,
+            ),
+            [],
+        )
+
+    def test_get_assigned_courses_excludes_in_progress_and_completed(self) -> None:
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+            )
+        )
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "beta",
+            )
+        )
+
+        self.repository.start_course_for_user(
+            self.db_path,
+            self.user_id,
+            "beta",
+        )
+        self.repository.start_course_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+        self.repository.complete_course_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+
+        assigned = self.repository.get_assigned_courses_for_user(
+            self.db_path,
+            self.user_id,
+        )
+        self.assertEqual(assigned, [])
+
+    def test_assign_course_invalid_user_id_rejected(self) -> None:
+        for invalid in (0, -1, True, "1"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    self.repository.assign_course_to_user(
+                        self.db_path,
+                        invalid,  # type: ignore[arg-type]
+                        "alpha",
+                    )
+
+    def test_get_assigned_courses_invalid_user_id_rejected(self) -> None:
+        for invalid in (0, -1, True, "1"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    self.repository.get_assigned_courses_for_user(
+                        self.db_path,
+                        invalid,  # type: ignore[arg-type]
+                    )
+
+    def test_password_only_user_can_be_assigned_course(self) -> None:
+        with get_connection(self.db_path) as connection:
+            telegram_id = connection.execute(
+                "SELECT telegram_id FROM users WHERE id = ?",
+                (self.user_id,),
+            ).fetchone()["telegram_id"]
+
+        self.assertIsNone(telegram_id)
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+            )
+        )
 
     def test_canonical_progress_does_not_require_telegram_id(self) -> None:
         with get_connection(self.db_path) as connection:

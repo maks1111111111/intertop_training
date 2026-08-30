@@ -243,6 +243,103 @@ class ProgressRepository:
                 int(row["progress_percent"]),
             )
 
+    def assign_course_to_user(
+        self,
+        db_path: Path,
+        user_id: int,
+        course_slug: str,
+    ) -> bool:
+        """Assign a course to a canonical user without starting it."""
+        normalized_user_id = _validate_user_id(user_id)
+
+        with get_connection(db_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO enrollments (
+                    user_id,
+                    course_id,
+                    status,
+                    progress_percent,
+                    started_at,
+                    completed_at
+                )
+                SELECT
+                    ?,
+                    courses.id,
+                    'assigned',
+                    0,
+                    NULL,
+                    NULL
+                FROM courses
+                WHERE courses.slug = ?
+                  AND EXISTS (
+                      SELECT 1
+                      FROM users
+                      WHERE users.id = ?
+                  )
+                ON CONFLICT(user_id, course_id) DO NOTHING
+                """,
+                (
+                    normalized_user_id,
+                    course_slug,
+                    normalized_user_id,
+                ),
+            )
+
+            row = connection.execute(
+                """
+                SELECT 1
+                FROM enrollments
+                JOIN courses
+                    ON courses.id = enrollments.course_id
+                WHERE enrollments.user_id = ?
+                  AND courses.slug = ?
+                """,
+                (
+                    normalized_user_id,
+                    course_slug,
+                ),
+            ).fetchone()
+
+        return row is not None
+
+    def get_assigned_courses_for_user(
+        self,
+        db_path: Path,
+        user_id: int,
+    ) -> list[Tuple[str, str, str]]:
+        """Return courses explicitly assigned and not yet started."""
+        normalized_user_id = _validate_user_id(user_id)
+
+        with get_connection(db_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    courses.slug,
+                    courses.title,
+                    enrollments.assigned_at
+                FROM enrollments
+                JOIN courses
+                    ON courses.id = enrollments.course_id
+                WHERE enrollments.user_id = ?
+                  AND enrollments.status = 'assigned'
+                ORDER BY
+                    enrollments.assigned_at ASC,
+                    courses.id ASC,
+                    courses.title ASC
+                """,
+                (normalized_user_id,),
+            ).fetchall()
+
+        return [
+            (
+                str(row["slug"]),
+                str(row["title"]),
+                str(row["assigned_at"]),
+            )
+            for row in rows
+        ]
+
     def start_course_for_user(
         self,
         db_path: Path,
