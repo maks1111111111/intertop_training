@@ -14,6 +14,19 @@ from app.web.manager_course_assignment_service import (
 from app.web.manager_team_service import ManagerTeamMember
 
 
+def _course_with_lessons(
+    slug: str,
+    title: str,
+    *,
+    lesson_count: int = 1,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        slug=slug,
+        title=title,
+        lessons=[SimpleNamespace()] * lesson_count,
+    )
+
+
 class FakeTeamService:
     """Small fake for tenant-scoped member lookup."""
 
@@ -105,9 +118,9 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
     ]:
         if courses is None:
             courses = {
-                "retail-basics": SimpleNamespace(
-                    slug="retail-basics",
-                    title="Retail Basics",
+                "retail-basics": _course_with_lessons(
+                    "retail-basics",
+                    "Retail Basics",
                 ),
             }
 
@@ -170,6 +183,47 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
         self.assertEqual(team_service.calls, [("intertop", 42)])
         self.assertEqual(runtime.calls, ["missing-course"])
         self.assertEqual(progress_repository.assign_calls, [])
+
+    def test_empty_course_returns_course_not_assignable_without_repository(
+        self,
+    ) -> None:
+        service, team_service, progress_repository, runtime = self._service(
+            courses={
+                "empty-course": _course_with_lessons(
+                    "empty-course",
+                    "Empty Course",
+                    lesson_count=0,
+                ),
+            },
+        )
+
+        result = service.assign_course("intertop", 42, "empty-course")
+
+        self.assertFalse(result.success)
+        self.assertEqual(result.code, "course_not_assignable")
+        self.assertEqual(result.message, "Курс пока нельзя назначить: в нём нет уроков.")
+        self.assertEqual(team_service.calls, [("intertop", 42)])
+        self.assertEqual(runtime.calls, ["empty-course"])
+        self.assertEqual(progress_repository.assign_calls, [])
+
+    def test_course_with_lessons_still_assigns_successfully(self) -> None:
+        service, team_service, progress_repository, runtime = self._service(
+            courses={
+                "with-lessons": _course_with_lessons(
+                    "with-lessons",
+                    "Course With Lessons",
+                ),
+            },
+        )
+
+        result = service.assign_course("intertop", 42, "with-lessons")
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.code, "assigned")
+        self.assertEqual(
+            progress_repository.assign_calls,
+            [(self.db_path, 42, "with-lessons")],
+        )
 
     def test_repository_failure_returns_assignment_failed(self) -> None:
         service, team_service, progress_repository, runtime = self._service(

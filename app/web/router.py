@@ -414,6 +414,7 @@ def get_manager_course_assignment_service(
 _ASSIGNMENT_MESSAGES = {
     "assigned": "Курс назначен сотруднику.",
     "course_not_found": "Курс не найден или недоступен.",
+    "course_not_assignable": "Курс пока нельзя назначить: в нём нет уроков.",
     "assignment_failed": "Не удалось назначить курс.",
 }
 
@@ -429,11 +430,21 @@ def _assignment_feedback(code: Optional[str]) -> tuple[str, bool]:
 
 def _assignable_courses(
     courses: tuple,
+    runtime: ContentRuntime,
 ) -> tuple:
     """Return dashboard courses that can be newly assigned."""
-    return tuple(
-        course for course in courses if course.status == "not_started"
-    )
+    assignable = []
+    for course in courses:
+        if course.status != "not_started":
+            continue
+
+        runtime_course = runtime.get_course(course.slug)
+        if runtime_course is None or len(runtime_course.lessons) == 0:
+            continue
+
+        assignable.append(course)
+
+    return tuple(assignable)
 
 
 def get_admin_service(
@@ -881,6 +892,7 @@ def manager_team_member_page(
     analytics_service: ManagerEmployeeAnalyticsService = Depends(
         get_manager_employee_analytics_service
     ),
+    runtime: ContentRuntime = Depends(get_content_runtime),
     identity: WebIdentity = Depends(require_web_management_identity),
 ) -> HTMLResponse:
     """Render one tenant-scoped employee learning profile."""
@@ -908,7 +920,7 @@ def manager_team_member_page(
             "member": member,
             "courses": courses,
             "courses_count": len(courses),
-            "assignable_courses": _assignable_courses(courses),
+            "assignable_courses": _assignable_courses(courses, runtime),
             "assignment_message": assignment_message,
             "assignment_is_error": assignment_is_error,
             "quiz_analytics": quiz_analytics,

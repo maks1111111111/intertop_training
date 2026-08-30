@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
 
 from fastapi import Request
@@ -38,6 +39,7 @@ from app.web.manager_team_analytics_service import (
 )
 from app.web.manager_team_service import ManagerTeamMember
 from app.web.router import (
+    get_content_runtime,
     get_current_web_identity,
     get_dashboard_service,
     get_manager_course_assignment_service,
@@ -672,6 +674,23 @@ class FakeTeamAnalyticsService:
 
 
 
+class FakeContentRuntimeForAssignment:
+    """Return published courses with configurable lesson counts."""
+
+    def __init__(self, lesson_counts: dict[str, int]) -> None:
+        self.lesson_counts = lesson_counts
+
+    def get_course(self, slug: str) -> Optional[SimpleNamespace]:
+        if slug not in self.lesson_counts:
+            return None
+
+        lesson_count = self.lesson_counts[slug]
+        return SimpleNamespace(
+            slug=slug,
+            lessons=[SimpleNamespace()] * lesson_count,
+        )
+
+
 class FakeDashboardService:
     def __init__(self) -> None:
         self.calls: list[int] = []
@@ -703,6 +722,17 @@ class FakeDashboardService:
                 last_quiz_score=None,
                 last_lesson_title="",
                 continue_url="/courses/beta",
+            ),
+            CourseDashboardItem(
+                slug="empty-course",
+                title="Empty Course",
+                description="",
+                status="not_started",
+                progress_percent=0,
+                best_quiz_score=None,
+                last_quiz_score=None,
+                last_lesson_title="",
+                continue_url="/courses/empty-course",
             ),
             CourseDashboardItem(
                 slug="gamma",
@@ -758,6 +788,14 @@ class FakeManagerCourseAssignmentService:
                 user_id=user_id,
                 course_slug=normalized_slug,
             )
+        if normalized_slug == "empty-course":
+            return ManagerCourseAssignmentResult(
+                success=False,
+                code="course_not_assignable",
+                message="Курс пока нельзя назначить: в нём нет уроков.",
+                user_id=user_id,
+                course_slug=normalized_slug,
+            )
         if self._result_code == "assignment_failed":
             return ManagerCourseAssignmentResult(
                 success=False,
@@ -806,6 +844,15 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.analytics_service = FakeAnalyticsService()
         self.team_analytics_service = FakeTeamAnalyticsService()
         self.assignment_service = FakeManagerCourseAssignmentService()
+        self.content_runtime = FakeContentRuntimeForAssignment(
+            {
+                "alpha": 1,
+                "beta": 1,
+                "gamma": 1,
+                "delta": 1,
+                "empty-course": 0,
+            }
+        )
         self.app.dependency_overrides[get_manager_team_service] = lambda: self.team_service
         self.app.dependency_overrides[get_dashboard_service] = lambda: self.dashboard_service
         self.app.dependency_overrides[get_manager_employee_analytics_service] = (
@@ -817,6 +864,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.app.dependency_overrides[get_manager_course_assignment_service] = (
             lambda: self.assignment_service
         )
+        self.app.dependency_overrides[get_content_runtime] = lambda: self.content_runtime
 
     def tearDown(self) -> None:
         self.app.dependency_overrides.clear()
@@ -1079,6 +1127,20 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertNotIn('value="alpha"', response.text)
         self.assertNotIn('value="gamma"', response.text)
         self.assertNotIn('value="delta"', response.text)
+        self.assertNotIn('value="empty-course"', response.text)
+        self.assertIn('value="beta"', response.text)
+
+    def test_team_member_page_excludes_empty_course_from_assignment_dropdown(
+        self,
+    ) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Empty Course", response.text)
+        self.assertNotIn('value="empty-course"', response.text)
+        self.assertIn('value="beta"', response.text)
 
     def test_team_member_page_renders_assignment_success_message(self) -> None:
         self._set_identity("manager")
@@ -1100,6 +1162,19 @@ class ManagerTeamPageTests(unittest.TestCase):
 
         self.assertIn("Курс не найден или недоступен.", course_not_found.text)
         self.assertIn("Не удалось назначить курс.", assignment_failed.text)
+
+    def test_team_member_page_renders_course_not_assignable_message(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get(
+            "/manager/team/2?assignment=course_not_assignable",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "Курс пока нельзя назначить: в нём нет уроков.",
+            response.text,
+        )
 
     def test_team_member_page_ignores_unknown_assignment_query(self) -> None:
         self._set_identity("manager")
@@ -1201,6 +1276,21 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(
             response.headers["location"],
             "/manager/team/2?assignment=assignment_failed",
+        )
+
+    def test_assign_course_not_assignable_redirects(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={"course_slug": "empty-course"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            response.headers["location"],
+            "/manager/team/2?assignment=course_not_assignable",
         )
 
     def test_assign_course_member_not_found_returns_404(self) -> None:

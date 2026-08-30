@@ -70,6 +70,15 @@ class ManagerCourseAssignmentService:
                 course_slug=normalized_course_slug,
             )
 
+        if len(course.lessons) == 0:
+            return ManagerCourseAssignmentResult(
+                success=False,
+                code="course_not_assignable",
+                message="Курс пока нельзя назначить: в нём нет уроков.",
+                user_id=normalized_user_id,
+                course_slug=course.slug,
+            )
+
         assigned = self._progress_repository.assign_course_to_user(
             self._db_path,
             member.user_id,
