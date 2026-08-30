@@ -41,6 +41,26 @@
                 <p class="page-meta">{{ member.username }}</p>
                 {% endif %}
                 <p class="page-meta">{{ member.reason }}</p>
+                {% if member.development_actions %}
+                <div class="dashboard-metrics">
+                    <p class="page-meta"><strong>Что можно сделать</strong></p>
+                    {% for action in member.development_actions %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">{{ action.title }}</span>
+                        <span class="dashboard-metric-value">{{ action.description }}</span>
+                        <p class="page-meta">
+                            <a href="{{ action.url }}">
+                                {% if action.kind == "practical_task" %}
+                                Открыть урок
+                                {% else %}
+                                Открыть курс
+                                {% endif %}
+                            </a>
+                        </p>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
                 <p class="page-meta">
                     <a href="{{ member.profile_url }}">Открыть профиль</a>
                 </p>

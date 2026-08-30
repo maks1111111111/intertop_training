@@ -6,9 +6,11 @@ import unittest
 from typing import Optional
 
 from app.web.manager_employee_analytics_service import (
+    EmployeeCourseQuizAnalytics,
     EmployeePracticalSignalEvidence,
     EmployeePracticalSignalEvidenceSet,
     EmployeePracticalTaskAnalytics,
+    EmployeePracticalTaskAttemptAnalytics,
     EmployeeQuizAnalytics,
     EmployeeQuizTopicAnalytics,
     EmployeeQuizTopicsAnalytics,
@@ -53,6 +55,7 @@ def _quiz_analytics(
     attempts: int = 0,
     average: Optional[float] = None,
     latest_failed: int = 0,
+    courses=(),
 ) -> EmployeeQuizAnalytics:
     return EmployeeQuizAnalytics(
         total_attempts_count=attempts,
@@ -61,7 +64,7 @@ def _quiz_analytics(
         latest_failed_courses_count=latest_failed,
         best_score_percent=average,
         average_score_percent=average,
-        courses=(),
+        courses=courses,
     )
 
 
@@ -84,6 +87,7 @@ def _practical_analytics(
     pending: int = 0,
     scorable: int = 0,
     average: Optional[float] = None,
+    recent_attempts=(),
 ) -> EmployeePracticalTaskAnalytics:
     return EmployeePracticalTaskAnalytics(
         total_attempts_count=total,
@@ -94,7 +98,7 @@ def _practical_analytics(
         scorable_attempts_count=scorable,
         average_score_percent=average,
         best_score_percent=average,
-        recent_attempts=(),
+        recent_attempts=recent_attempts,
     )
 
 
@@ -1603,6 +1607,8 @@ class ManagerTeamRecommendationDetailTests(unittest.TestCase):
         reasons = {member.user_id: member.reason for member in detail.members}
         self.assertIn("У сотрудника есть ответы по теме «Возвраты»", reasons[1])
         self.assertNotIn("плохо знает", reasons[1].casefold())
+        for member in detail.members:
+            self.assertEqual(member.development_actions, ())
 
     def test_practical_signal_reason_does_not_claim_stable_weakness(self) -> None:
         members = (_member(1), _member(2))
@@ -1634,6 +1640,145 @@ class ManagerTeamRecommendationDetailTests(unittest.TestCase):
                 member.reason,
             )
             self.assertNotIn("устойчив", member.reason.casefold())
+            self.assertEqual(member.development_actions, ())
+
+    def test_quiz_attention_development_action_for_failed_course_only(self) -> None:
+        members = (_member(10),)
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            quiz_by_user={
+                10: _quiz_analytics(
+                    attempts=2,
+                    latest_failed=1,
+                    courses=(
+                        EmployeeCourseQuizAnalytics(
+                            slug="alpha",
+                            title="Alpha Course",
+                            attempts_count=2,
+                            best_score_percent=90.0,
+                            average_score_percent=80.0,
+                            latest_score_percent=55.0,
+                            latest_passed=False,
+                            ever_passed=False,
+                        ),
+                        EmployeeCourseQuizAnalytics(
+                            slug="beta",
+                            title="Beta Course",
+                            attempts_count=1,
+                            best_score_percent=95.0,
+                            average_score_percent=95.0,
+                            latest_score_percent=95.0,
+                            latest_passed=True,
+                            ever_passed=True,
+                        ),
+                    ),
+                ),
+            },
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        detail = service.get_recommendation_detail("company-a", "quiz_attention")
+
+        assert detail is not None
+        self.assertEqual(len(detail.members), 1)
+        actions = detail.members[0].development_actions
+        self.assertEqual(len(actions), 1)
+        self.assertEqual(actions[0].kind, "course")
+        self.assertEqual(actions[0].title, "Alpha Course")
+        self.assertIn("55.0%", actions[0].description)
+        self.assertIn("не пройден", actions[0].description.casefold())
+        self.assertEqual(actions[0].url, "/courses/alpha")
+
+    def test_practical_attention_development_action_for_failed_recent_attempt(self) -> None:
+        members = (_member(10),)
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            practical_by_user={
+                10: _practical_analytics(
+                    total=2,
+                    reviewed=2,
+                    failed=1,
+                    passed=1,
+                    scorable=2,
+                    recent_attempts=(
+                        EmployeePracticalTaskAttemptAnalytics(
+                            attempt_id=1,
+                            course_slug="alpha",
+                            course_title="Alpha Course",
+                            lesson_slug="lesson-01",
+                            lesson_title="Lesson 1",
+                            task_title="Handle complaint",
+                            status="reviewed",
+                            score=2,
+                            max_score=5,
+                            score_percent=40.0,
+                            passed=False,
+                            feedback_summary="Needs work",
+                            strengths=(),
+                            improvements=("Add detail",),
+                            started_at="2026-01-01T10:00:00",
+                            reviewed_at="2026-01-01T10:05:00",
+                        ),
+                        EmployeePracticalTaskAttemptAnalytics(
+                            attempt_id=2,
+                            course_slug="beta",
+                            course_title="Beta Course",
+                            lesson_slug="lesson-02",
+                            lesson_title="Lesson 2",
+                            task_title="Inspect area",
+                            status="reviewed",
+                            score=5,
+                            max_score=5,
+                            score_percent=100.0,
+                            passed=True,
+                            feedback_summary="Good",
+                            strengths=("Clear answer",),
+                            improvements=(),
+                            started_at="2026-01-02T10:00:00",
+                            reviewed_at="2026-01-02T10:05:00",
+                        ),
+                    ),
+                ),
+            },
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        detail = service.get_recommendation_detail("company-a", "practical_attention")
+
+        assert detail is not None
+        self.assertEqual(len(detail.members), 1)
+        actions = detail.members[0].development_actions
+        self.assertEqual(len(actions), 1)
+        self.assertEqual(actions[0].kind, "practical_task")
+        self.assertEqual(actions[0].title, "Handle complaint")
+        self.assertIn("Alpha Course", actions[0].description)
+        self.assertIn("Lesson 1", actions[0].description)
+        self.assertIn("40.0%", actions[0].description)
+        self.assertIn("не принято", actions[0].description.casefold())
+        self.assertEqual(
+            actions[0].url,
+            "/courses/alpha/lessons/lesson-01",
+        )
+
+    def test_other_recommendation_types_do_not_get_development_actions(self) -> None:
+        members = (_member(10),)
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            quiz_by_user={10: _quiz_analytics(attempts=0)},
+            practical_by_user={10: _practical_analytics(pending=1)},
+        )
+        service = ManagerTeamAnalyticsService(team_service, employee_service)
+
+        overview = service.get_team_overview("company-a")
+        for recommendation in overview.recommendations:
+            if recommendation.code in {"quiz_no_data", "practical_pending"}:
+                detail = service.get_recommendation_detail(
+                    "company-a",
+                    recommendation.code,
+                )
+                assert detail is not None
+                for member in detail.members:
+                    self.assertEqual(member.development_actions, ())
 
 
 if __name__ == "__main__":

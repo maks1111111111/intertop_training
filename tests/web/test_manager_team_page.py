@@ -28,6 +28,7 @@ from app.web.manager_team_analytics_service import (
     ManagerActionRecommendation,
     ManagerRecommendationAffectedMember,
     ManagerRecommendationDetail,
+    ManagerRecommendationDevelopmentAction,
     ManagerTeamAnalytics,
     ManagerTeamMemberAnalytics,
     ManagerTeamOverview,
@@ -516,6 +517,18 @@ class FakeTeamAnalyticsService:
                 target_url="/manager/team/recommendation?code=practical_pending",
             ),
             ManagerActionRecommendation(
+                code="practical_attention",
+                priority="high",
+                title="Разобрать непринятые практические задания",
+                description=(
+                    "У части сотрудников есть непринятые практические задания. "
+                    "Рекомендуется разобрать ошибки и повторить практику."
+                ),
+                affected_employees_count=1,
+                affected_user_ids=(2,),
+                target_url="/manager/team/recommendation?code=practical_attention",
+            ),
+            ManagerActionRecommendation(
                 code="learning_not_started",
                 priority="low",
                 title="Подключить сотрудников, которые ещё не начали обучение",
@@ -616,6 +629,31 @@ class FakeTeamAnalyticsService:
         if recommendation is None:
             return None
         member = self._default_member()
+        development_actions = ()
+        if recommendation.code == "quiz_attention":
+            development_actions = (
+                ManagerRecommendationDevelopmentAction(
+                    kind="course",
+                    title="Alpha Course",
+                    description=(
+                        "Последний результат теста — 55.0%. "
+                        "Тест не пройден, рекомендуется повторить обучение."
+                    ),
+                    url="/courses/alpha",
+                ),
+            )
+        elif recommendation.code == "practical_attention":
+            development_actions = (
+                ManagerRecommendationDevelopmentAction(
+                    kind="practical_task",
+                    title="Handle complaint",
+                    description=(
+                        "Alpha Course, Lesson 1. Результат — 40.0%. "
+                        "Задание не принято, рекомендуется повторить практику."
+                    ),
+                    url="/courses/alpha/lessons/lesson-01",
+                ),
+            )
         return ManagerRecommendationDetail(
             recommendation=recommendation,
             members=(
@@ -625,6 +663,7 @@ class FakeTeamAnalyticsService:
                     username=member.username,
                     reason="Последних непройденных курсов: 1.",
                     profile_url=f"/manager/team/{member.user_id}",
+                    development_actions=development_actions,
                 ),
             ),
         )
@@ -1066,9 +1105,31 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Высокий приоритет", response.text)
         self.assertIn("E2E Student", response.text)
         self.assertIn("Последних непройденных курсов: 1.", response.text)
+        self.assertIn("Что можно сделать", response.text)
+        self.assertIn("Alpha Course", response.text)
+        self.assertIn("55.0%", response.text)
+        self.assertIn("Тест не пройден", response.text)
+        self.assertIn("Открыть курс", response.text)
+        self.assertIn("/courses/alpha", response.text)
         self.assertIn("Открыть профиль", response.text)
         self.assertIn("/manager/team/2", response.text)
         self.assertEqual(self.team_analytics_service.detail_calls, [("intertop", "quiz_attention")])
+
+    def test_recommendation_detail_renders_practical_task_development_action(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get(
+            "/manager/team/recommendation",
+            params={"code": "practical_attention"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Что можно сделать", response.text)
+        self.assertIn("Handle complaint", response.text)
+        self.assertIn("40.0%", response.text)
+        self.assertIn("Задание не принято", response.text)
+        self.assertIn("Открыть урок", response.text)
+        self.assertIn("/courses/alpha/lessons/lesson-01", response.text)
 
     def test_admin_can_open_recommendation_detail_page(self) -> None:
         self._set_identity("admin")

@@ -85,12 +85,21 @@ class ManagerActionRecommendation:
 
 
 @dataclass(frozen=True)
+class ManagerRecommendationDevelopmentAction:
+    kind: str
+    title: str
+    description: str
+    url: str
+
+
+@dataclass(frozen=True)
 class ManagerRecommendationAffectedMember:
     user_id: int
     display_name: str
     username: Optional[str]
     reason: str
     profile_url: str
+    development_actions: tuple[ManagerRecommendationDevelopmentAction, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -230,6 +239,10 @@ class ManagerTeamAnalyticsService:
                         overview.analytics,
                     ),
                     profile_url=f"/manager/team/{user_id}",
+                    development_actions=_member_recommendation_development_actions(
+                        recommendation,
+                        row,
+                    ),
                 )
             )
 
@@ -623,6 +636,56 @@ def _member_practical_signal_evidence_count(
         if signal.text.casefold() == signal_key:
             return signal.evidence_count
     return 0
+
+
+def _member_recommendation_development_actions(
+    recommendation: ManagerActionRecommendation,
+    row: ManagerTeamMemberAnalytics,
+) -> tuple[ManagerRecommendationDevelopmentAction, ...]:
+    code = recommendation.code
+
+    if code == "quiz_attention":
+        actions: list[ManagerRecommendationDevelopmentAction] = []
+        for course in row.quiz_analytics.courses:
+            if course.latest_passed is False:
+                actions.append(
+                    ManagerRecommendationDevelopmentAction(
+                        kind="course",
+                        title=course.title,
+                        description=(
+                            f"Последний результат теста — {course.latest_score_percent}%. "
+                            "Тест не пройден, рекомендуется повторить обучение."
+                        ),
+                        url=f"/courses/{course.slug}",
+                    )
+                )
+        return tuple(actions)
+
+    if code == "practical_attention":
+        actions = []
+        for attempt in row.practical_task_analytics.recent_attempts:
+            if attempt.passed is False:
+                score_text = ""
+                if attempt.score_percent is not None:
+                    score_text = f"Результат — {attempt.score_percent}%. "
+                actions.append(
+                    ManagerRecommendationDevelopmentAction(
+                        kind="practical_task",
+                        title=attempt.task_title,
+                        description=(
+                            f"{attempt.course_title}, {attempt.lesson_title}. "
+                            f"{score_text}"
+                            "Задание не принято, рекомендуется повторить практику."
+                        ),
+                        url=(
+                            f"/courses/{attempt.course_slug}"
+                            f"/lessons/{attempt.lesson_slug}"
+                        ),
+                    )
+                )
+        return tuple(actions)
+
+    return ()
 
 
 def _member_recommendation_reason(
