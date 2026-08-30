@@ -131,6 +131,7 @@ from app.web.admin_knowledge_upload_service import (
     AdminKnowledgeUploadService,
 )
 from app.web.dashboard_service import DashboardService
+from app.web.manager_course_assignment_service import ManagerCourseAssignmentService
 from app.web.manager_employee_analytics_service import ManagerEmployeeAnalyticsService
 from app.web.manager_team_analytics_service import ManagerTeamAnalyticsService
 from app.web.manager_team_service import ManagerTeamService
@@ -393,6 +394,45 @@ def get_manager_team_analytics_service(
     return ManagerTeamAnalyticsService(
         team_service,
         employee_analytics_service,
+    )
+
+
+def get_manager_course_assignment_service(
+    team_service: ManagerTeamService = Depends(get_manager_team_service),
+    runtime: ContentRuntime = Depends(get_content_runtime),
+    db_path: Path = Depends(get_db_path),
+) -> ManagerCourseAssignmentService:
+    """Return the tenant-scoped manager course assignment service."""
+    return ManagerCourseAssignmentService(
+        team_service,
+        ProgressRepository(),
+        runtime,
+        db_path,
+    )
+
+
+_ASSIGNMENT_MESSAGES = {
+    "assigned": "Курс назначен сотруднику.",
+    "course_not_found": "Курс не найден или недоступен.",
+    "assignment_failed": "Не удалось назначить курс.",
+}
+
+
+def _assignment_feedback(code: Optional[str]) -> tuple[str, bool]:
+    """Return a safe assignment message and whether it is an error."""
+    if code is None or code not in _ASSIGNMENT_MESSAGES:
+        return "", False
+
+    message = _ASSIGNMENT_MESSAGES[code]
+    return message, code != "assigned"
+
+
+def _assignable_courses(
+    courses: tuple,
+) -> tuple:
+    """Return dashboard courses that can be newly assigned."""
+    return tuple(
+        course for course in courses if course.status == "not_started"
     )
 
 
@@ -857,6 +897,9 @@ def manager_team_member_page(
     practical_task_analytics = analytics_service.get_practical_task_analytics(
         member.user_id
     )
+    assignment_message, assignment_is_error = _assignment_feedback(
+        request.query_params.get("assignment"),
+    )
     return templates.TemplateResponse(
         request,
         "manager_team_member.html",
@@ -865,10 +908,51 @@ def manager_team_member_page(
             "member": member,
             "courses": courses,
             "courses_count": len(courses),
+            "assignable_courses": _assignable_courses(courses),
+            "assignment_message": assignment_message,
+            "assignment_is_error": assignment_is_error,
             "quiz_analytics": quiz_analytics,
             "development_profile": development_profile,
             "practical_task_analytics": practical_task_analytics,
         },
+    )
+
+
+@router.post(
+    "/manager/team/{user_id}/assign-course",
+    include_in_schema=False,
+)
+async def manager_team_member_assign_course(
+    request: Request,
+    user_id: int,
+    assignment_service: ManagerCourseAssignmentService = Depends(
+        get_manager_course_assignment_service
+    ),
+    identity: WebIdentity = Depends(require_web_management_identity),
+) -> RedirectResponse:
+    """Assign one published course to one tenant-scoped employee."""
+    form = await request.form()
+    course_slug = str(form.get("course_slug") or "")
+
+    try:
+        result = assignment_service.assign_course(
+            identity.company_id,
+            user_id,
+            course_slug,
+        )
+    except ValueError:
+        return RedirectResponse(
+            url=f"/manager/team/{user_id}?assignment=assignment_failed",
+            status_code=303,
+        )
+
+    if result.code == "member_not_found":
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    redirect_code = result.code if not result.success else "assigned"
+    return RedirectResponse(
+        url=f"/manager/team/{user_id}?assignment={redirect_code}",
+        status_code=303,
     )
 
 

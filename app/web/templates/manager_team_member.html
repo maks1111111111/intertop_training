@@ -34,6 +34,46 @@
     </div>
 </section>
 
+<section class="section">
+    <h2>Назначить курс</h2>
+
+    {% if assignment_message %}
+    {% if assignment_is_error %}
+    <div class="admin-form-error" role="alert">{{ assignment_message }}</div>
+    {% else %}
+    <p class="page-meta" role="status">{{ assignment_message }}</p>
+    {% endif %}
+    {% endif %}
+
+    {% if assignable_courses %}
+    <form
+        class="admin-create-form"
+        method="post"
+        action="/manager/team/{{ member.user_id }}/assign-course"
+        aria-label="Назначение курса сотруднику"
+    >
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="assign-course-slug">Курс</label>
+            <select
+                class="admin-form-select"
+                id="assign-course-slug"
+                name="course_slug"
+                required
+            >
+                {% for course in assignable_courses %}
+                <option value="{{ course.slug }}">{{ course.title }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="admin-form-actions">
+            <button class="button button-primary" type="submit">Назначить курс</button>
+        </div>
+    </form>
+    {% else %}
+    <p class="page-meta">Нет доступных курсов для назначения.</p>
+    {% endif %}
+</section>
+
 {% if courses %}
 <section class="section">
     <h2>Курсы</h2>
@@ -50,6 +90,8 @@
                         В процессе
                         {% elif course.status == "completed" %}
                         Завершён
+                        {% elif course.status == "assigned" %}
+                        Назначен
                         {% else %}
                         {{ course.status }}
                         {% endif %}

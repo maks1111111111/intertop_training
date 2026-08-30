@@ -11,6 +11,7 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 
 from app.web.dashboard_service import CourseDashboardItem
+from app.web.manager_course_assignment_service import ManagerCourseAssignmentResult
 from app.web.manager_employee_analytics_service import (
     EmployeeCourseQuizAnalytics,
     EmployeeDevelopmentProfile,
@@ -39,6 +40,7 @@ from app.web.manager_team_service import ManagerTeamMember
 from app.web.router import (
     get_current_web_identity,
     get_dashboard_service,
+    get_manager_course_assignment_service,
     get_manager_employee_analytics_service,
     get_manager_team_analytics_service,
     get_manager_team_service,
@@ -691,6 +693,85 @@ class FakeDashboardService:
                 last_lesson_title="Lesson 1",
                 continue_url="/courses/alpha",
             ),
+            CourseDashboardItem(
+                slug="beta",
+                title="Beta Course",
+                description="",
+                status="not_started",
+                progress_percent=0,
+                best_quiz_score=None,
+                last_quiz_score=None,
+                last_lesson_title="",
+                continue_url="/courses/beta",
+            ),
+            CourseDashboardItem(
+                slug="gamma",
+                title="Gamma Course",
+                description="",
+                status="assigned",
+                progress_percent=0,
+                best_quiz_score=None,
+                last_quiz_score=None,
+                last_lesson_title="",
+                continue_url="/courses/gamma",
+            ),
+            CourseDashboardItem(
+                slug="delta",
+                title="Delta Course",
+                description="",
+                status="completed",
+                progress_percent=100,
+                best_quiz_score=100.0,
+                last_quiz_score=100.0,
+                last_lesson_title="Lesson Final",
+                continue_url="/courses/delta",
+            ),
+        )
+
+
+class FakeManagerCourseAssignmentService:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int, str]] = []
+        self._result_code = "assigned"
+
+    def assign_course(
+        self,
+        company_id: str,
+        user_id: int,
+        course_slug: str,
+    ) -> ManagerCourseAssignmentResult:
+        self.calls.append((company_id, user_id, course_slug))
+        if user_id != 2:
+            return ManagerCourseAssignmentResult(
+                success=False,
+                code="member_not_found",
+                message="Сотрудник не найден в компании.",
+                user_id=user_id,
+                course_slug=course_slug.strip(),
+            )
+        normalized_slug = course_slug.strip()
+        if normalized_slug == "missing-course":
+            return ManagerCourseAssignmentResult(
+                success=False,
+                code="course_not_found",
+                message="Курс не найден или недоступен.",
+                user_id=user_id,
+                course_slug=normalized_slug,
+            )
+        if self._result_code == "assignment_failed":
+            return ManagerCourseAssignmentResult(
+                success=False,
+                code="assignment_failed",
+                message="Не удалось назначить курс.",
+                user_id=user_id,
+                course_slug=normalized_slug,
+            )
+        return ManagerCourseAssignmentResult(
+            success=True,
+            code="assigned",
+            message="Курс назначен сотруднику.",
+            user_id=user_id,
+            course_slug=normalized_slug,
         )
 
 
@@ -724,6 +805,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.dashboard_service = FakeDashboardService()
         self.analytics_service = FakeAnalyticsService()
         self.team_analytics_service = FakeTeamAnalyticsService()
+        self.assignment_service = FakeManagerCourseAssignmentService()
         self.app.dependency_overrides[get_manager_team_service] = lambda: self.team_service
         self.app.dependency_overrides[get_dashboard_service] = lambda: self.dashboard_service
         self.app.dependency_overrides[get_manager_employee_analytics_service] = (
@@ -731,6 +813,9 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
         self.app.dependency_overrides[get_manager_team_analytics_service] = (
             lambda: self.team_analytics_service
+        )
+        self.app.dependency_overrides[get_manager_course_assignment_service] = (
+            lambda: self.assignment_service
         )
 
     def tearDown(self) -> None:
@@ -988,6 +1073,147 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("75.0%", response.text)
         self.assertIn("Принято", response.text)
         self.assertIn("Не принято", response.text)
+        self.assertIn("Назначить курс", response.text)
+        self.assertIn("Beta Course", response.text)
+        self.assertIn("Назначен", response.text)
+        self.assertNotIn('value="alpha"', response.text)
+        self.assertNotIn('value="gamma"', response.text)
+        self.assertNotIn('value="delta"', response.text)
+
+    def test_team_member_page_renders_assignment_success_message(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2?assignment=assigned")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Курс назначен сотруднику.", response.text)
+
+    def test_team_member_page_renders_assignment_failure_messages(self) -> None:
+        self._set_identity("manager")
+
+        course_not_found = self.client.get(
+            "/manager/team/2?assignment=course_not_found",
+        )
+        assignment_failed = self.client.get(
+            "/manager/team/2?assignment=assignment_failed",
+        )
+
+        self.assertIn("Курс не найден или недоступен.", course_not_found.text)
+        self.assertIn("Не удалось назначить курс.", assignment_failed.text)
+
+    def test_team_member_page_ignores_unknown_assignment_query(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get(
+            "/manager/team/2?assignment=<script>alert(1)</script>",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("<script>alert(1)</script>", response.text)
+
+    def test_manager_can_assign_course(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={"course_slug": "alpha"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/manager/team/2?assignment=assigned")
+        self.assertEqual(
+            self.assignment_service.calls,
+            [("intertop", 2, "alpha")],
+        )
+
+    def test_admin_can_assign_course(self) -> None:
+        self._set_identity("admin")
+
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={"course_slug": "beta"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(self.assignment_service.calls, [("intertop", 2, "beta")])
+
+    def test_student_cannot_assign_course(self) -> None:
+        self._set_identity("student")
+
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={"course_slug": "alpha"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.assignment_service.calls, [])
+
+    def test_anonymous_cannot_assign_course(self) -> None:
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={"course_slug": "alpha"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.assignment_service.calls, [])
+
+    def test_assign_course_uses_identity_company_id(self) -> None:
+        self._set_identity("manager")
+
+        self.client.post(
+            "/manager/team/2/assign-course",
+            data={"course_slug": "beta"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(self.assignment_service.calls[0][0], "intertop")
+
+    def test_assign_course_course_not_found_redirects(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={"course_slug": "missing-course"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            response.headers["location"],
+            "/manager/team/2?assignment=course_not_found",
+        )
+
+    def test_assign_course_assignment_failed_redirects(self) -> None:
+        self._set_identity("manager")
+        self.assignment_service._result_code = "assignment_failed"
+
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={"course_slug": "beta"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            response.headers["location"],
+            "/manager/team/2?assignment=assignment_failed",
+        )
+
+    def test_assign_course_member_not_found_returns_404(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.post(
+            "/manager/team/99/assign-course",
+            data={"course_slug": "beta"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.assignment_service.calls, [("intertop", 99, "beta")])
 
     def test_team_member_page_renders_empty_practical_task_analytics(self) -> None:
         self._set_identity("manager")
