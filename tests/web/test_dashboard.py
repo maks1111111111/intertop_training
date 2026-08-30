@@ -345,6 +345,99 @@ class DashboardPageIntegrationTests(unittest.TestCase):
         self.assertIn('href="/courses/alpha/lessons/lesson_03"', html)
         self.assertIn("Продолжить", html)
 
+    def test_assigned_course_renders_assigned_badge_and_start_cta(self) -> None:
+        _write_multi_lesson_course(self.courses_dir, "alpha")
+        self.app.state.content_runtime = ContentRuntime(self.courses_dir)
+        _prepare_dashboard_db(self.app, self.courses_dir)
+
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                "SELECT id FROM users WHERE telegram_id = ?",
+                (WEB_DASHBOARD_TELEGRAM_ID,),
+            ).fetchone()
+        assert row is not None
+        user_id = int(row["id"])
+
+        assigned = self.progress_repository.assign_course_to_user(
+            self.db_path,
+            user_id,
+            "alpha",
+        )
+        self.assertTrue(assigned)
+
+        response = self.client.get("/dashboard")
+        html = response.text
+
+        self.assertIn("Назначен", html)
+        self.assertIn("0%", html)
+        self.assertIn("Начать курс", html)
+        self.assertIn('href="/courses/alpha"', html)
+        self.assertNotIn('href="/courses/alpha/lessons/', html)
+
+    def test_assigned_course_does_not_show_raw_status_label(self) -> None:
+        _write_multi_lesson_course(self.courses_dir, "alpha")
+        self.app.state.content_runtime = ContentRuntime(self.courses_dir)
+        _prepare_dashboard_db(self.app, self.courses_dir)
+
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                "SELECT id FROM users WHERE telegram_id = ?",
+                (WEB_DASHBOARD_TELEGRAM_ID,),
+            ).fetchone()
+        assert row is not None
+        user_id = int(row["id"])
+
+        self.progress_repository.assign_course_to_user(
+            self.db_path,
+            user_id,
+            "alpha",
+        )
+
+        response = self.client.get("/dashboard")
+        html = response.text
+
+        badge_start = html.find("dashboard-status-badge")
+        self.assertNotEqual(badge_start, -1)
+        badge_section = html[badge_start : badge_start + 200]
+        self.assertIn("Назначен", badge_section)
+        self.assertNotIn(">assigned<", badge_section)
+
+    def test_starting_assigned_course_updates_dashboard_display(self) -> None:
+        _write_multi_lesson_course(self.courses_dir, "alpha")
+        self.app.state.content_runtime = ContentRuntime(self.courses_dir)
+        _prepare_dashboard_db(self.app, self.courses_dir)
+
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                "SELECT id FROM users WHERE telegram_id = ?",
+                (WEB_DASHBOARD_TELEGRAM_ID,),
+            ).fetchone()
+        assert row is not None
+        user_id = int(row["id"])
+
+        self.progress_repository.assign_course_to_user(
+            self.db_path,
+            user_id,
+            "alpha",
+        )
+
+        assigned_response = self.client.get("/dashboard")
+        self.assertIn("Назначен", assigned_response.text)
+        self.assertIn("Начать курс", assigned_response.text)
+
+        self.progress_repository.start_course_for_user(
+            self.db_path,
+            user_id,
+            "alpha",
+        )
+
+        started_response = self.client.get("/dashboard")
+        html = started_response.text
+
+        self.assertIn("В процессе", html)
+        self.assertIn("Продолжить", html)
+        self.assertIn('href="/courses/alpha/lessons/lesson_01"', html)
+
 
 if __name__ == "__main__":
     unittest.main()

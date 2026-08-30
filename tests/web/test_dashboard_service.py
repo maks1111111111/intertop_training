@@ -423,6 +423,53 @@ class DashboardServiceIntegrationTests(unittest.TestCase):
         self.assertEqual(item.last_lesson_title, "Third lesson")
         self.assertEqual(item.continue_url, "/courses/alpha/lessons/lesson_03")
 
+    def test_assigned_course_surfaces_with_course_detail_continue_url(self) -> None:
+        _write_multi_lesson_course(self.courses_dir, "alpha")
+        service, db_path, progress_repository = self._make_service()
+        user_id = self._canonical_user_id(db_path)
+
+        assigned = progress_repository.assign_course_to_user(
+            db_path,
+            user_id,
+            "alpha",
+        )
+        self.assertTrue(assigned)
+
+        item = service.get_courses_for_user(user_id)[0]
+
+        self.assertEqual(item.status, "assigned")
+        self.assertEqual(item.progress_percent, 0)
+        self.assertEqual(item.continue_url, "/courses/alpha")
+        self.assertEqual(item.last_lesson_title, "")
+
+    def test_assigned_course_does_not_use_lesson_resume_url(self) -> None:
+        _write_multi_lesson_course(self.courses_dir, "alpha")
+        service, db_path, progress_repository = self._make_service()
+        user_id = self._canonical_user_id(db_path)
+
+        progress_repository.assign_course_to_user(db_path, user_id, "alpha")
+
+        item = service.get_courses_for_user(user_id)[0]
+
+        self.assertEqual(item.continue_url, "/courses/alpha")
+        self.assertNotIn("/lessons/", item.continue_url)
+
+    def test_starting_assigned_course_transitions_to_in_progress_resume(self) -> None:
+        _write_multi_lesson_course(self.courses_dir, "alpha")
+        service, db_path, progress_repository = self._make_service()
+        user_id = self._canonical_user_id(db_path)
+
+        progress_repository.assign_course_to_user(db_path, user_id, "alpha")
+        assigned = service.get_courses_for_user(user_id)[0]
+        self.assertEqual(assigned.status, "assigned")
+        self.assertEqual(assigned.continue_url, "/courses/alpha")
+
+        progress_repository.start_course_for_user(db_path, user_id, "alpha")
+        started = service.get_courses_for_user(user_id)[0]
+
+        self.assertEqual(started.status, "in_progress")
+        self.assertEqual(started.continue_url, "/courses/alpha/lessons/lesson_01")
+
 
 if __name__ == "__main__":
     unittest.main()

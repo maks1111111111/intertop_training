@@ -16,6 +16,7 @@ from app.repositories.progress_repository import ProgressRepository
 from app.content.runtime_loader import Course
 
 DEFAULT_STATUS = "not_started"
+ASSIGNED_STATUS = "assigned"
 
 
 @dataclass(frozen=True)
@@ -122,7 +123,7 @@ def _continue_url(
     resume_lesson_index: int,
 ) -> str:
     """Return the dashboard continue link for one course."""
-    if status == DEFAULT_STATUS:
+    if status in (DEFAULT_STATUS, ASSIGNED_STATUS):
         return f"/courses/{course.slug}"
 
     if not course.lessons:
