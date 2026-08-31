@@ -55,6 +55,7 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
         assigned_by_username: Optional[str] = "manager",
         assigned_by_first_name: Optional[str] = "Anna",
         assigned_by_last_name: Optional[str] = "Manager",
+        due_at: Optional[str] = None,
         started_at: Optional[str] = None,
         completed_at: Optional[str] = None,
     ) -> ManagerCourseAssignmentRecord:
@@ -69,6 +70,7 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
             assigned_by_username=assigned_by_username,
             assigned_by_first_name=assigned_by_first_name,
             assigned_by_last_name=assigned_by_last_name,
+            due_at=due_at,
             started_at=started_at,
             completed_at=completed_at,
         )

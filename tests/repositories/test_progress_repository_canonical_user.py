@@ -77,6 +77,7 @@ class CanonicalUserProgressRepositoryTests(unittest.TestCase):
                     enrollments.progress_percent,
                     enrollments.assigned_at,
                     enrollments.assigned_by_user_id,
+                    enrollments.due_at,
                     enrollments.started_at,
                     enrollments.completed_at
                 FROM enrollments
@@ -750,6 +751,89 @@ class CanonicalUserProgressRepositoryTests(unittest.TestCase):
             ),
             1,
         )
+
+    def test_assign_course_without_due_at_stores_null(self) -> None:
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+            )
+        )
+
+        enrollment = self._enrollment_row("alpha")
+        self.assertIsNone(enrollment["due_at"])
+
+    def test_assign_course_with_due_at_stores_normalized_value(self) -> None:
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                due_at="  2026-09-15 18:00:00  ",
+            )
+        )
+
+        enrollment = self._enrollment_row("alpha")
+        self.assertEqual(enrollment["due_at"], "2026-09-15 18:00:00")
+
+    def test_invalid_due_at_values_are_rejected(self) -> None:
+        for invalid in ("", "   ", 123):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    self.repository.assign_course_to_user(
+                        self.db_path,
+                        self.user_id,
+                        "alpha",
+                        due_at=invalid,  # type: ignore[arg-type]
+                    )
+
+    def test_repeated_assignment_does_not_overwrite_original_due_at(
+        self,
+    ) -> None:
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                due_at="2026-09-15 18:00:00",
+            )
+        )
+
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                due_at="2026-10-01 12:00:00",
+            )
+        )
+
+        enrollment = self._enrollment_row("alpha")
+        self.assertEqual(enrollment["due_at"], "2026-09-15 18:00:00")
+
+    def test_late_assignment_to_self_started_course_does_not_attach_due_at(
+        self,
+    ) -> None:
+        self.repository.start_course_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+        before = self._enrollment_row("alpha")
+        self.assertIsNone(before["due_at"])
+
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                due_at="2026-09-15 18:00:00",
+            )
+        )
+
+        after = self._enrollment_row("alpha")
+        self.assertIsNone(after["due_at"])
 
 
 if __name__ == "__main__":

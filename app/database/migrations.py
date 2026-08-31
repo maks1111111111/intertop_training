@@ -171,6 +171,19 @@ def migrate_enrollments_assignment_author(
     )
 
 
+def migrate_enrollments_due_at(connection: sqlite3.Connection) -> None:
+    """Add optional due date for explicit course assignments."""
+    columns = _get_table_columns(connection, "enrollments")
+
+    if "due_at" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE enrollments
+            ADD COLUMN due_at TEXT
+            """
+        )
+
+
 def migrate_lessons_table(connection: sqlite3.Connection) -> None:
     columns = _get_table_columns(connection, "lessons")
 
@@ -412,6 +425,7 @@ def migrate_companies_table(connection: sqlite3.Connection) -> None:
 def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_users_table(connection)
     migrate_enrollments_assignment_author(connection)
+    migrate_enrollments_due_at(connection)
     migrate_lessons_table(connection)
     migrate_quiz_answers_unique_question(connection)
     migrate_knowledge_documents_table(connection)

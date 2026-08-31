@@ -55,6 +55,7 @@ def create_tables(connection: sqlite3.Connection) -> None:
             progress_percent INTEGER NOT NULL DEFAULT 0,
             assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             assigned_by_user_id INTEGER,
+            due_at TEXT,
             started_at TEXT,
             completed_at TEXT,
             UNIQUE(user_id, course_id),

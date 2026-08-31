@@ -250,6 +250,7 @@ class ProgressRepository:
         course_slug: str,
         *,
         assigned_by_user_id: Optional[int] = None,
+        due_at: Optional[str] = None,
     ) -> bool:
         """Assign a course to a canonical user without starting it."""
         normalized_user_id = _validate_user_id(user_id)
@@ -258,6 +259,7 @@ class ProgressRepository:
             if assigned_by_user_id is None
             else _validate_user_id(assigned_by_user_id)
         )
+        normalized_due_at = _validate_due_at(due_at)
 
         with get_connection(db_path) as connection:
             if normalized_assigned_by_user_id is not None:
@@ -280,6 +282,7 @@ class ProgressRepository:
                     status,
                     progress_percent,
                     assigned_by_user_id,
+                    due_at,
                     started_at,
                     completed_at
                 )
@@ -288,6 +291,7 @@ class ProgressRepository:
                     courses.id,
                     'assigned',
                     0,
+                    ?,
                     ?,
                     NULL,
                     NULL
@@ -303,6 +307,7 @@ class ProgressRepository:
                 (
                     normalized_user_id,
                     normalized_assigned_by_user_id,
+                    normalized_due_at,
                     course_slug,
                     normalized_user_id,
                 ),
@@ -732,3 +737,17 @@ def _validate_user_id(user_id: int) -> int:
     if user_id <= 0:
         raise ValueError("user_id must be a positive integer")
     return user_id
+
+
+def _validate_due_at(due_at: Optional[str]) -> Optional[str]:
+    """Validate an optional assignment due date stored as text."""
+    if due_at is None:
+        return None
+    if not isinstance(due_at, str):
+        raise ValueError("due_at must be a string or None")
+
+    normalized = due_at.strip()
+    if not normalized:
+        raise ValueError("due_at must not be empty")
+
+    return normalized
