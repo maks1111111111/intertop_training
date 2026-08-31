@@ -74,6 +74,11 @@ class FakeManagerCourseAssignmentHistoryService:
                 assigned_count=0,
                 in_progress_count=0,
                 completed_count=0,
+                no_deadline_count=0,
+                on_track_count=0,
+                overdue_count=0,
+                completed_on_time_count=0,
+                completed_late_count=0,
             )
         return ManagerCourseAssignmentHistory(
             assignments=(
@@ -88,6 +93,8 @@ class FakeManagerCourseAssignmentHistoryService:
                     due_at="2026-09-15 18:00:00",
                     started_at=None,
                     completed_at=None,
+                    compliance_status="on_track",
+                    compliance_status_label="В сроке",
                 ),
                 ManagerCourseAssignmentHistoryItem(
                     course_slug="beta",
@@ -100,6 +107,8 @@ class FakeManagerCourseAssignmentHistoryService:
                     due_at=None,
                     started_at="2026-08-31 12:00:00",
                     completed_at=None,
+                    compliance_status="no_deadline",
+                    compliance_status_label="Без срока",
                 ),
                 ManagerCourseAssignmentHistoryItem(
                     course_slug="gamma",
@@ -112,12 +121,19 @@ class FakeManagerCourseAssignmentHistoryService:
                     due_at=None,
                     started_at="2026-08-31 14:00:00",
                     completed_at="2026-08-31 15:00:00",
+                    compliance_status="no_deadline",
+                    compliance_status_label="Без срока",
                 ),
             ),
             total_count=3,
             assigned_count=1,
             in_progress_count=1,
             completed_count=1,
+            no_deadline_count=2,
+            on_track_count=1,
+            overdue_count=0,
+            completed_on_time_count=0,
+            completed_late_count=0,
         )
 
 

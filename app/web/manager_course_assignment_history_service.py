@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from app.repositories.manager_course_assignment_repository import (
     ManagerCourseAssignmentRecord,
@@ -16,6 +17,16 @@ _STATUS_LABELS = {
     "in_progress": "В процессе",
     "completed": "Завершён",
 }
+
+_COMPLIANCE_STATUS_LABELS = {
+    "no_deadline": "Без срока",
+    "on_track": "В сроке",
+    "overdue": "Просрочен",
+    "completed_on_time": "Завершён в срок",
+    "completed_late": "Завершён с опозданием",
+}
+
+_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 @dataclass(frozen=True)
@@ -32,6 +43,8 @@ class ManagerCourseAssignmentHistoryItem:
     due_at: Optional[str]
     started_at: Optional[str]
     completed_at: Optional[str]
+    compliance_status: str
+    compliance_status_label: str
 
 
 @dataclass(frozen=True)
@@ -43,6 +56,11 @@ class ManagerCourseAssignmentHistory:
     assigned_count: int
     in_progress_count: int
     completed_count: int
+    no_deadline_count: int
+    on_track_count: int
+    overdue_count: int
+    completed_on_time_count: int
+    completed_late_count: int
 
 
 class ManagerCourseAssignmentHistoryService:
@@ -52,9 +70,11 @@ class ManagerCourseAssignmentHistoryService:
         self,
         repository: ManagerCourseAssignmentRepository,
         db_path: Path,
+        now_provider: Callable[[], datetime] = datetime.now,
     ) -> None:
         self._repository = repository
         self._db_path = db_path
+        self._now_provider = now_provider
 
     def get_for_member(
         self,
@@ -70,7 +90,8 @@ class ManagerCourseAssignmentHistoryService:
             normalized_company_id,
             normalized_user_id,
         )
-        assignments = tuple(_to_history_item(record) for record in records)
+        now = self._now_provider()
+        assignments = tuple(_to_history_item(record, now) for record in records)
 
         assigned_count = sum(
             1 for item in assignments if item.status == "assigned"
@@ -81,6 +102,23 @@ class ManagerCourseAssignmentHistoryService:
         completed_count = sum(
             1 for item in assignments if item.status == "completed"
         )
+        no_deadline_count = sum(
+            1 for item in assignments if item.compliance_status == "no_deadline"
+        )
+        on_track_count = sum(
+            1 for item in assignments if item.compliance_status == "on_track"
+        )
+        overdue_count = sum(
+            1 for item in assignments if item.compliance_status == "overdue"
+        )
+        completed_on_time_count = sum(
+            1
+            for item in assignments
+            if item.compliance_status == "completed_on_time"
+        )
+        completed_late_count = sum(
+            1 for item in assignments if item.compliance_status == "completed_late"
+        )
 
         return ManagerCourseAssignmentHistory(
             assignments=assignments,
@@ -88,13 +126,25 @@ class ManagerCourseAssignmentHistoryService:
             assigned_count=assigned_count,
             in_progress_count=in_progress_count,
             completed_count=completed_count,
+            no_deadline_count=no_deadline_count,
+            on_track_count=on_track_count,
+            overdue_count=overdue_count,
+            completed_on_time_count=completed_on_time_count,
+            completed_late_count=completed_late_count,
         )
 
 
 def _to_history_item(
     record: ManagerCourseAssignmentRecord,
+    now: datetime,
 ) -> ManagerCourseAssignmentHistoryItem:
     status_label = _STATUS_LABELS.get(record.status, record.status)
+    compliance_status, compliance_status_label = _classify_compliance(
+        record.status,
+        record.due_at,
+        record.completed_at,
+        now,
+    )
 
     return ManagerCourseAssignmentHistoryItem(
         course_slug=record.course_slug,
@@ -107,7 +157,56 @@ def _to_history_item(
         due_at=record.due_at,
         started_at=record.started_at,
         completed_at=record.completed_at,
+        compliance_status=compliance_status,
+        compliance_status_label=compliance_status_label,
     )
+
+
+def _classify_compliance(
+    status: str,
+    due_at: Optional[str],
+    completed_at: Optional[str],
+    now: datetime,
+) -> tuple[str, str]:
+    if due_at is None:
+        return _compliance_result("no_deadline")
+
+    due_datetime = _parse_timestamp(due_at)
+    if due_datetime is None:
+        return _compliance_result("no_deadline")
+
+    if status == "completed":
+        completed_datetime = _parse_timestamp(completed_at)
+        if completed_datetime is not None:
+            if completed_datetime <= due_datetime:
+                return _compliance_result("completed_on_time")
+            return _compliance_result("completed_late")
+
+        if now <= due_datetime:
+            return _compliance_result("on_track")
+        return _compliance_result("overdue")
+
+    if now <= due_datetime:
+        return _compliance_result("on_track")
+    return _compliance_result("overdue")
+
+
+def _compliance_result(status: str) -> tuple[str, str]:
+    return status, _COMPLIANCE_STATUS_LABELS[status]
+
+
+def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
+    if value is None:
+        return None
+
+    normalized = value.strip()
+    if not normalized:
+        return None
+
+    try:
+        return datetime.strptime(normalized, _TIMESTAMP_FORMAT)
+    except ValueError:
+        return None
 
 
 def _assigned_by_display_name(record: ManagerCourseAssignmentRecord) -> str:

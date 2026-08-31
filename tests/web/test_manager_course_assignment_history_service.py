@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -14,6 +15,8 @@ from app.web.manager_course_assignment_history_service import (
     ManagerCourseAssignmentHistoryItem,
     ManagerCourseAssignmentHistoryService,
 )
+
+FIXED_NOW = datetime(2026, 9, 15, 12, 0, 0)
 
 
 class FakeManagerCourseAssignmentRepository:
@@ -41,6 +44,7 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
         self.service = ManagerCourseAssignmentHistoryService(
             self.repository,
             self.db_path,
+            now_provider=lambda: FIXED_NOW,
         )
 
     def _record(
@@ -73,6 +77,20 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
             due_at=due_at,
             started_at=started_at,
             completed_at=completed_at,
+        )
+
+    def _empty_history(self) -> ManagerCourseAssignmentHistory:
+        return ManagerCourseAssignmentHistory(
+            assignments=(),
+            total_count=0,
+            assigned_count=0,
+            in_progress_count=0,
+            completed_count=0,
+            no_deadline_count=0,
+            on_track_count=0,
+            overdue_count=0,
+            completed_on_time_count=0,
+            completed_late_count=0,
         )
 
     def test_maps_assigned_in_progress_and_completed_statuses(self) -> None:
@@ -120,6 +138,8 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
                         due_at=None,
                         started_at=None,
                         completed_at=None,
+                        compliance_status="no_deadline",
+                        compliance_status_label="Без срока",
                     ),
                     ManagerCourseAssignmentHistoryItem(
                         course_slug="beta",
@@ -132,6 +152,8 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
                         due_at=None,
                         started_at="2026-08-31 12:00:00",
                         completed_at=None,
+                        compliance_status="no_deadline",
+                        compliance_status_label="Без срока",
                     ),
                     ManagerCourseAssignmentHistoryItem(
                         course_slug="gamma",
@@ -144,12 +166,19 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
                         due_at=None,
                         started_at="2026-08-31 14:00:00",
                         completed_at="2026-08-31 15:00:00",
+                        compliance_status="no_deadline",
+                        compliance_status_label="Без срока",
                     ),
                 ),
                 total_count=3,
                 assigned_count=1,
                 in_progress_count=1,
                 completed_count=1,
+                no_deadline_count=3,
+                on_track_count=0,
+                overdue_count=0,
+                completed_on_time_count=0,
+                completed_late_count=0,
             ),
         )
         self.assertEqual(
@@ -171,6 +200,7 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
         history = self.service.get_for_member("intertop", 2)
 
         self.assertEqual(history.assignments[0].status_label, "archived")
+        self.assertEqual(history.assignments[0].compliance_status, "no_deadline")
         self.assertEqual(history.total_count, 1)
         self.assertEqual(history.assigned_count, 0)
         self.assertEqual(history.in_progress_count, 0)
@@ -179,16 +209,7 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
     def test_empty_history(self) -> None:
         history = self.service.get_for_member("intertop", 2)
 
-        self.assertEqual(
-            history,
-            ManagerCourseAssignmentHistory(
-                assignments=(),
-                total_count=0,
-                assigned_count=0,
-                in_progress_count=0,
-                completed_count=0,
-            ),
-        )
+        self.assertEqual(history, self._empty_history())
 
     def test_invalid_company_id_rejected(self) -> None:
         for invalid in ("", "   ", 123, None):
@@ -330,6 +351,240 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
         history = self.service.get_for_member("intertop", 2)
 
         self.assertIsNone(history.assignments[0].due_at)
+
+
+class ManagerCourseAssignmentComplianceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.db_path = Path("/tmp/training.db")
+        self.repository = FakeManagerCourseAssignmentRepository()
+        self.service = ManagerCourseAssignmentHistoryService(
+            self.repository,
+            self.db_path,
+            now_provider=lambda: FIXED_NOW,
+        )
+
+    def _record(
+        self,
+        *,
+        status: str,
+        due_at: Optional[str] = None,
+        completed_at: Optional[str] = None,
+    ) -> ManagerCourseAssignmentRecord:
+        return ManagerCourseAssignmentRecord(
+            employee_user_id=2,
+            course_slug="alpha",
+            course_title="Alpha Course",
+            status=status,
+            progress_percent=0,
+            assigned_at="2026-08-31 10:00:00",
+            assigned_by_user_id=1,
+            assigned_by_username="manager",
+            assigned_by_first_name="Anna",
+            assigned_by_last_name="Manager",
+            due_at=due_at,
+            started_at=None,
+            completed_at=completed_at,
+        )
+
+    def _history_for(self, *records: ManagerCourseAssignmentRecord) -> None:
+        self.repository.records = records
+
+    def test_no_deadline_when_due_at_missing(self) -> None:
+        self._history_for(self._record(status="assigned"))
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "no_deadline")
+        self.assertEqual(item.compliance_status_label, "Без срока")
+
+    def test_assigned_before_deadline_is_on_track(self) -> None:
+        self._history_for(
+            self._record(status="assigned", due_at="2026-09-15 18:00:00"),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "on_track")
+        self.assertEqual(item.compliance_status_label, "В сроке")
+
+    def test_in_progress_before_deadline_is_on_track(self) -> None:
+        self._history_for(
+            self._record(status="in_progress", due_at="2026-09-15 18:00:00"),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "on_track")
+
+    def test_assigned_after_deadline_is_overdue(self) -> None:
+        self._history_for(
+            self._record(status="assigned", due_at="2026-09-10 10:00:00"),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "overdue")
+        self.assertEqual(item.compliance_status_label, "Просрочен")
+
+    def test_in_progress_after_deadline_is_overdue(self) -> None:
+        self._history_for(
+            self._record(status="in_progress", due_at="2026-09-10 10:00:00"),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "overdue")
+
+    def test_completed_before_deadline_is_completed_on_time(self) -> None:
+        self._history_for(
+            self._record(
+                status="completed",
+                due_at="2026-09-15 18:00:00",
+                completed_at="2026-09-14 10:00:00",
+            ),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "completed_on_time")
+        self.assertEqual(item.compliance_status_label, "Завершён в срок")
+
+    def test_completed_exactly_at_deadline_is_completed_on_time(self) -> None:
+        self._history_for(
+            self._record(
+                status="completed",
+                due_at="2026-09-15 12:00:00",
+                completed_at="2026-09-15 12:00:00",
+            ),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "completed_on_time")
+
+    def test_completed_after_deadline_is_completed_late(self) -> None:
+        self._history_for(
+            self._record(
+                status="completed",
+                due_at="2026-09-15 12:00:00",
+                completed_at="2026-09-16 09:00:00",
+            ),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "completed_late")
+        self.assertEqual(item.compliance_status_label, "Завершён с опозданием")
+
+    def test_completed_without_deadline_is_no_deadline(self) -> None:
+        self._history_for(
+            self._record(
+                status="completed",
+                completed_at="2026-09-14 10:00:00",
+            ),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "no_deadline")
+
+    def test_now_exactly_equal_to_deadline_is_not_overdue(self) -> None:
+        self._history_for(
+            self._record(status="assigned", due_at="2026-09-15 12:00:00"),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "on_track")
+
+    def test_compliance_counts_are_correct(self) -> None:
+        self._history_for(
+            self._record(status="assigned"),
+            self._record(status="assigned", due_at="2026-09-20 18:00:00"),
+            self._record(status="in_progress", due_at="2026-09-10 10:00:00"),
+            self._record(
+                status="completed",
+                due_at="2026-09-20 18:00:00",
+                completed_at="2026-09-18 10:00:00",
+            ),
+            self._record(
+                status="completed",
+                due_at="2026-09-10 10:00:00",
+                completed_at="2026-09-12 10:00:00",
+            ),
+        )
+
+        history = self.service.get_for_member("intertop", 2)
+
+        self.assertEqual(history.total_count, 5)
+        self.assertEqual(history.no_deadline_count, 1)
+        self.assertEqual(history.on_track_count, 1)
+        self.assertEqual(history.overdue_count, 1)
+        self.assertEqual(history.completed_on_time_count, 1)
+        self.assertEqual(history.completed_late_count, 1)
+        self.assertEqual(
+            history.no_deadline_count
+            + history.on_track_count
+            + history.overdue_count
+            + history.completed_on_time_count
+            + history.completed_late_count,
+            history.total_count,
+        )
+
+    def test_unknown_lifecycle_status_does_not_crash(self) -> None:
+        self._history_for(
+            self._record(status="archived", due_at="2026-09-10 10:00:00"),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "overdue")
+
+    def test_malformed_due_at_does_not_crash_or_mark_overdue(self) -> None:
+        self._history_for(
+            self._record(status="assigned", due_at="not-a-timestamp"),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "no_deadline")
+
+    def test_malformed_completed_at_falls_back_to_now_vs_due_at(self) -> None:
+        self._history_for(
+            self._record(
+                status="completed",
+                due_at="2026-09-20 18:00:00",
+                completed_at="broken",
+            ),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "on_track")
+
+    def test_completed_without_completed_at_falls_back_to_now_vs_due_at(self) -> None:
+        self._history_for(
+            self._record(
+                status="completed",
+                due_at="2026-09-10 10:00:00",
+            ),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "overdue")
+
+    def test_completed_without_completed_at_before_deadline_is_on_track(self) -> None:
+        self._history_for(
+            self._record(
+                status="completed",
+                due_at="2026-09-20 18:00:00",
+            ),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "on_track")
 
 
 if __name__ == "__main__":
