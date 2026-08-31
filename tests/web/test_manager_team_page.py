@@ -118,22 +118,36 @@ class FakeManagerCourseAssignmentHistoryService:
                     progress_percent=100,
                     assigned_at="2026-08-31 13:00:00",
                     assigned_by_display_name="Anna Manager",
-                    due_at=None,
+                    due_at="2026-08-31 14:00:00",
                     started_at="2026-08-31 14:00:00",
                     completed_at="2026-08-31 15:00:00",
-                    compliance_status="no_deadline",
-                    compliance_status_label="Без срока",
+                    compliance_status="completed_late",
+                    compliance_status_label="Завершён с опозданием",
+                ),
+                ManagerCourseAssignmentHistoryItem(
+                    course_slug="delta",
+                    course_title="Assigned Delta",
+                    status="in_progress",
+                    status_label="В процессе",
+                    progress_percent=20,
+                    assigned_at="2026-08-31 16:00:00",
+                    assigned_by_display_name="Anna Manager",
+                    due_at="2026-08-01 12:00:00",
+                    started_at="2026-08-31 16:30:00",
+                    completed_at=None,
+                    compliance_status="overdue",
+                    compliance_status_label="Просрочен",
                 ),
             ),
-            total_count=3,
+            total_count=4,
             assigned_count=1,
-            in_progress_count=1,
+            in_progress_count=2,
             completed_count=1,
-            no_deadline_count=2,
+            no_deadline_count=1,
             on_track_count=1,
-            overdue_count=0,
+            overdue_count=1,
             completed_on_time_count=0,
-            completed_late_count=0,
+            completed_late_count=1,
         )
 
 
@@ -1253,6 +1267,44 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("100%", response.text)
         self.assertIn("Срок прохождения", response.text)
         self.assertIn("2026-09-15 18:00:00", response.text)
+
+    def test_team_member_page_renders_assignment_compliance_summary(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("В сроке", response.text)
+        self.assertIn("Просрочено", response.text)
+        self.assertIn("Завершено в срок", response.text)
+        self.assertIn("С опозданием", response.text)
+
+    def test_team_member_page_renders_assignment_compliance_badges(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("dashboard-compliance-badge--on_track", response.text)
+        self.assertIn("dashboard-compliance-badge--no_deadline", response.text)
+        self.assertIn("dashboard-compliance-badge--overdue", response.text)
+        self.assertIn("dashboard-compliance-badge--completed_late", response.text)
+        self.assertIn("Просрочен", response.text)
+        self.assertIn("Завершён с опозданием", response.text)
+        self.assertIn("Без срока", response.text)
+        self.assertIn("Assigned Delta", response.text)
+
+    def test_team_member_page_renders_lifecycle_and_compliance_statuses_together(
+        self,
+    ) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("dashboard-status-badge--in_progress", response.text)
+        self.assertIn("dashboard-compliance-badge--overdue", response.text)
+        self.assertIn("В процессе", response.text)
 
     def test_team_member_page_renders_assignment_without_due_at_safely(
         self,

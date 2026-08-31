@@ -107,15 +107,42 @@
         </div>
     </div>
 
+    <div class="dashboard-metrics dashboard-metrics--compliance">
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">В сроке</span>
+            <span class="dashboard-metric-value">{{ assignment_history.on_track_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Просрочено</span>
+            <span class="dashboard-metric-value">{{ assignment_history.overdue_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Завершено в срок</span>
+            <span class="dashboard-metric-value">{{ assignment_history.completed_on_time_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">С опозданием</span>
+            <span class="dashboard-metric-value">{{ assignment_history.completed_late_count }}</span>
+        </div>
+    </div>
+
     <ul class="course-list dashboard-course-list">
         {% for assignment in assignment_history.assignments %}
         <li class="course-card dashboard-course-card dashboard-course-card--{{ assignment.status }}">
             <div class="dashboard-course-body">
                 <header class="dashboard-course-header">
                     <h3 class="course-card-title">{{ assignment.course_title }}</h3>
-                    <span class="dashboard-status-badge dashboard-status-badge--{{ assignment.status }}">
-                        {{ assignment.status_label }}
-                    </span>
+                    <div class="dashboard-course-badges">
+                        <span class="dashboard-status-badge dashboard-status-badge--{{ assignment.status }}">
+                            {{ assignment.status_label }}
+                        </span>
+                        <span
+                            class="dashboard-compliance-badge dashboard-compliance-badge--{{ assignment.compliance_status }}"
+                            aria-label="Статус выполнения срока"
+                        >
+                            {{ assignment.compliance_status_label }}
+                        </span>
+                    </div>
                 </header>
 
                 <div class="dashboard-progress-section">
