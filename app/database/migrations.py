@@ -147,6 +147,30 @@ def migrate_users_table(connection: sqlite3.Connection) -> None:
     )
 
 
+def migrate_enrollments_assignment_author(
+    connection: sqlite3.Connection,
+) -> None:
+    """Track the canonical user who explicitly assigned a course."""
+    columns = _get_table_columns(connection, "enrollments")
+
+    if "assigned_by_user_id" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE enrollments
+            ADD COLUMN assigned_by_user_id INTEGER
+                REFERENCES users(id)
+                ON DELETE SET NULL
+            """
+        )
+
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_enrollments_assigned_by_user_id
+        ON enrollments(assigned_by_user_id)
+        """
+    )
+
+
 def migrate_lessons_table(connection: sqlite3.Connection) -> None:
     columns = _get_table_columns(connection, "lessons")
 
@@ -387,6 +411,7 @@ def migrate_companies_table(connection: sqlite3.Connection) -> None:
 
 def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_users_table(connection)
+    migrate_enrollments_assignment_author(connection)
     migrate_lessons_table(connection)
     migrate_quiz_answers_unique_question(connection)
     migrate_knowledge_documents_table(connection)

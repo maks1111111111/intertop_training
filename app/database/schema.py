@@ -54,6 +54,7 @@ def create_tables(connection: sqlite3.Connection) -> None:
             status TEXT NOT NULL DEFAULT 'assigned',
             progress_percent INTEGER NOT NULL DEFAULT 0,
             assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            assigned_by_user_id INTEGER,
             started_at TEXT,
             completed_at TEXT,
             UNIQUE(user_id, course_id),
@@ -62,7 +63,10 @@ def create_tables(connection: sqlite3.Connection) -> None:
                 ON DELETE CASCADE,
             FOREIGN KEY (course_id)
                 REFERENCES courses(id)
-                ON DELETE CASCADE
+                ON DELETE CASCADE,
+            FOREIGN KEY (assigned_by_user_id)
+                REFERENCES users(id)
+                ON DELETE SET NULL
         );
 
         CREATE TABLE IF NOT EXISTS lesson_progress (
