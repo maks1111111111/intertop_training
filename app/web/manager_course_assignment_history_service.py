@@ -29,6 +29,7 @@ class ManagerCourseAssignmentHistoryItem:
     progress_percent: int
     assigned_at: str
     assigned_by_display_name: str
+    due_at: Optional[str]
     started_at: Optional[str]
     completed_at: Optional[str]
 
@@ -103,6 +104,7 @@ def _to_history_item(
         progress_percent=record.progress_percent,
         assigned_at=record.assigned_at,
         assigned_by_display_name=_assigned_by_display_name(record),
+        due_at=record.due_at,
         started_at=record.started_at,
         completed_at=record.completed_at,
     )

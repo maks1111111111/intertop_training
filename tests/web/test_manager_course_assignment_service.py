@@ -54,7 +54,7 @@ class FakeProgressRepository:
         assign_result: bool = True,
     ) -> None:
         self.assign_result = assign_result
-        self.assign_calls: list[tuple[Path, int, str, int]] = []
+        self.assign_calls: list[tuple[Path, int, str, int, Optional[str]]] = []
 
     def assign_course_to_user(
         self,
@@ -63,6 +63,7 @@ class FakeProgressRepository:
         course_slug: str,
         *,
         assigned_by_user_id: int,
+        due_at: Optional[str] = None,
     ) -> bool:
         self.assign_calls.append(
             (
@@ -70,6 +71,7 @@ class FakeProgressRepository:
                 user_id,
                 course_slug,
                 assigned_by_user_id,
+                due_at,
             )
         )
         return self.assign_result
@@ -165,7 +167,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
         self.assertEqual(runtime.calls, ["retail-basics"])
         self.assertEqual(
             progress_repository.assign_calls,
-            [(self.db_path, 42, "retail-basics", 10)],
+            [(self.db_path, 42, "retail-basics", 10, None)],
         )
 
     def test_member_not_found_does_not_call_repository_or_runtime(self) -> None:
@@ -232,7 +234,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
         self.assertEqual(result.code, "assigned")
         self.assertEqual(
             progress_repository.assign_calls,
-            [(self.db_path, 42, "with-lessons", 10)],
+            [(self.db_path, 42, "with-lessons", 10, None)],
         )
 
     def test_repository_failure_returns_assignment_failed(self) -> None:
@@ -246,7 +248,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
         self.assertEqual(result.code, "assignment_failed")
         self.assertEqual(
             progress_repository.assign_calls,
-            [(self.db_path, 42, "retail-basics", 10)],
+            [(self.db_path, 42, "retail-basics", 10, None)],
         )
 
     def test_assignment_author_is_forwarded_to_repository(self) -> None:
@@ -262,7 +264,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(
             progress_repository.assign_calls,
-            [(self.db_path, 42, "retail-basics", 777)],
+            [(self.db_path, 42, "retail-basics", 777, None)],
         )
 
     def test_invalid_assignment_author_rejected_before_dependencies(self) -> None:
@@ -338,6 +340,48 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.user_id, 7)
         self.assertEqual(progress_repository.assign_calls[0][1], 7)
+
+    def test_forwards_due_at_to_repository(self) -> None:
+        service, _, progress_repository, _ = self._service()
+
+        result = service.assign_course(
+            "intertop",
+            42,
+            "retail-basics",
+            assigned_by_user_id=10,
+            due_at="2026-09-15 18:00:00",
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(
+            progress_repository.assign_calls,
+            [
+                (
+                    self.db_path,
+                    42,
+                    "retail-basics",
+                    10,
+                    "2026-09-15 18:00:00",
+                )
+            ],
+        )
+
+    def test_none_due_at_remains_supported(self) -> None:
+        service, _, progress_repository, _ = self._service()
+
+        result = service.assign_course(
+            "intertop",
+            42,
+            "retail-basics",
+            assigned_by_user_id=10,
+            due_at=None,
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(
+            progress_repository.assign_calls[0][4],
+            None,
+        )
 
 
 if __name__ == "__main__":

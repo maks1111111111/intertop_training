@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 from app.content.runtime import ContentRuntime
 from app.repositories.progress_repository import ProgressRepository
@@ -42,6 +43,8 @@ class ManagerCourseAssignmentService:
         user_id: int,
         course_slug: str,
         assigned_by_user_id: int,
+        *,
+        due_at: Optional[str] = None,
     ) -> ManagerCourseAssignmentResult:
         """Assign one published course to one tenant member."""
         normalized_company_id = _validate_company_id(company_id)
@@ -88,6 +91,7 @@ class ManagerCourseAssignmentService:
             member.user_id,
             course.slug,
             assigned_by_user_id=normalized_assigned_by_user_id,
+            due_at=due_at,
         )
         if assigned:
             return ManagerCourseAssignmentResult(

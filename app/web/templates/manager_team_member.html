@@ -65,6 +65,16 @@
                 {% endfor %}
             </select>
         </div>
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="assign-course-due-at">Срок прохождения</label>
+            <input
+                class="admin-form-input"
+                type="datetime-local"
+                id="assign-course-due-at"
+                name="due_at"
+            >
+            <p class="page-meta">Необязательно</p>
+        </div>
         <div class="admin-form-actions">
             <button class="button button-primary" type="submit">Назначить курс</button>
         </div>
@@ -130,6 +140,12 @@
                         <span class="dashboard-metric-label">Назначен</span>
                         <span class="dashboard-metric-value">{{ assignment.assigned_at }}</span>
                     </div>
+                    {% if assignment.due_at %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Срок прохождения</span>
+                        <span class="dashboard-metric-value">{{ assignment.due_at }}</span>
+                    </div>
+                    {% endif %}
                     {% if assignment.started_at %}
                     <div class="dashboard-metric">
                         <span class="dashboard-metric-label">Начат</span>

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 
@@ -432,7 +434,36 @@ _ASSIGNMENT_MESSAGES = {
     "course_not_found": "Курс не найден или недоступен.",
     "course_not_assignable": "Курс пока нельзя назначить: в нём нет уроков.",
     "assignment_failed": "Не удалось назначить курс.",
+    "invalid_due_at": "Некорректный срок прохождения.",
 }
+
+
+_DATETIME_LOCAL_PATTERN = re.compile(
+    r"^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2}))?$"
+)
+
+
+def _normalize_assignment_due_at(raw_value: str) -> Optional[str]:
+    """Convert optional datetime-local form input to stored due_at text."""
+    normalized = raw_value.strip()
+    if not normalized:
+        return None
+
+    match = _DATETIME_LOCAL_PATTERN.match(normalized)
+    if match is None:
+        raise ValueError("invalid due_at")
+
+    date_part, time_part, seconds = match.groups()
+    time_with_seconds = f"{time_part}:{seconds or '00'}"
+    try:
+        parsed = datetime.strptime(
+            f"{date_part} {time_with_seconds}",
+            "%Y-%m-%d %H:%M:%S",
+        )
+    except ValueError as exc:
+        raise ValueError("invalid due_at") from exc
+
+    return parsed.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _assignment_feedback(code: Optional[str]) -> tuple[str, bool]:
@@ -971,11 +1002,20 @@ async def manager_team_member_assign_course(
     course_slug = str(form.get("course_slug") or "")
 
     try:
+        due_at = _normalize_assignment_due_at(str(form.get("due_at") or ""))
+    except ValueError:
+        return RedirectResponse(
+            url=f"/manager/team/{user_id}?assignment=invalid_due_at",
+            status_code=303,
+        )
+
+    try:
         result = assignment_service.assign_course(
             identity.company_id,
             user_id,
             course_slug,
             identity.user_id,
+            due_at=due_at,
         )
     except ValueError:
         return RedirectResponse(

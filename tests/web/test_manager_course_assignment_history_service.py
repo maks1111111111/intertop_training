@@ -117,6 +117,7 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
                         progress_percent=0,
                         assigned_at="2026-08-31 10:00:00",
                         assigned_by_display_name="Anna Manager",
+                        due_at=None,
                         started_at=None,
                         completed_at=None,
                     ),
@@ -128,6 +129,7 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
                         progress_percent=60,
                         assigned_at="2026-08-31 11:00:00",
                         assigned_by_display_name="Anna Manager",
+                        due_at=None,
                         started_at="2026-08-31 12:00:00",
                         completed_at=None,
                     ),
@@ -139,6 +141,7 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
                         progress_percent=100,
                         assigned_at="2026-08-31 13:00:00",
                         assigned_by_display_name="Anna Manager",
+                        due_at=None,
                         started_at="2026-08-31 14:00:00",
                         completed_at="2026-08-31 15:00:00",
                     ),
@@ -296,6 +299,37 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
             history.assignments[0].assigned_by_display_name,
             "Пользователь #42",
         )
+
+    def test_due_at_maps_when_present(self) -> None:
+        self.repository.records = (
+            self._record(
+                course_slug="alpha",
+                course_title="Alpha Course",
+                status="assigned",
+                progress_percent=0,
+                assigned_at="2026-08-31 10:00:00",
+                due_at="2026-09-15 18:00:00",
+            ),
+        )
+
+        history = self.service.get_for_member("intertop", 2)
+
+        self.assertEqual(history.assignments[0].due_at, "2026-09-15 18:00:00")
+
+    def test_due_at_remains_none_when_absent(self) -> None:
+        self.repository.records = (
+            self._record(
+                course_slug="alpha",
+                course_title="Alpha Course",
+                status="assigned",
+                progress_percent=0,
+                assigned_at="2026-08-31 10:00:00",
+            ),
+        )
+
+        history = self.service.get_for_member("intertop", 2)
+
+        self.assertIsNone(history.assignments[0].due_at)
 
 
 if __name__ == "__main__":

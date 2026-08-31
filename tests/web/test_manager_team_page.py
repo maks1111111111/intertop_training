@@ -85,6 +85,7 @@ class FakeManagerCourseAssignmentHistoryService:
                     progress_percent=0,
                     assigned_at="2026-08-31 10:00:00",
                     assigned_by_display_name="Anna Manager",
+                    due_at="2026-09-15 18:00:00",
                     started_at=None,
                     completed_at=None,
                 ),
@@ -96,6 +97,7 @@ class FakeManagerCourseAssignmentHistoryService:
                     progress_percent=60,
                     assigned_at="2026-08-31 11:00:00",
                     assigned_by_display_name="Anna Manager",
+                    due_at=None,
                     started_at="2026-08-31 12:00:00",
                     completed_at=None,
                 ),
@@ -107,6 +109,7 @@ class FakeManagerCourseAssignmentHistoryService:
                     progress_percent=100,
                     assigned_at="2026-08-31 13:00:00",
                     assigned_by_display_name="Anna Manager",
+                    due_at=None,
                     started_at="2026-08-31 14:00:00",
                     completed_at="2026-08-31 15:00:00",
                 ),
@@ -828,7 +831,7 @@ class FakeDashboardService:
 
 class FakeManagerCourseAssignmentService:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, int, str, int]] = []
+        self.calls: list[tuple[str, int, str, int, Optional[str]]] = []
         self._result_code = "assigned"
 
     def assign_course(
@@ -837,6 +840,8 @@ class FakeManagerCourseAssignmentService:
         user_id: int,
         course_slug: str,
         assigned_by_user_id: int,
+        *,
+        due_at: Optional[str] = None,
     ) -> ManagerCourseAssignmentResult:
         self.calls.append(
             (
@@ -844,6 +849,7 @@ class FakeManagerCourseAssignmentService:
                 user_id,
                 course_slug,
                 assigned_by_user_id,
+                due_at,
             )
         )
         if user_id != 2:
@@ -1229,6 +1235,30 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("2026-08-31 15:00:00", response.text)
         self.assertIn("60%", response.text)
         self.assertIn("100%", response.text)
+        self.assertIn("Срок прохождения", response.text)
+        self.assertIn("2026-09-15 18:00:00", response.text)
+
+    def test_team_member_page_renders_assignment_without_due_at_safely(
+        self,
+    ) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Assigned Beta", response.text)
+        self.assertNotIn("2026-09-15 18:00:00", response.text.split("Assigned Beta")[1].split("Assigned Gamma")[0])
+
+    def test_team_member_page_renders_due_at_assignment_form_field(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('name="due_at"', response.text)
+        self.assertIn('type="datetime-local"', response.text)
+        self.assertIn("Срок прохождения", response.text)
+        self.assertIn("Необязательно", response.text)
 
     def test_team_member_page_renders_empty_assignment_history(self) -> None:
         self._set_identity("manager")
@@ -1313,7 +1343,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(response.headers["location"], "/manager/team/2?assignment=assigned")
         self.assertEqual(
             self.assignment_service.calls,
-            [("intertop", 2, "alpha", 10)],
+            [("intertop", 2, "alpha", 10, None)],
         )
 
     def test_admin_can_assign_course(self) -> None:
@@ -1326,7 +1356,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 303)
-        self.assertEqual(self.assignment_service.calls, [("intertop", 2, "beta", 10)])
+        self.assertEqual(self.assignment_service.calls, [("intertop", 2, "beta", 10, None)])
 
     def test_student_cannot_assign_course(self) -> None:
         self._set_identity("student")
@@ -1372,7 +1402,7 @@ class ManagerTeamPageTests(unittest.TestCase):
 
         self.assertEqual(
             self.assignment_service.calls,
-            [("intertop", 2, "alpha", 10)],
+            [("intertop", 2, "alpha", 10, None)],
         )
 
     def test_assign_course_course_not_found_redirects(self) -> None:
@@ -1431,7 +1461,109 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(self.assignment_service.calls, [("intertop", 99, "beta", 10)])
+        self.assertEqual(self.assignment_service.calls, [("intertop", 99, "beta", 10, None)])
+
+    def test_assign_course_with_valid_due_at_passes_canonical_value(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={
+                "course_slug": "alpha",
+                "due_at": "2026-09-15T18:00",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/manager/team/2?assignment=assigned")
+        self.assertEqual(
+            self.assignment_service.calls,
+            [("intertop", 2, "alpha", 10, "2026-09-15 18:00:00")],
+        )
+
+    def test_assign_course_with_blank_due_at_passes_none(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={
+                "course_slug": "alpha",
+                "due_at": "",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            self.assignment_service.calls,
+            [("intertop", 2, "alpha", 10, None)],
+        )
+
+    def test_assign_course_with_malformed_due_at_redirects_with_error(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={
+                "course_slug": "alpha",
+                "due_at": "not-a-date",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            response.headers["location"],
+            "/manager/team/2?assignment=invalid_due_at",
+        )
+        self.assertEqual(self.assignment_service.calls, [])
+
+    def test_assign_course_with_impossible_date_redirects_with_error(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={
+                "course_slug": "alpha",
+                "due_at": "2026-02-31T18:00",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            response.headers["location"],
+            "/manager/team/2?assignment=invalid_due_at",
+        )
+        self.assertEqual(self.assignment_service.calls, [])
+
+    def test_assign_course_with_impossible_time_redirects_with_error(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={
+                "course_slug": "alpha",
+                "due_at": "2026-09-15T25:00",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            response.headers["location"],
+            "/manager/team/2?assignment=invalid_due_at",
+        )
+        self.assertEqual(self.assignment_service.calls, [])
+
+    def test_team_member_page_renders_invalid_due_at_message(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2?assignment=invalid_due_at")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Некорректный срок прохождения.", response.text)
 
     def test_team_member_page_renders_empty_practical_task_analytics(self) -> None:
         self._set_identity("manager")
