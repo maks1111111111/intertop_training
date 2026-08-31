@@ -54,15 +54,24 @@ class FakeProgressRepository:
         assign_result: bool = True,
     ) -> None:
         self.assign_result = assign_result
-        self.assign_calls: list[tuple[Path, int, str]] = []
+        self.assign_calls: list[tuple[Path, int, str, int]] = []
 
     def assign_course_to_user(
         self,
         db_path: Path,
         user_id: int,
         course_slug: str,
+        *,
+        assigned_by_user_id: int,
     ) -> bool:
-        self.assign_calls.append((db_path, user_id, course_slug))
+        self.assign_calls.append(
+            (
+                db_path,
+                user_id,
+                course_slug,
+                assigned_by_user_id,
+            )
+        )
         return self.assign_result
 
 
@@ -142,6 +151,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
             "  intertop  ",
             42,
             "  retail-basics  ",
+            assigned_by_user_id=10,
         )
 
         self.assertTrue(result.success)
@@ -155,7 +165,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
         self.assertEqual(runtime.calls, ["retail-basics"])
         self.assertEqual(
             progress_repository.assign_calls,
-            [(self.db_path, 42, "retail-basics")],
+            [(self.db_path, 42, "retail-basics", 10)],
         )
 
     def test_member_not_found_does_not_call_repository_or_runtime(self) -> None:
@@ -163,7 +173,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
             member=None,
         )
 
-        result = service.assign_course("intertop", 42, "retail-basics")
+        result = service.assign_course("intertop", 42, "retail-basics", assigned_by_user_id=10)
 
         self.assertFalse(result.success)
         self.assertEqual(result.code, "member_not_found")
@@ -176,7 +186,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
             courses={},
         )
 
-        result = service.assign_course("intertop", 42, "missing-course")
+        result = service.assign_course("intertop", 42, "missing-course", assigned_by_user_id=10)
 
         self.assertFalse(result.success)
         self.assertEqual(result.code, "course_not_found")
@@ -197,7 +207,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
             },
         )
 
-        result = service.assign_course("intertop", 42, "empty-course")
+        result = service.assign_course("intertop", 42, "empty-course", assigned_by_user_id=10)
 
         self.assertFalse(result.success)
         self.assertEqual(result.code, "course_not_assignable")
@@ -216,13 +226,13 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
             },
         )
 
-        result = service.assign_course("intertop", 42, "with-lessons")
+        result = service.assign_course("intertop", 42, "with-lessons", assigned_by_user_id=10)
 
         self.assertTrue(result.success)
         self.assertEqual(result.code, "assigned")
         self.assertEqual(
             progress_repository.assign_calls,
-            [(self.db_path, 42, "with-lessons")],
+            [(self.db_path, 42, "with-lessons", 10)],
         )
 
     def test_repository_failure_returns_assignment_failed(self) -> None:
@@ -230,20 +240,53 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
             assign_result=False,
         )
 
-        result = service.assign_course("intertop", 42, "retail-basics")
+        result = service.assign_course("intertop", 42, "retail-basics", assigned_by_user_id=10)
 
         self.assertFalse(result.success)
         self.assertEqual(result.code, "assignment_failed")
         self.assertEqual(
             progress_repository.assign_calls,
-            [(self.db_path, 42, "retail-basics")],
+            [(self.db_path, 42, "retail-basics", 10)],
         )
+
+    def test_assignment_author_is_forwarded_to_repository(self) -> None:
+        service, _, progress_repository, _ = self._service()
+
+        result = service.assign_course(
+            "intertop",
+            42,
+            "retail-basics",
+            assigned_by_user_id=777,
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(
+            progress_repository.assign_calls,
+            [(self.db_path, 42, "retail-basics", 777)],
+        )
+
+    def test_invalid_assignment_author_rejected_before_dependencies(self) -> None:
+        service, team_service, progress_repository, runtime = self._service()
+
+        for invalid in (0, -1, True, "1"):
+            with self.subTest(assigned_by_user_id=invalid):
+                with self.assertRaises(ValueError):
+                    service.assign_course(
+                        "intertop",
+                        42,
+                        "retail-basics",
+                        assigned_by_user_id=invalid,  # type: ignore[arg-type]
+                    )
+
+        self.assertEqual(team_service.calls, [])
+        self.assertEqual(runtime.calls, [])
+        self.assertEqual(progress_repository.assign_calls, [])
 
     def test_invalid_company_id_rejected_before_dependencies(self) -> None:
         service, team_service, progress_repository, runtime = self._service()
 
         with self.assertRaises(ValueError):
-            service.assign_course("   ", 42, "retail-basics")
+            service.assign_course("   ", 42, "retail-basics", assigned_by_user_id=10)
 
         self.assertEqual(team_service.calls, [])
         self.assertEqual(runtime.calls, [])
@@ -255,7 +298,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
         for invalid_user_id in (0, -1, True, "1"):
             with self.subTest(user_id=invalid_user_id):
                 with self.assertRaises(ValueError):
-                    service.assign_course("intertop", invalid_user_id, "retail-basics")
+                    service.assign_course("intertop", invalid_user_id, "retail-basics", assigned_by_user_id=10)
 
         self.assertEqual(team_service.calls, [])
         self.assertEqual(runtime.calls, [])
@@ -267,7 +310,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
         for invalid_course_slug in ("", "   ", 123):
             with self.subTest(course_slug=invalid_course_slug):
                 with self.assertRaises(ValueError):
-                    service.assign_course("intertop", 42, invalid_course_slug)
+                    service.assign_course("intertop", 42, invalid_course_slug, assigned_by_user_id=10)
 
         self.assertEqual(team_service.calls, [])
         self.assertEqual(runtime.calls, [])
@@ -278,7 +321,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
             member=None,
         )
 
-        service.assign_course("intertop", 42, "retail-basics")
+        service.assign_course("intertop", 42, "retail-basics", assigned_by_user_id=10)
 
         self.assertEqual(team_service.calls, [("intertop", 42)])
         self.assertEqual(runtime.calls, [])
@@ -290,7 +333,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
             member=member,
         )
 
-        result = service.assign_course("intertop", 7, "retail-basics")
+        result = service.assign_course("intertop", 7, "retail-basics", assigned_by_user_id=10)
 
         self.assertTrue(result.success)
         self.assertEqual(result.user_id, 7)

@@ -761,7 +761,7 @@ class FakeDashboardService:
 
 class FakeManagerCourseAssignmentService:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, int, str]] = []
+        self.calls: list[tuple[str, int, str, int]] = []
         self._result_code = "assigned"
 
     def assign_course(
@@ -769,8 +769,16 @@ class FakeManagerCourseAssignmentService:
         company_id: str,
         user_id: int,
         course_slug: str,
+        assigned_by_user_id: int,
     ) -> ManagerCourseAssignmentResult:
-        self.calls.append((company_id, user_id, course_slug))
+        self.calls.append(
+            (
+                company_id,
+                user_id,
+                course_slug,
+                assigned_by_user_id,
+            )
+        )
         if user_id != 2:
             return ManagerCourseAssignmentResult(
                 success=False,
@@ -1199,7 +1207,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(response.headers["location"], "/manager/team/2?assignment=assigned")
         self.assertEqual(
             self.assignment_service.calls,
-            [("intertop", 2, "alpha")],
+            [("intertop", 2, "alpha", 10)],
         )
 
     def test_admin_can_assign_course(self) -> None:
@@ -1212,7 +1220,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 303)
-        self.assertEqual(self.assignment_service.calls, [("intertop", 2, "beta")])
+        self.assertEqual(self.assignment_service.calls, [("intertop", 2, "beta", 10)])
 
     def test_student_cannot_assign_course(self) -> None:
         self._set_identity("student")
@@ -1246,6 +1254,20 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
 
         self.assertEqual(self.assignment_service.calls[0][0], "intertop")
+
+    def test_assign_course_uses_identity_user_id_as_author(self) -> None:
+        self._set_identity("manager")
+
+        self.client.post(
+            "/manager/team/2/assign-course",
+            data={"course_slug": "alpha"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(
+            self.assignment_service.calls,
+            [("intertop", 2, "alpha", 10)],
+        )
 
     def test_assign_course_course_not_found_redirects(self) -> None:
         self._set_identity("manager")
@@ -1303,7 +1325,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(self.assignment_service.calls, [("intertop", 99, "beta")])
+        self.assertEqual(self.assignment_service.calls, [("intertop", 99, "beta", 10)])
 
     def test_team_member_page_renders_empty_practical_task_analytics(self) -> None:
         self._set_identity("manager")

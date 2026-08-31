@@ -41,11 +41,15 @@ class ManagerCourseAssignmentService:
         company_id: str,
         user_id: int,
         course_slug: str,
+        assigned_by_user_id: int,
     ) -> ManagerCourseAssignmentResult:
         """Assign one published course to one tenant member."""
         normalized_company_id = _validate_company_id(company_id)
         normalized_user_id = _validate_user_id(user_id)
         normalized_course_slug = _validate_course_slug(course_slug)
+        normalized_assigned_by_user_id = _validate_user_id(
+            assigned_by_user_id
+        )
 
         member = self._team_service.get_member(
             normalized_company_id,
@@ -83,6 +87,7 @@ class ManagerCourseAssignmentService:
             self._db_path,
             member.user_id,
             course.slug,
+            assigned_by_user_id=normalized_assigned_by_user_id,
         )
         if assigned:
             return ManagerCourseAssignmentResult(

@@ -76,6 +76,7 @@ class CanonicalUserProgressRepositoryTests(unittest.TestCase):
                     enrollments.status,
                     enrollments.progress_percent,
                     enrollments.assigned_at,
+                    enrollments.assigned_by_user_id,
                     enrollments.started_at,
                     enrollments.completed_at
                 FROM enrollments
@@ -289,6 +290,137 @@ class CanonicalUserProgressRepositoryTests(unittest.TestCase):
         self.assertEqual(assigned[0][1], "Alpha")
         self.assertEqual(assigned[0][2], enrollment["assigned_at"])
 
+    def test_manager_assignment_records_canonical_author(self) -> None:
+        with get_connection(self.db_path) as connection:
+            manager_user_id = int(
+                connection.execute(
+                    """
+                    INSERT INTO users (
+                        telegram_id,
+                        username,
+                        first_name,
+                        last_name
+                    )
+                    VALUES (NULL, ?, ?, ?)
+                    """,
+                    ("manager", "Manager", "User"),
+                ).lastrowid
+            )
+
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                assigned_by_user_id=manager_user_id,
+            )
+        )
+
+        enrollment = self._enrollment_row("alpha")
+        self.assertEqual(
+            enrollment["assigned_by_user_id"],
+            manager_user_id,
+        )
+
+    def test_assignment_without_author_keeps_author_null(self) -> None:
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+            )
+        )
+
+        enrollment = self._enrollment_row("alpha")
+        self.assertIsNone(enrollment["assigned_by_user_id"])
+
+    def test_repeated_assignment_does_not_replace_original_author(self) -> None:
+        with get_connection(self.db_path) as connection:
+            first_manager_id = int(
+                connection.execute(
+                    """
+                    INSERT INTO users (username, first_name, last_name)
+                    VALUES (?, ?, ?)
+                    """,
+                    ("manager-one", "Manager", "One"),
+                ).lastrowid
+            )
+            second_manager_id = int(
+                connection.execute(
+                    """
+                    INSERT INTO users (username, first_name, last_name)
+                    VALUES (?, ?, ?)
+                    """,
+                    ("manager-two", "Manager", "Two"),
+                ).lastrowid
+            )
+
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                assigned_by_user_id=first_manager_id,
+            )
+        )
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                assigned_by_user_id=second_manager_id,
+            )
+        )
+
+        enrollment = self._enrollment_row("alpha")
+        self.assertEqual(
+            enrollment["assigned_by_user_id"],
+            first_manager_id,
+        )
+
+    def test_unknown_assignment_author_returns_false(self) -> None:
+        self.assertFalse(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                assigned_by_user_id=999999,
+            )
+        )
+
+        with get_connection(self.db_path) as connection:
+            count = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM enrollments
+                WHERE user_id = ?
+                """,
+                (self.user_id,),
+            ).fetchone()[0]
+
+        self.assertEqual(count, 0)
+
+    def test_invalid_assignment_author_ids_are_rejected(self) -> None:
+        for invalid in (0, -1, True, "1"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    self.repository.assign_course_to_user(
+                        self.db_path,
+                        self.user_id,
+                        "alpha",
+                        assigned_by_user_id=invalid,  # type: ignore[arg-type]
+                    )
+
+    def test_self_started_course_has_no_assignment_author(self) -> None:
+        self.repository.start_course_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+
+        enrollment = self._enrollment_row("alpha")
+        self.assertIsNone(enrollment["assigned_by_user_id"])
+
     def test_assign_course_unknown_user_returns_false(self) -> None:
         self.assertFalse(
             self.repository.assign_course_to_user(
@@ -382,6 +514,43 @@ class CanonicalUserProgressRepositoryTests(unittest.TestCase):
         self.assertEqual(after["progress_percent"], before["progress_percent"])
         self.assertEqual(after["started_at"], before["started_at"])
 
+    def test_assigning_self_started_course_does_not_claim_manager_authorship(
+        self,
+    ) -> None:
+        with get_connection(self.db_path) as connection:
+            manager_user_id = int(
+                connection.execute(
+                    """
+                    INSERT INTO users (username, first_name, last_name)
+                    VALUES (?, ?, ?)
+                    """,
+                    ("late-manager", "Late", "Manager"),
+                ).lastrowid
+            )
+
+        self.repository.start_course_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+        before = self._enrollment_row("alpha")
+        self.assertIsNone(before["assigned_by_user_id"])
+
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                assigned_by_user_id=manager_user_id,
+            )
+        )
+
+        after = self._enrollment_row("alpha")
+        self.assertEqual(after["status"], "in_progress")
+        self.assertEqual(after["started_at"], before["started_at"])
+        self.assertEqual(after["assigned_at"], before["assigned_at"])
+        self.assertIsNone(after["assigned_by_user_id"])
+
     def test_assign_does_not_downgrade_completed_course(self) -> None:
         self.repository.start_course_for_user(
             self.db_path,
@@ -408,6 +577,48 @@ class CanonicalUserProgressRepositoryTests(unittest.TestCase):
         self.assertEqual(after["progress_percent"], before["progress_percent"])
         self.assertEqual(after["started_at"], before["started_at"])
         self.assertEqual(after["completed_at"], before["completed_at"])
+
+    def test_assigning_completed_course_does_not_claim_manager_authorship(
+        self,
+    ) -> None:
+        with get_connection(self.db_path) as connection:
+            manager_user_id = int(
+                connection.execute(
+                    """
+                    INSERT INTO users (username, first_name, last_name)
+                    VALUES (?, ?, ?)
+                    """,
+                    ("late-manager-completed", "Late", "Manager"),
+                ).lastrowid
+            )
+
+        self.repository.start_course_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+        self.repository.complete_course_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+        before = self._enrollment_row("alpha")
+        self.assertIsNone(before["assigned_by_user_id"])
+
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                assigned_by_user_id=manager_user_id,
+            )
+        )
+
+        after = self._enrollment_row("alpha")
+        self.assertEqual(after["status"], "completed")
+        self.assertEqual(after["completed_at"], before["completed_at"])
+        self.assertEqual(after["assigned_at"], before["assigned_at"])
+        self.assertIsNone(after["assigned_by_user_id"])
 
     def test_start_course_after_assignment_preserves_assigned_at(self) -> None:
         self.assertTrue(

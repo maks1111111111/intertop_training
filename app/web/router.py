@@ -951,6 +951,7 @@ async def manager_team_member_assign_course(
             identity.company_id,
             user_id,
             course_slug,
+            identity.user_id,
         )
     except ValueError:
         return RedirectResponse(

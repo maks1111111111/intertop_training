@@ -248,11 +248,30 @@ class ProgressRepository:
         db_path: Path,
         user_id: int,
         course_slug: str,
+        *,
+        assigned_by_user_id: Optional[int] = None,
     ) -> bool:
         """Assign a course to a canonical user without starting it."""
         normalized_user_id = _validate_user_id(user_id)
+        normalized_assigned_by_user_id = (
+            None
+            if assigned_by_user_id is None
+            else _validate_user_id(assigned_by_user_id)
+        )
 
         with get_connection(db_path) as connection:
+            if normalized_assigned_by_user_id is not None:
+                assignment_author = connection.execute(
+                    """
+                    SELECT 1
+                    FROM users
+                    WHERE id = ?
+                    """,
+                    (normalized_assigned_by_user_id,),
+                ).fetchone()
+                if assignment_author is None:
+                    return False
+
             connection.execute(
                 """
                 INSERT INTO enrollments (
@@ -260,6 +279,7 @@ class ProgressRepository:
                     course_id,
                     status,
                     progress_percent,
+                    assigned_by_user_id,
                     started_at,
                     completed_at
                 )
@@ -268,6 +288,7 @@ class ProgressRepository:
                     courses.id,
                     'assigned',
                     0,
+                    ?,
                     NULL,
                     NULL
                 FROM courses
@@ -281,6 +302,7 @@ class ProgressRepository:
                 """,
                 (
                     normalized_user_id,
+                    normalized_assigned_by_user_id,
                     course_slug,
                     normalized_user_id,
                 ),
