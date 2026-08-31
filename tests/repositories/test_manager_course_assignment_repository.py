@@ -25,6 +25,8 @@ class ManagerCourseAssignmentRepositoryTests(unittest.TestCase):
                 CREATE TABLE users (
                     id INTEGER PRIMARY KEY,
                     username TEXT,
+                    first_name TEXT,
+                    last_name TEXT,
                     is_active INTEGER NOT NULL DEFAULT 1
                 );
 
@@ -58,14 +60,22 @@ class ManagerCourseAssignmentRepositoryTests(unittest.TestCase):
 
             connection.executemany(
                 """
-                INSERT INTO users (id, username, is_active)
-                VALUES (?, ?, ?)
+                INSERT INTO users (
+                    id,
+                    username,
+                    first_name,
+                    last_name,
+                    is_active
+                )
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 (
-                    (1, "manager", 1),
-                    (2, "employee-a", 1),
-                    (3, "employee-b", 1),
-                    (4, "inactive-user", 0),
+                    (1, "manager", "Anna", "Manager", 1),
+                    (2, "employee-a", "Alex", "Employee", 1),
+                    (3, "employee-b", "Bob", "Other", 1),
+                    (4, "inactive-user", None, None, 0),
+                    (5, "former-manager", "Former", "Manager", 0),
+                    (6, "outside-manager", "Outside", "Manager", 1),
                 ),
             )
 
@@ -196,6 +206,9 @@ class ManagerCourseAssignmentRepositoryTests(unittest.TestCase):
                     progress_percent=100,
                     assigned_at="2026-08-31 13:00:00",
                     assigned_by_user_id=1,
+                    assigned_by_username="manager",
+                    assigned_by_first_name="Anna",
+                    assigned_by_last_name="Manager",
                     started_at="2026-08-31 14:00:00",
                     completed_at="2026-08-31 15:00:00",
                 ),
@@ -207,6 +220,9 @@ class ManagerCourseAssignmentRepositoryTests(unittest.TestCase):
                     progress_percent=60,
                     assigned_at="2026-08-31 11:00:00",
                     assigned_by_user_id=1,
+                    assigned_by_username="manager",
+                    assigned_by_first_name="Anna",
+                    assigned_by_last_name="Manager",
                     started_at="2026-08-31 12:00:00",
                     completed_at=None,
                 ),
@@ -218,6 +234,9 @@ class ManagerCourseAssignmentRepositoryTests(unittest.TestCase):
                     progress_percent=0,
                     assigned_at="2026-08-31 10:00:00",
                     assigned_by_user_id=1,
+                    assigned_by_username="manager",
+                    assigned_by_first_name="Anna",
+                    assigned_by_last_name="Manager",
                     started_at=None,
                     completed_at=None,
                 ),
@@ -328,6 +347,52 @@ class ManagerCourseAssignmentRepositoryTests(unittest.TestCase):
         )
 
         self.assertEqual(records, ())
+
+    def test_inactive_author_is_still_returned(self) -> None:
+        self._insert_enrollment(
+            enrollment_id=100,
+            user_id=2,
+            course_id=10,
+            status="assigned",
+            progress_percent=0,
+            assigned_at="2026-08-31 10:00:00",
+            assigned_by_user_id=5,
+        )
+
+        records = self.repository.list_for_member(
+            self.db_path,
+            "company-a",
+            2,
+        )
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].assigned_by_user_id, 5)
+        self.assertEqual(records[0].assigned_by_first_name, "Former")
+        self.assertEqual(records[0].assigned_by_last_name, "Manager")
+        self.assertEqual(records[0].assigned_by_username, "former-manager")
+
+    def test_author_without_company_membership_is_still_returned(self) -> None:
+        self._insert_enrollment(
+            enrollment_id=100,
+            user_id=2,
+            course_id=10,
+            status="assigned",
+            progress_percent=0,
+            assigned_at="2026-08-31 10:00:00",
+            assigned_by_user_id=6,
+        )
+
+        records = self.repository.list_for_member(
+            self.db_path,
+            "company-a",
+            2,
+        )
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].assigned_by_user_id, 6)
+        self.assertEqual(records[0].assigned_by_first_name, "Outside")
+        self.assertEqual(records[0].assigned_by_last_name, "Manager")
+        self.assertEqual(records[0].assigned_by_username, "outside-manager")
 
     def test_invalid_company_ids_are_rejected(self) -> None:
         for invalid in ("", "   ", 123, None):

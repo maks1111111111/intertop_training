@@ -28,6 +28,7 @@ class ManagerCourseAssignmentHistoryItem:
     status_label: str
     progress_percent: int
     assigned_at: str
+    assigned_by_display_name: str
     started_at: Optional[str]
     completed_at: Optional[str]
 
@@ -101,9 +102,40 @@ def _to_history_item(
         status_label=status_label,
         progress_percent=record.progress_percent,
         assigned_at=record.assigned_at,
+        assigned_by_display_name=_assigned_by_display_name(record),
         started_at=record.started_at,
         completed_at=record.completed_at,
     )
+
+
+def _assigned_by_display_name(record: ManagerCourseAssignmentRecord) -> str:
+    name_parts = tuple(
+        value
+        for value in (
+            _normalize_optional_text(record.assigned_by_first_name),
+            _normalize_optional_text(record.assigned_by_last_name),
+        )
+        if value
+    )
+    if name_parts:
+        return " ".join(name_parts)
+
+    username = _normalize_optional_text(record.assigned_by_username)
+    if username:
+        return username
+
+    return f"Пользователь #{record.assigned_by_user_id}"
+
+
+def _normalize_optional_text(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+
+    normalized = value.strip()
+    if not normalized:
+        return None
+
+    return normalized
 
 
 def _validate_company_id(company_id: str) -> str:

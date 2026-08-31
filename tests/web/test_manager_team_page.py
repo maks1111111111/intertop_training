@@ -84,6 +84,7 @@ class FakeManagerCourseAssignmentHistoryService:
                     status_label="Назначен",
                     progress_percent=0,
                     assigned_at="2026-08-31 10:00:00",
+                    assigned_by_display_name="Anna Manager",
                     started_at=None,
                     completed_at=None,
                 ),
@@ -94,6 +95,7 @@ class FakeManagerCourseAssignmentHistoryService:
                     status_label="В процессе",
                     progress_percent=60,
                     assigned_at="2026-08-31 11:00:00",
+                    assigned_by_display_name="Anna Manager",
                     started_at="2026-08-31 12:00:00",
                     completed_at=None,
                 ),
@@ -104,6 +106,7 @@ class FakeManagerCourseAssignmentHistoryService:
                     status_label="Завершён",
                     progress_percent=100,
                     assigned_at="2026-08-31 13:00:00",
+                    assigned_by_display_name="Anna Manager",
                     started_at="2026-08-31 14:00:00",
                     completed_at="2026-08-31 15:00:00",
                 ),
@@ -1219,6 +1222,8 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Assigned Alpha", response.text)
         self.assertIn("Assigned Beta", response.text)
         self.assertIn("Assigned Gamma", response.text)
+        self.assertIn("Назначил", response.text)
+        self.assertIn("Anna Manager", response.text)
         self.assertIn("2026-08-31 10:00:00", response.text)
         self.assertIn("2026-08-31 12:00:00", response.text)
         self.assertIn("2026-08-31 15:00:00", response.text)

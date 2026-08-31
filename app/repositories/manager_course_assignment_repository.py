@@ -20,6 +20,9 @@ class ManagerCourseAssignmentRecord:
     progress_percent: int
     assigned_at: str
     assigned_by_user_id: int
+    assigned_by_username: Optional[str]
+    assigned_by_first_name: Optional[str]
+    assigned_by_last_name: Optional[str]
     started_at: Optional[str]
     completed_at: Optional[str]
 
@@ -70,19 +73,24 @@ class ManagerCourseAssignmentRepository:
                     enrollments.progress_percent,
                     enrollments.assigned_at,
                     enrollments.assigned_by_user_id,
+                    assignment_author_users.username AS assigned_by_username,
+                    assignment_author_users.first_name AS assigned_by_first_name,
+                    assignment_author_users.last_name AS assigned_by_last_name,
                     enrollments.started_at,
                     enrollments.completed_at
                 FROM company_memberships
-                JOIN users
-                    ON users.id = company_memberships.user_id
+                JOIN users AS employee_users
+                    ON employee_users.id = company_memberships.user_id
                 JOIN enrollments
-                    ON enrollments.user_id = users.id
+                    ON enrollments.user_id = employee_users.id
                 JOIN courses
                     ON courses.id = enrollments.course_id
+                LEFT JOIN users AS assignment_author_users
+                    ON assignment_author_users.id = enrollments.assigned_by_user_id
                 WHERE company_memberships.company_id = ?
                   AND company_memberships.user_id = ?
                   AND company_memberships.is_active = 1
-                  AND users.is_active = 1
+                  AND employee_users.is_active = 1
                   AND enrollments.assigned_by_user_id IS NOT NULL
                 ORDER BY
                     enrollments.assigned_at DESC,
@@ -103,6 +111,21 @@ class ManagerCourseAssignmentRepository:
                 progress_percent=int(row["progress_percent"]),
                 assigned_at=str(row["assigned_at"]),
                 assigned_by_user_id=int(row["assigned_by_user_id"]),
+                assigned_by_username=(
+                    str(row["assigned_by_username"])
+                    if row["assigned_by_username"] is not None
+                    else None
+                ),
+                assigned_by_first_name=(
+                    str(row["assigned_by_first_name"])
+                    if row["assigned_by_first_name"] is not None
+                    else None
+                ),
+                assigned_by_last_name=(
+                    str(row["assigned_by_last_name"])
+                    if row["assigned_by_last_name"] is not None
+                    else None
+                ),
                 started_at=(
                     str(row["started_at"])
                     if row["started_at"] is not None
