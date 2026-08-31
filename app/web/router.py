@@ -18,6 +18,9 @@ from app.repositories.company_membership_repository import CompanyMembershipRepo
 from app.repositories.company_repository import CompanyRepository
 from app.repositories.company_team_repository import CompanyTeamRepository
 from app.repositories.password_credential_repository import PasswordCredentialRepository
+from app.repositories.manager_course_assignment_repository import (
+    ManagerCourseAssignmentRepository,
+)
 from app.repositories.progress_repository import ProgressRepository
 from app.repositories.user_repository import UserRepository
 from app.services.tenant_context_service import TenantContextService
@@ -131,6 +134,9 @@ from app.web.admin_knowledge_upload_service import (
     AdminKnowledgeUploadService,
 )
 from app.web.dashboard_service import DashboardService
+from app.web.manager_course_assignment_history_service import (
+    ManagerCourseAssignmentHistoryService,
+)
 from app.web.manager_course_assignment_service import ManagerCourseAssignmentService
 from app.web.manager_employee_analytics_service import ManagerEmployeeAnalyticsService
 from app.web.manager_team_analytics_service import ManagerTeamAnalyticsService
@@ -407,6 +413,16 @@ def get_manager_course_assignment_service(
         team_service,
         ProgressRepository(),
         runtime,
+        db_path,
+    )
+
+
+def get_manager_course_assignment_history_service(
+    db_path: Path = Depends(get_db_path),
+) -> ManagerCourseAssignmentHistoryService:
+    """Return the tenant-scoped manager course assignment history service."""
+    return ManagerCourseAssignmentHistoryService(
+        ManagerCourseAssignmentRepository(),
         db_path,
     )
 
@@ -892,6 +908,9 @@ def manager_team_member_page(
     analytics_service: ManagerEmployeeAnalyticsService = Depends(
         get_manager_employee_analytics_service
     ),
+    assignment_history_service: ManagerCourseAssignmentHistoryService = Depends(
+        get_manager_course_assignment_history_service
+    ),
     runtime: ContentRuntime = Depends(get_content_runtime),
     identity: WebIdentity = Depends(require_web_management_identity),
 ) -> HTMLResponse:
@@ -909,6 +928,10 @@ def manager_team_member_page(
     practical_task_analytics = analytics_service.get_practical_task_analytics(
         member.user_id
     )
+    assignment_history = assignment_history_service.get_for_member(
+        identity.company_id,
+        member.user_id,
+    )
     assignment_message, assignment_is_error = _assignment_feedback(
         request.query_params.get("assignment"),
     )
@@ -923,6 +946,7 @@ def manager_team_member_page(
             "assignable_courses": _assignable_courses(courses, runtime),
             "assignment_message": assignment_message,
             "assignment_is_error": assignment_is_error,
+            "assignment_history": assignment_history,
             "quiz_analytics": quiz_analytics,
             "development_profile": development_profile,
             "practical_task_analytics": practical_task_analytics,

@@ -74,6 +74,82 @@
     {% endif %}
 </section>
 
+<section class="section">
+    <h2>Назначенные курсы</h2>
+
+    {% if assignment_history.total_count > 0 %}
+    <div class="dashboard-metrics">
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Всего назначено</span>
+            <span class="dashboard-metric-value">{{ assignment_history.total_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Ожидают начала</span>
+            <span class="dashboard-metric-value">{{ assignment_history.assigned_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">В процессе</span>
+            <span class="dashboard-metric-value">{{ assignment_history.in_progress_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Завершено</span>
+            <span class="dashboard-metric-value">{{ assignment_history.completed_count }}</span>
+        </div>
+    </div>
+
+    <ul class="course-list dashboard-course-list">
+        {% for assignment in assignment_history.assignments %}
+        <li class="course-card dashboard-course-card dashboard-course-card--{{ assignment.status }}">
+            <div class="dashboard-course-body">
+                <header class="dashboard-course-header">
+                    <h3 class="course-card-title">{{ assignment.course_title }}</h3>
+                    <span class="dashboard-status-badge dashboard-status-badge--{{ assignment.status }}">
+                        {{ assignment.status_label }}
+                    </span>
+                </header>
+
+                <div class="dashboard-progress-section">
+                    <div class="dashboard-progress-header">
+                        <span class="dashboard-progress-heading">Прогресс</span>
+                        <span class="dashboard-progress-label">{{ assignment.progress_percent }}%</span>
+                    </div>
+                    <div
+                        class="dashboard-progress"
+                        aria-label="Прогресс курса {{ assignment.progress_percent }} процентов"
+                    >
+                        <div class="dashboard-progress-bar" style="width: {{ assignment.progress_percent }}%;"></div>
+                    </div>
+                </div>
+
+                <div class="dashboard-metrics">
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Назначен</span>
+                        <span class="dashboard-metric-value">{{ assignment.assigned_at }}</span>
+                    </div>
+                    {% if assignment.started_at %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Начат</span>
+                        <span class="dashboard-metric-value">{{ assignment.started_at }}</span>
+                    </div>
+                    {% endif %}
+                    {% if assignment.completed_at %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Завершён</span>
+                        <span class="dashboard-metric-value">{{ assignment.completed_at }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state dashboard-empty-state">
+        <p class="dashboard-empty-state-message">Менеджер пока не назначал этому сотруднику курсы.</p>
+    </div>
+    {% endif %}
+</section>
+
 {% if courses %}
 <section class="section">
     <h2>Курсы</h2>

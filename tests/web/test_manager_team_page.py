@@ -12,6 +12,10 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 
 from app.web.dashboard_service import CourseDashboardItem
+from app.web.manager_course_assignment_history_service import (
+    ManagerCourseAssignmentHistory,
+    ManagerCourseAssignmentHistoryItem,
+)
 from app.web.manager_course_assignment_service import ManagerCourseAssignmentResult
 from app.web.manager_employee_analytics_service import (
     EmployeeCourseQuizAnalytics,
@@ -42,6 +46,7 @@ from app.web.router import (
     get_content_runtime,
     get_current_web_identity,
     get_dashboard_service,
+    get_manager_course_assignment_history_service,
     get_manager_course_assignment_service,
     get_manager_employee_analytics_service,
     get_manager_team_analytics_service,
@@ -49,6 +54,65 @@ from app.web.router import (
 )
 from app.web.web_identity_service import WebIdentity
 from tests.web.test_web_ui import _create_test_app
+
+
+class FakeManagerCourseAssignmentHistoryService:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int]] = []
+        self._empty = False
+
+    def get_for_member(
+        self,
+        company_id: str,
+        user_id: int,
+    ) -> ManagerCourseAssignmentHistory:
+        self.calls.append((company_id, user_id))
+        if self._empty:
+            return ManagerCourseAssignmentHistory(
+                assignments=(),
+                total_count=0,
+                assigned_count=0,
+                in_progress_count=0,
+                completed_count=0,
+            )
+        return ManagerCourseAssignmentHistory(
+            assignments=(
+                ManagerCourseAssignmentHistoryItem(
+                    course_slug="alpha",
+                    course_title="Assigned Alpha",
+                    status="assigned",
+                    status_label="Назначен",
+                    progress_percent=0,
+                    assigned_at="2026-08-31 10:00:00",
+                    started_at=None,
+                    completed_at=None,
+                ),
+                ManagerCourseAssignmentHistoryItem(
+                    course_slug="beta",
+                    course_title="Assigned Beta",
+                    status="in_progress",
+                    status_label="В процессе",
+                    progress_percent=60,
+                    assigned_at="2026-08-31 11:00:00",
+                    started_at="2026-08-31 12:00:00",
+                    completed_at=None,
+                ),
+                ManagerCourseAssignmentHistoryItem(
+                    course_slug="gamma",
+                    course_title="Assigned Gamma",
+                    status="completed",
+                    status_label="Завершён",
+                    progress_percent=100,
+                    assigned_at="2026-08-31 13:00:00",
+                    started_at="2026-08-31 14:00:00",
+                    completed_at="2026-08-31 15:00:00",
+                ),
+            ),
+            total_count=3,
+            assigned_count=1,
+            in_progress_count=1,
+            completed_count=1,
+        )
 
 
 class FakeManagerTeamService:
@@ -852,6 +916,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.analytics_service = FakeAnalyticsService()
         self.team_analytics_service = FakeTeamAnalyticsService()
         self.assignment_service = FakeManagerCourseAssignmentService()
+        self.assignment_history_service = FakeManagerCourseAssignmentHistoryService()
         self.content_runtime = FakeContentRuntimeForAssignment(
             {
                 "alpha": 1,
@@ -871,6 +936,9 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
         self.app.dependency_overrides[get_manager_course_assignment_service] = (
             lambda: self.assignment_service
+        )
+        self.app.dependency_overrides[get_manager_course_assignment_history_service] = (
+            lambda: self.assignment_history_service
         )
         self.app.dependency_overrides[get_content_runtime] = lambda: self.content_runtime
 
@@ -1138,6 +1206,39 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertNotIn('value="empty-course"', response.text)
         self.assertIn('value="beta"', response.text)
 
+    def test_team_member_page_renders_assignment_history(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.assignment_history_service.calls, [("intertop", 2)])
+        self.assertIn("Назначенные курсы", response.text)
+        self.assertIn("Всего назначено", response.text)
+        self.assertIn("Ожидают начала", response.text)
+        self.assertIn("Assigned Alpha", response.text)
+        self.assertIn("Assigned Beta", response.text)
+        self.assertIn("Assigned Gamma", response.text)
+        self.assertIn("2026-08-31 10:00:00", response.text)
+        self.assertIn("2026-08-31 12:00:00", response.text)
+        self.assertIn("2026-08-31 15:00:00", response.text)
+        self.assertIn("60%", response.text)
+        self.assertIn("100%", response.text)
+
+    def test_team_member_page_renders_empty_assignment_history(self) -> None:
+        self._set_identity("manager")
+        self.assignment_history_service._empty = True
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.assignment_history_service.calls, [("intertop", 2)])
+        self.assertIn("Назначенные курсы", response.text)
+        self.assertIn(
+            "Менеджер пока не назначал этому сотруднику курсы.",
+            response.text,
+        )
+
     def test_team_member_page_excludes_empty_course_from_assignment_dropdown(
         self,
     ) -> None:
@@ -1404,6 +1505,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(self.analytics_service.calls, [])
         self.assertEqual(self.analytics_service.development_profile_calls, [])
         self.assertEqual(self.analytics_service.practical_task_calls, [])
+        self.assertEqual(self.assignment_history_service.calls, [])
 
 
 
@@ -1418,6 +1520,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(self.analytics_service.calls, [])
         self.assertEqual(self.analytics_service.development_profile_calls, [])
         self.assertEqual(self.analytics_service.practical_task_calls, [])
+        self.assertEqual(self.assignment_history_service.calls, [])
 
     def test_anonymous_cannot_open_team_member_page(self) -> None:
         response = self.client.get("/manager/team/2")
@@ -1428,6 +1531,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(self.analytics_service.calls, [])
         self.assertEqual(self.analytics_service.development_profile_calls, [])
         self.assertEqual(self.analytics_service.practical_task_calls, [])
+        self.assertEqual(self.assignment_history_service.calls, [])
 
     def test_manager_can_open_recommendation_detail_page(self) -> None:
         self._set_identity("manager")
