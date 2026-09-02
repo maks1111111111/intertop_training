@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import quote
 
+from app.web.manager_course_assignment_history_service import (
+    ManagerCourseAssignmentHistory,
+    ManagerCourseAssignmentHistoryService,
+)
 from app.web.manager_employee_analytics_service import (
     EmployeePracticalTaskAnalytics,
     EmployeePracticalSignalEvidenceSet,
@@ -62,6 +66,27 @@ class ManagerTeamAnalytics:
     practical_strengths: tuple[ManagerTeamPracticalSignal, ...]
     practical_development_areas: tuple[ManagerTeamPracticalSignal, ...]
     reviewed_practical_attempts_count: int
+    assignment_total_count: int = 0
+    assignment_due_soon_count: int = 0
+    assignment_overdue_count: int = 0
+    members_with_due_soon_assignments_count: int = 0
+    members_with_overdue_assignments_count: int = 0
+
+
+def _empty_assignment_history() -> ManagerCourseAssignmentHistory:
+    return ManagerCourseAssignmentHistory(
+        assignments=(),
+        total_count=0,
+        assigned_count=0,
+        in_progress_count=0,
+        completed_count=0,
+        no_deadline_count=0,
+        on_track_count=0,
+        due_soon_count=0,
+        overdue_count=0,
+        completed_on_time_count=0,
+        completed_late_count=0,
+    )
 
 
 @dataclass(frozen=True)
@@ -71,6 +96,9 @@ class ManagerTeamMemberAnalytics:
     practical_task_analytics: EmployeePracticalTaskAnalytics
     topics_analytics: EmployeeQuizTopicsAnalytics
     practical_signal_evidence: EmployeePracticalSignalEvidenceSet
+    assignment_history: ManagerCourseAssignmentHistory = field(
+        default_factory=_empty_assignment_history
+    )
 
 
 @dataclass(frozen=True)
@@ -122,9 +150,11 @@ class ManagerTeamAnalyticsService:
         self,
         team_service: ManagerTeamService,
         employee_analytics_service: ManagerEmployeeAnalyticsService,
+        assignment_history_service: ManagerCourseAssignmentHistoryService,
     ) -> None:
         self._team_service = team_service
         self._employee_analytics_service = employee_analytics_service
+        self._assignment_history_service = assignment_history_service
 
     def get_team_overview(self, company_id: str) -> ManagerTeamOverview:
         members = self._team_service.get_team(company_id)
@@ -147,6 +177,9 @@ class ManagerTeamAnalyticsService:
         practical_evidence_by_member: list[
             tuple[ManagerTeamMember, EmployeePracticalSignalEvidenceSet]
         ] = []
+        assignment_history_by_member: list[
+            tuple[ManagerTeamMember, ManagerCourseAssignmentHistory]
+        ] = []
 
         for member in members:
             quiz_analytics = self._employee_analytics_service.get_quiz_analytics(
@@ -167,6 +200,10 @@ class ManagerTeamAnalyticsService:
                     member.user_id
                 )
             )
+            assignment_history = self._assignment_history_service.get_for_member(
+                company_id,
+                member.user_id,
+            )
             member_rows.append(
                 ManagerTeamMemberAnalytics(
                     member=member,
@@ -174,6 +211,7 @@ class ManagerTeamAnalyticsService:
                     practical_task_analytics=practical_task_analytics,
                     topics_analytics=topics_analytics,
                     practical_signal_evidence=practical_signal_evidence,
+                    assignment_history=assignment_history,
                 )
             )
             quiz_analytics_by_member.append((member, quiz_analytics))
@@ -184,6 +222,7 @@ class ManagerTeamAnalyticsService:
             practical_evidence_by_member.append(
                 (member, practical_signal_evidence)
             )
+            assignment_history_by_member.append((member, assignment_history))
 
         analytics = _build_team_analytics(
             members,
@@ -191,6 +230,7 @@ class ManagerTeamAnalyticsService:
             topics_analytics_by_member,
             practical_analytics_by_member,
             practical_evidence_by_member,
+            assignment_history_by_member,
         )
         member_rows_tuple = tuple(member_rows)
         recommendations = _build_team_recommendations(analytics, member_rows_tuple)
@@ -290,6 +330,9 @@ def _build_team_analytics(
     ],
     practical_evidence_by_member: list[
         tuple[ManagerTeamMember, EmployeePracticalSignalEvidenceSet]
+    ],
+    assignment_history_by_member: list[
+        tuple[ManagerTeamMember, ManagerCourseAssignmentHistory]
     ],
 ) -> ManagerTeamAnalytics:
     members_count = len(members)
@@ -441,6 +484,26 @@ def _build_team_analytics(
         _aggregate_team_practical_signals(practical_evidence_by_member)
     )
 
+    assignment_total_count = sum(
+        history.total_count for _member, history in assignment_history_by_member
+    )
+    assignment_due_soon_count = sum(
+        history.due_soon_count for _member, history in assignment_history_by_member
+    )
+    assignment_overdue_count = sum(
+        history.overdue_count for _member, history in assignment_history_by_member
+    )
+    members_with_due_soon_assignments_count = sum(
+        1
+        for _member, history in assignment_history_by_member
+        if history.due_soon_count > 0
+    )
+    members_with_overdue_assignments_count = sum(
+        1
+        for _member, history in assignment_history_by_member
+        if history.overdue_count > 0
+    )
+
     return ManagerTeamAnalytics(
         members_count=members_count,
         started_members_count=started_members_count,
@@ -468,6 +531,15 @@ def _build_team_analytics(
         practical_strengths=practical_strengths,
         practical_development_areas=practical_development_areas,
         reviewed_practical_attempts_count=reviewed_practical_attempts_count,
+        assignment_total_count=assignment_total_count,
+        assignment_due_soon_count=assignment_due_soon_count,
+        assignment_overdue_count=assignment_overdue_count,
+        members_with_due_soon_assignments_count=(
+            members_with_due_soon_assignments_count
+        ),
+        members_with_overdue_assignments_count=(
+            members_with_overdue_assignments_count
+        ),
     )
 
 

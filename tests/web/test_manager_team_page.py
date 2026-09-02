@@ -473,6 +473,7 @@ class FakeTeamAnalyticsService:
         self._empty = False
         self._quiz_analytics_override: EmployeeQuizAnalytics | None = None
         self._practical_analytics_override: EmployeePracticalTaskAnalytics | None = None
+        self._assignment_history_override: ManagerCourseAssignmentHistory | None = None
 
     @staticmethod
     def _default_member() -> ManagerTeamMember:
@@ -530,6 +531,43 @@ class FakeTeamAnalyticsService:
             return self._practical_analytics_override
         return self._default_member_practical_analytics()
 
+    @staticmethod
+    def _default_member_assignment_history() -> ManagerCourseAssignmentHistory:
+        return ManagerCourseAssignmentHistory(
+            assignments=(),
+            total_count=4,
+            assigned_count=1,
+            in_progress_count=2,
+            completed_count=1,
+            no_deadline_count=1,
+            on_track_count=0,
+            due_soon_count=1,
+            overdue_count=1,
+            completed_on_time_count=0,
+            completed_late_count=1,
+        )
+
+    @staticmethod
+    def _empty_member_assignment_history() -> ManagerCourseAssignmentHistory:
+        return ManagerCourseAssignmentHistory(
+            assignments=(),
+            total_count=0,
+            assigned_count=0,
+            in_progress_count=0,
+            completed_count=0,
+            no_deadline_count=0,
+            on_track_count=0,
+            due_soon_count=0,
+            overdue_count=0,
+            completed_on_time_count=0,
+            completed_late_count=0,
+        )
+
+    def _resolve_member_assignment_history(self) -> ManagerCourseAssignmentHistory:
+        if self._assignment_history_override is not None:
+            return self._assignment_history_override
+        return self._default_member_assignment_history()
+
     def _populated_analytics(self) -> ManagerTeamAnalytics:
         return ManagerTeamAnalytics(
             members_count=3,
@@ -582,6 +620,11 @@ class FakeTeamAnalyticsService:
                 ),
             ),
             reviewed_practical_attempts_count=4,
+            assignment_total_count=4,
+            assignment_due_soon_count=1,
+            assignment_overdue_count=1,
+            members_with_due_soon_assignments_count=1,
+            members_with_overdue_assignments_count=1,
         )
 
     def _populated_recommendations(self) -> tuple[ManagerActionRecommendation, ...]:
@@ -686,6 +729,11 @@ class FakeTeamAnalyticsService:
                     practical_strengths=(),
                     practical_development_areas=(),
                     reviewed_practical_attempts_count=0,
+                    assignment_total_count=0,
+                    assignment_due_soon_count=0,
+                    assignment_overdue_count=0,
+                    members_with_due_soon_assignments_count=0,
+                    members_with_overdue_assignments_count=0,
                 ),
                 members=(),
                 recommendations=(),
@@ -693,6 +741,7 @@ class FakeTeamAnalyticsService:
         member = self._default_member()
         quiz_analytics = self._resolve_member_quiz_analytics()
         practical_task_analytics = self._resolve_member_practical_analytics()
+        assignment_history = self._resolve_member_assignment_history()
         return ManagerTeamOverview(
             analytics=self._populated_analytics(),
             members=(
@@ -709,6 +758,7 @@ class FakeTeamAnalyticsService:
                         development_areas=(),
                         reviewed_attempts_count=0,
                     ),
+                    assignment_history=assignment_history,
                 ),
             ),
             recommendations=self._populated_recommendations(),
@@ -1042,6 +1092,99 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Сотрудников", response.text)
         self.assertIn("Посмотреть сотрудников", response.text)
         self.assertIn("/manager/team/recommendation?code=quiz_attention", response.text)
+        self.assertIn("Сроки назначений", response.text)
+        self.assertIn("Всего назначений", response.text)
+        self.assertIn("Срок скоро", response.text)
+        self.assertIn("Просрочено", response.text)
+        self.assertIn("Сотрудников со сроком скоро", response.text)
+        self.assertIn("Сотрудников с просрочкой", response.text)
+        self.assertIn("dashboard-compliance-badge--overdue", response.text)
+        self.assertIn("Просрочено: 1", response.text)
+
+    def test_manager_team_page_renders_due_soon_member_status(self) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._assignment_history_override = (
+            ManagerCourseAssignmentHistory(
+                assignments=(),
+                total_count=2,
+                assigned_count=0,
+                in_progress_count=2,
+                completed_count=0,
+                no_deadline_count=0,
+                on_track_count=0,
+                due_soon_count=2,
+                overdue_count=0,
+                completed_on_time_count=0,
+                completed_late_count=0,
+            )
+        )
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("dashboard-compliance-badge--due_soon", response.text)
+        self.assertIn("Срок скоро: 2", response.text)
+        self.assertNotIn("Просрочено: ", response.text)
+
+    def test_manager_team_page_renders_on_track_member_status(self) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._assignment_history_override = (
+            ManagerCourseAssignmentHistory(
+                assignments=(),
+                total_count=1,
+                assigned_count=0,
+                in_progress_count=1,
+                completed_count=0,
+                no_deadline_count=0,
+                on_track_count=1,
+                due_soon_count=0,
+                overdue_count=0,
+                completed_on_time_count=0,
+                completed_late_count=0,
+            )
+        )
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("dashboard-compliance-badge--on_track", response.text)
+        self.assertIn("Под контролем", response.text)
+
+    def test_manager_team_page_renders_no_assignments_member_status(self) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._assignment_history_override = (
+            FakeTeamAnalyticsService._empty_member_assignment_history()
+        )
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("dashboard-compliance-badge--no_deadline", response.text)
+        self.assertIn("Нет назначений", response.text)
+
+    def test_overdue_takes_precedence_over_due_soon_on_member_card(self) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._assignment_history_override = (
+            ManagerCourseAssignmentHistory(
+                assignments=(),
+                total_count=3,
+                assigned_count=0,
+                in_progress_count=3,
+                completed_count=0,
+                no_deadline_count=0,
+                on_track_count=0,
+                due_soon_count=1,
+                overdue_count=2,
+                completed_on_time_count=0,
+                completed_late_count=0,
+            )
+        )
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Просрочено: 2", response.text)
+        self.assertNotIn("Срок скоро: 1", response.text)
 
     def test_manager_team_page_renders_empty_recommendations_message(self) -> None:
         self._set_identity("manager")
@@ -1065,6 +1208,8 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Аналитика команды", response.text)
         self.assertIn("—", response.text)
+        self.assertIn("Сроки назначений", response.text)
+        self.assertIn("Всего назначений", response.text)
         self.assertIn(
             "Пока недостаточно данных для определения сильных сторон команды по тестам",
             response.text,

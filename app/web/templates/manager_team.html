@@ -95,6 +95,30 @@
         </div>
     </div>
 
+    <h3 class="section-subtitle">Сроки назначений</h3>
+    <div class="dashboard-metrics">
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Всего назначений</span>
+            <span class="dashboard-metric-value">{{ team_analytics.assignment_total_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Срок скоро</span>
+            <span class="dashboard-metric-value">{{ team_analytics.assignment_due_soon_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Просрочено</span>
+            <span class="dashboard-metric-value">{{ team_analytics.assignment_overdue_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Сотрудников со сроком скоро</span>
+            <span class="dashboard-metric-value">{{ team_analytics.members_with_due_soon_assignments_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Сотрудников с просрочкой</span>
+            <span class="dashboard-metric-value">{{ team_analytics.members_with_overdue_assignments_count }}</span>
+        </div>
+    </div>
+
     <h3 class="section-subtitle">Рекомендуемые действия</h3>
     {% if recommendations %}
     <ul class="course-list admin-course-list">
@@ -259,6 +283,7 @@
         {% set member = row.member %}
         {% set quiz_analytics = row.quiz_analytics %}
         {% set practical_task_analytics = row.practical_task_analytics %}
+        {% set assignment_history = row.assignment_history %}
         <li class="course-card admin-course-card">
             <div class="admin-course-body">
                 <header class="admin-course-header">
@@ -357,6 +382,37 @@
                         <span class="dashboard-metric-label">Практические задания</span>
                         <span class="dashboard-metric-value">
                             <span class="dashboard-status-badge dashboard-status-badge--not_started">Нет практических заданий</span>
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="dashboard-metrics">
+                    {% if assignment_history.overdue_count > 0 %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Назначения</span>
+                        <span class="dashboard-metric-value">
+                            <span class="dashboard-compliance-badge dashboard-compliance-badge--overdue">Просрочено: {{ assignment_history.overdue_count }}</span>
+                        </span>
+                    </div>
+                    {% elif assignment_history.due_soon_count > 0 %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Назначения</span>
+                        <span class="dashboard-metric-value">
+                            <span class="dashboard-compliance-badge dashboard-compliance-badge--due_soon">Срок скоро: {{ assignment_history.due_soon_count }}</span>
+                        </span>
+                    </div>
+                    {% elif assignment_history.total_count > 0 %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Назначения</span>
+                        <span class="dashboard-metric-value">
+                            <span class="dashboard-compliance-badge dashboard-compliance-badge--on_track">Под контролем</span>
+                        </span>
+                    </div>
+                    {% else %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Назначения</span>
+                        <span class="dashboard-metric-value">
+                            <span class="dashboard-compliance-badge dashboard-compliance-badge--no_deadline">Нет назначений</span>
                         </span>
                     </div>
                     {% endif %}

@@ -392,16 +392,30 @@ def get_manager_employee_analytics_service(
     )
 
 
+def get_manager_course_assignment_history_service(
+    db_path: Path = Depends(get_db_path),
+) -> ManagerCourseAssignmentHistoryService:
+    """Return the tenant-scoped manager course assignment history service."""
+    return ManagerCourseAssignmentHistoryService(
+        ManagerCourseAssignmentRepository(),
+        db_path,
+    )
+
+
 def get_manager_team_analytics_service(
     team_service: ManagerTeamService = Depends(get_manager_team_service),
     employee_analytics_service: ManagerEmployeeAnalyticsService = Depends(
         get_manager_employee_analytics_service
+    ),
+    assignment_history_service: ManagerCourseAssignmentHistoryService = Depends(
+        get_manager_course_assignment_history_service
     ),
 ) -> ManagerTeamAnalyticsService:
     """Return aggregate analytics service for manager team views."""
     return ManagerTeamAnalyticsService(
         team_service,
         employee_analytics_service,
+        assignment_history_service,
     )
 
 
@@ -415,16 +429,6 @@ def get_manager_course_assignment_service(
         team_service,
         ProgressRepository(),
         runtime,
-        db_path,
-    )
-
-
-def get_manager_course_assignment_history_service(
-    db_path: Path = Depends(get_db_path),
-) -> ManagerCourseAssignmentHistoryService:
-    """Return the tenant-scoped manager course assignment history service."""
-    return ManagerCourseAssignmentHistoryService(
-        ManagerCourseAssignmentRepository(),
         db_path,
     )
 

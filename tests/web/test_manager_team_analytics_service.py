@@ -5,6 +5,9 @@ from __future__ import annotations
 import unittest
 from typing import Optional
 
+from app.web.manager_course_assignment_history_service import (
+    ManagerCourseAssignmentHistory,
+)
 from app.web.manager_employee_analytics_service import (
     EmployeeCourseQuizAnalytics,
     EmployeePracticalSignalEvidence,
@@ -147,6 +150,58 @@ def _member_row(
     )
 
 
+def _assignment_history(
+    *,
+    total: int = 0,
+    due_soon: int = 0,
+    overdue: int = 0,
+) -> ManagerCourseAssignmentHistory:
+    return ManagerCourseAssignmentHistory(
+        assignments=(),
+        total_count=total,
+        assigned_count=0,
+        in_progress_count=0,
+        completed_count=0,
+        no_deadline_count=0,
+        on_track_count=0,
+        due_soon_count=due_soon,
+        overdue_count=overdue,
+        completed_on_time_count=0,
+        completed_late_count=0,
+    )
+
+
+def _build_team_analytics_service(
+    team_service: FakeTeamService,
+    employee_service: FakeEmployeeAnalyticsService,
+    assignment_service: "FakeAssignmentHistoryService | None" = None,
+) -> ManagerTeamAnalyticsService:
+    if assignment_service is None:
+        assignment_service = FakeAssignmentHistoryService()
+    return ManagerTeamAnalyticsService(
+        team_service,
+        employee_service,
+        assignment_service,
+    )
+
+
+class FakeAssignmentHistoryService:
+    def __init__(
+        self,
+        history_by_user: dict[int, ManagerCourseAssignmentHistory] | None = None,
+    ) -> None:
+        self.history_by_user = history_by_user or {}
+        self.calls: list[tuple[str, int]] = []
+
+    def get_for_member(
+        self,
+        company_id: str,
+        user_id: int,
+    ) -> ManagerCourseAssignmentHistory:
+        self.calls.append((company_id, user_id))
+        return self.history_by_user.get(user_id, _assignment_history())
+
+
 class FakeTeamService:
     def __init__(self, members: tuple[ManagerTeamMember, ...]) -> None:
         self.members = members
@@ -207,7 +262,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
     def test_empty_team_returns_zero_counts(self) -> None:
         team_service = FakeTeamService(())
         employee_service = FakeEmployeeAnalyticsService()
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -233,11 +288,31 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
         self.assertEqual(result.practical_strengths, ())
         self.assertEqual(result.practical_development_areas, ())
         self.assertEqual(result.reviewed_practical_attempts_count, 0)
+        self.assertEqual(result.assignment_total_count, 0)
+        self.assertEqual(result.assignment_due_soon_count, 0)
+        self.assertEqual(result.assignment_overdue_count, 0)
+        self.assertEqual(result.members_with_due_soon_assignments_count, 0)
+        self.assertEqual(result.members_with_overdue_assignments_count, 0)
         self.assertEqual(team_service.calls, ["company-a"])
         self.assertEqual(employee_service.quiz_calls, [])
         self.assertEqual(employee_service.topics_calls, [])
         self.assertEqual(employee_service.practical_calls, [])
         self.assertEqual(employee_service.practical_evidence_calls, [])
+
+    def test_empty_team_makes_no_assignment_history_calls(self) -> None:
+        team_service = FakeTeamService(())
+        employee_service = FakeEmployeeAnalyticsService()
+        assignment_service = FakeAssignmentHistoryService()
+        service = _build_team_analytics_service(
+            team_service,
+            employee_service,
+            assignment_service,
+        )
+
+        overview = service.get_team_overview("company-a")
+
+        self.assertEqual(overview.members, ())
+        self.assertEqual(assignment_service.calls, [])
 
     def test_aggregate_counts_and_averages(self) -> None:
         members = (
@@ -253,7 +328,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 3: _quiz_analytics(attempts=2, average=60.0, latest_failed=1),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -277,7 +352,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 2: _quiz_analytics(attempts=2, average=50.0),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -292,7 +367,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 1: _quiz_analytics(attempts=2, average=None),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -303,7 +378,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
         members = (_member(1), _member(2))
         team_service = FakeTeamService(members)
         employee_service = FakeEmployeeAnalyticsService()
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -321,7 +396,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 3: _quiz_analytics(attempts=1, average=90.0, latest_failed=0),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -350,7 +425,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -386,7 +461,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 3: _topics_analytics(),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -408,7 +483,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -430,7 +505,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -451,7 +526,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -486,7 +561,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -499,7 +574,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
         members = (_member(10), _member(20))
         team_service = FakeTeamService(members)
         employee_service = FakeEmployeeAnalyticsService()
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         service.get_team_analytics("company-a")
 
@@ -512,7 +587,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
         members = (_member(1),)
         team_service = FakeTeamService(members)
         employee_service = FakeEmployeeAnalyticsService()
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         service.get_team_analytics("  company-a  ")
 
@@ -527,7 +602,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 2: _quiz_analytics(attempts=1, average=60.0),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
 
@@ -543,7 +618,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
         quiz = _quiz_analytics(attempts=3, average=75.0, latest_failed=1)
         team_service = FakeTeamService(members)
         employee_service = FakeEmployeeAnalyticsService(quiz_by_user={10: quiz})
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
 
@@ -565,7 +640,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 2: _quiz_analytics(attempts=0),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
         direct = service.get_team_analytics("company-a")
@@ -577,7 +652,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
     def test_get_team_overview_empty_team_performs_no_employee_analytics(self) -> None:
         team_service = FakeTeamService(())
         employee_service = FakeEmployeeAnalyticsService()
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
 
@@ -592,7 +667,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
         members = (_member(1),)
         team_service = FakeTeamService(members)
         employee_service = FakeEmployeeAnalyticsService()
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -626,7 +701,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -660,7 +735,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -671,7 +746,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
         members = (_member(1), _member(2))
         team_service = FakeTeamService(members)
         employee_service = FakeEmployeeAnalyticsService()
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -685,7 +760,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
         employee_service = FakeEmployeeAnalyticsService(
             practical_by_user={10: practical},
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
 
@@ -697,7 +772,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
         members = (_member(1), _member(2), _member(3))
         team_service = FakeTeamService(members)
         employee_service = FakeEmployeeAnalyticsService()
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         service.get_team_overview("company-a")
 
@@ -728,7 +803,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -753,7 +828,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -775,7 +850,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -811,7 +886,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -835,7 +910,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -856,7 +931,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -877,7 +952,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -901,7 +976,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -930,7 +1005,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -948,7 +1023,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
                 2: _practical_evidence(reviewed_attempts_count=3),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         result = service.get_team_analytics("company-a")
 
@@ -958,7 +1033,7 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
         members = (_member(1), _member(2))
         team_service = FakeTeamService(members)
         employee_service = FakeEmployeeAnalyticsService()
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         service.get_team_overview("company-a")
 
@@ -967,6 +1042,109 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
     def test_team_constants_match_requirements(self) -> None:
         self.assertEqual(MIN_TEAM_PRACTICAL_SIGNAL_EMPLOYEES, 2)
         self.assertEqual(STRONG_TOPIC_ACCURACY_PERCENT, 80.0)
+
+
+class ManagerTeamAssignmentComplianceTests(unittest.TestCase):
+    def test_assignment_history_called_once_per_member(self) -> None:
+        members = (_member(1), _member(2))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService()
+        assignment_service = FakeAssignmentHistoryService()
+        service = _build_team_analytics_service(
+            team_service,
+            employee_service,
+            assignment_service,
+        )
+
+        service.get_team_overview("company-a")
+
+        self.assertEqual(assignment_service.calls, [("company-a", 1), ("company-a", 2)])
+
+    def test_aggregate_assignment_compliance_counts(self) -> None:
+        members = (_member(1), _member(2), _member(3))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService()
+        assignment_service = FakeAssignmentHistoryService(
+            history_by_user={
+                1: _assignment_history(total=2, due_soon=1, overdue=0),
+                2: _assignment_history(total=3, due_soon=0, overdue=2),
+                3: _assignment_history(total=0, due_soon=0, overdue=0),
+            },
+        )
+        service = _build_team_analytics_service(
+            team_service,
+            employee_service,
+            assignment_service,
+        )
+
+        result = service.get_team_analytics("company-a")
+
+        self.assertEqual(result.assignment_total_count, 5)
+        self.assertEqual(result.assignment_due_soon_count, 1)
+        self.assertEqual(result.assignment_overdue_count, 2)
+        self.assertEqual(result.members_with_due_soon_assignments_count, 1)
+        self.assertEqual(result.members_with_overdue_assignments_count, 1)
+
+    def test_member_row_exposes_assignment_history(self) -> None:
+        members = (_member(1),)
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService()
+        expected_history = _assignment_history(total=2, due_soon=1, overdue=1)
+        assignment_service = FakeAssignmentHistoryService(
+            history_by_user={1: expected_history},
+        )
+        service = _build_team_analytics_service(
+            team_service,
+            employee_service,
+            assignment_service,
+        )
+
+        overview = service.get_team_overview("company-a")
+
+        self.assertEqual(len(overview.members), 1)
+        self.assertIs(overview.members[0].assignment_history, expected_history)
+
+    def test_members_with_due_soon_counts_employees_not_assignments(self) -> None:
+        members = (_member(1), _member(2))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService()
+        assignment_service = FakeAssignmentHistoryService(
+            history_by_user={
+                1: _assignment_history(total=3, due_soon=2, overdue=0),
+                2: _assignment_history(total=1, due_soon=1, overdue=0),
+            },
+        )
+        service = _build_team_analytics_service(
+            team_service,
+            employee_service,
+            assignment_service,
+        )
+
+        result = service.get_team_analytics("company-a")
+
+        self.assertEqual(result.assignment_due_soon_count, 3)
+        self.assertEqual(result.members_with_due_soon_assignments_count, 2)
+
+    def test_members_with_overdue_counts_employees_not_assignments(self) -> None:
+        members = (_member(1), _member(2))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService()
+        assignment_service = FakeAssignmentHistoryService(
+            history_by_user={
+                1: _assignment_history(total=4, due_soon=0, overdue=3),
+                2: _assignment_history(total=0, due_soon=0, overdue=0),
+            },
+        )
+        service = _build_team_analytics_service(
+            team_service,
+            employee_service,
+            assignment_service,
+        )
+
+        result = service.get_team_analytics("company-a")
+
+        self.assertEqual(result.assignment_overdue_count, 3)
+        self.assertEqual(result.members_with_overdue_assignments_count, 1)
 
 
 class ManagerTeamRecommendationsTests(unittest.TestCase):
@@ -1001,7 +1179,7 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
     def test_empty_team_returns_no_recommendations(self) -> None:
         team_service = FakeTeamService(())
         employee_service = FakeEmployeeAnalyticsService()
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
 
@@ -1391,7 +1569,7 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
                 1: _quiz_analytics(attempts=1, average=90.0, latest_failed=1),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
 
@@ -1418,7 +1596,7 @@ class ManagerTeamRecommendationTargetingTests(unittest.TestCase):
                 3: _quiz_analytics(attempts=2, latest_failed=2),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
         rec = next(r for r in overview.recommendations if r.code == "quiz_attention")
@@ -1435,7 +1613,7 @@ class ManagerTeamRecommendationTargetingTests(unittest.TestCase):
                 2: _practical_analytics(total=2, failed=0),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
         rec = next(r for r in overview.recommendations if r.code == "practical_attention")
@@ -1466,7 +1644,7 @@ class ManagerTeamRecommendationTargetingTests(unittest.TestCase):
                 3: _topics_analytics(),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
         rec = next(r for r in overview.recommendations if r.code.startswith("quiz_topic:"))
@@ -1489,7 +1667,7 @@ class ManagerTeamRecommendationTargetingTests(unittest.TestCase):
                 3: _practical_evidence(reviewed_attempts_count=1),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
         rec = next(
@@ -1508,7 +1686,7 @@ class ManagerTeamRecommendationTargetingTests(unittest.TestCase):
                 3: _quiz_analytics(attempts=1, latest_failed=1),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
         rec = overview.recommendations[0]
@@ -1529,7 +1707,7 @@ class ManagerTeamRecommendationTargetingTests(unittest.TestCase):
                 2: _practical_analytics(),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
 
@@ -1544,7 +1722,7 @@ class ManagerTeamRecommendationDetailTests(unittest.TestCase):
     def test_get_recommendation_detail_returns_none_for_unknown_code(self) -> None:
         team_service = FakeTeamService((_member(1),))
         employee_service = FakeEmployeeAnalyticsService()
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         detail = service.get_recommendation_detail("company-a", "missing-code")
 
@@ -1559,7 +1737,7 @@ class ManagerTeamRecommendationDetailTests(unittest.TestCase):
                 20: _quiz_analytics(attempts=2, latest_failed=0),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         detail = service.get_recommendation_detail("company-a", "quiz_attention")
 
@@ -1595,7 +1773,7 @@ class ManagerTeamRecommendationDetailTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
         topic_rec = next(
@@ -1625,7 +1803,7 @@ class ManagerTeamRecommendationDetailTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
         signal_rec = next(
@@ -1675,7 +1853,7 @@ class ManagerTeamRecommendationDetailTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         detail = service.get_recommendation_detail("company-a", "quiz_attention")
 
@@ -1741,7 +1919,7 @@ class ManagerTeamRecommendationDetailTests(unittest.TestCase):
                 ),
             },
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         detail = service.get_recommendation_detail("company-a", "practical_attention")
 
@@ -1767,7 +1945,7 @@ class ManagerTeamRecommendationDetailTests(unittest.TestCase):
             quiz_by_user={10: _quiz_analytics(attempts=0)},
             practical_by_user={10: _practical_analytics(pending=1)},
         )
-        service = ManagerTeamAnalyticsService(team_service, employee_service)
+        service = _build_team_analytics_service(team_service, employee_service)
 
         overview = service.get_team_overview("company-a")
         for recommendation in overview.recommendations:
