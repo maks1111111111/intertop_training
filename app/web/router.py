@@ -141,7 +141,11 @@ from app.web.manager_course_assignment_history_service import (
 )
 from app.web.manager_course_assignment_service import ManagerCourseAssignmentService
 from app.web.manager_employee_analytics_service import ManagerEmployeeAnalyticsService
-from app.web.manager_team_analytics_service import ManagerTeamAnalyticsService
+from app.web.manager_team_analytics_service import (
+    ManagerTeamAnalyticsService,
+    filter_team_member_rows,
+    normalize_team_member_filter,
+)
 from app.web.manager_team_service import ManagerTeamService
 from app.web.password_hashing_service import PasswordHashingService
 from app.web.progress_service import WebProgressService
@@ -886,13 +890,17 @@ def manager_team_page(
 ) -> HTMLResponse:
     """Render tenant-scoped team learning progress for manager/admin."""
     overview = team_analytics_service.get_team_overview(identity.company_id)
+    team_filter = normalize_team_member_filter(request.query_params.get("filter"))
+    filtered_member_rows = filter_team_member_rows(overview.members, team_filter)
     return templates.TemplateResponse(
         request,
         "manager_team.html",
         {
             "active_nav": "team",
-            "member_rows": overview.members,
-            "members_count": len(overview.members),
+            "member_rows": filtered_member_rows,
+            "members_count": len(filtered_member_rows),
+            "team_members_total_count": len(overview.members),
+            "team_filter": team_filter,
             "team_analytics": overview.analytics,
             "recommendations": overview.recommendations,
         },

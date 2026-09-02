@@ -1083,3 +1083,74 @@ def _qualifying_team_practical_signals(
             ),
         )
     )
+
+
+TEAM_MEMBER_FILTER_ALL = "all"
+TEAM_MEMBER_FILTER_ATTENTION = "attention"
+TEAM_MEMBER_FILTER_OVERDUE = "overdue"
+TEAM_MEMBER_FILTER_DUE_SOON = "due_soon"
+
+_SUPPORTED_TEAM_MEMBER_FILTERS = frozenset(
+    {
+        TEAM_MEMBER_FILTER_ALL,
+        TEAM_MEMBER_FILTER_ATTENTION,
+        TEAM_MEMBER_FILTER_OVERDUE,
+        TEAM_MEMBER_FILTER_DUE_SOON,
+    }
+)
+
+
+def normalize_team_member_filter(raw_filter: Optional[str]) -> str:
+    """Return a supported team member filter, defaulting safely to all."""
+    if raw_filter is None:
+        return TEAM_MEMBER_FILTER_ALL
+    normalized = raw_filter.strip().lower()
+    if normalized == "" or normalized not in _SUPPORTED_TEAM_MEMBER_FILTERS:
+        return TEAM_MEMBER_FILTER_ALL
+    return normalized
+
+
+def _member_matches_team_filter(
+    row: ManagerTeamMemberAnalytics,
+    team_filter: str,
+) -> bool:
+    if team_filter == TEAM_MEMBER_FILTER_ALL:
+        return True
+
+    assignment_history = row.assignment_history
+    quiz_analytics = row.quiz_analytics
+    practical_task_analytics = row.practical_task_analytics
+
+    if team_filter == TEAM_MEMBER_FILTER_ATTENTION:
+        return (
+            assignment_history.overdue_count > 0
+            or quiz_analytics.latest_failed_courses_count > 0
+            or practical_task_analytics.failed_attempts_count > 0
+            or practical_task_analytics.pending_attempts_count > 0
+        )
+
+    if team_filter == TEAM_MEMBER_FILTER_OVERDUE:
+        return assignment_history.overdue_count > 0
+
+    if team_filter == TEAM_MEMBER_FILTER_DUE_SOON:
+        return (
+            assignment_history.due_soon_count > 0
+            and assignment_history.overdue_count == 0
+        )
+
+    return True
+
+
+def filter_team_member_rows(
+    member_rows: tuple[ManagerTeamMemberAnalytics, ...],
+    team_filter: Optional[str],
+) -> tuple[ManagerTeamMemberAnalytics, ...]:
+    """Return tenant member rows filtered for the manager team dashboard."""
+    normalized_filter = normalize_team_member_filter(team_filter)
+    if normalized_filter == TEAM_MEMBER_FILTER_ALL:
+        return member_rows
+    return tuple(
+        row
+        for row in member_rows
+        if _member_matches_team_filter(row, normalized_filter)
+    )

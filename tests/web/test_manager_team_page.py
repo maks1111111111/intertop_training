@@ -474,6 +474,7 @@ class FakeTeamAnalyticsService:
         self._quiz_analytics_override: EmployeeQuizAnalytics | None = None
         self._practical_analytics_override: EmployeePracticalTaskAnalytics | None = None
         self._assignment_history_override: ManagerCourseAssignmentHistory | None = None
+        self._members_override: tuple[ManagerTeamMemberAnalytics, ...] | None = None
 
     @staticmethod
     def _default_member() -> ManagerTeamMember:
@@ -738,6 +739,12 @@ class FakeTeamAnalyticsService:
                 members=(),
                 recommendations=(),
             )
+        if self._members_override is not None:
+            return ManagerTeamOverview(
+                analytics=self._populated_analytics(),
+                members=self._members_override,
+                recommendations=self._populated_recommendations(),
+            )
         member = self._default_member()
         quiz_analytics = self._resolve_member_quiz_analytics()
         practical_task_analytics = self._resolve_member_practical_analytics()
@@ -975,6 +982,72 @@ class FakeManagerCourseAssignmentService:
             course_slug=normalized_slug,
         )
 
+
+
+def _page_filter_member_row(
+    user_id: int,
+    display_name: str,
+    *,
+    latest_failed: int = 0,
+    failed_practical: int = 0,
+    pending_practical: int = 0,
+    overdue: int = 0,
+    due_soon: int = 0,
+) -> ManagerTeamMemberAnalytics:
+    return ManagerTeamMemberAnalytics(
+        member=ManagerTeamMember(
+            user_id=user_id,
+            display_name=display_name,
+            username=f"user-{user_id}",
+            role="student",
+            role_label="Сотрудник",
+            started_courses_count=1,
+            completed_courses_count=0,
+            average_progress_percent=50,
+        ),
+        quiz_analytics=EmployeeQuizAnalytics(
+            total_attempts_count=1 if latest_failed else 0,
+            tested_courses_count=1 if latest_failed else 0,
+            passed_courses_count=0,
+            latest_failed_courses_count=latest_failed,
+            best_score_percent=70.0,
+            average_score_percent=70.0,
+            courses=(),
+        ),
+        practical_task_analytics=EmployeePracticalTaskAnalytics(
+            total_attempts_count=failed_practical + pending_practical,
+            reviewed_attempts_count=failed_practical,
+            passed_attempts_count=0,
+            failed_attempts_count=failed_practical,
+            pending_attempts_count=pending_practical,
+            scorable_attempts_count=failed_practical,
+            average_score_percent=40.0 if failed_practical else None,
+            best_score_percent=40.0 if failed_practical else None,
+            recent_attempts=(),
+        ),
+        topics_analytics=EmployeeQuizTopicsAnalytics(
+            total_tagged_answers_count=0,
+            topics=(),
+        ),
+        practical_signal_evidence=EmployeePracticalSignalEvidenceSet(
+            strengths=(),
+            development_areas=(),
+            reviewed_attempts_count=0,
+        ),
+        assignment_history=ManagerCourseAssignmentHistory(
+            assignments=(),
+            total_count=overdue + due_soon,
+            assigned_count=0,
+            in_progress_count=0,
+            completed_count=0,
+            no_deadline_count=0,
+            on_track_count=0,
+            due_soon_count=due_soon,
+            overdue_count=overdue,
+            completed_on_time_count=0,
+            completed_late_count=0,
+        ),
+    )
 
 
 def _identity(role: str) -> WebIdentity:
@@ -1316,6 +1389,137 @@ class ManagerTeamPageTests(unittest.TestCase):
             response.text,
         )
         self.assertEqual(self.analytics_service.calls, [])
+
+    def _set_filter_members(
+        self,
+        *members: ManagerTeamMemberAnalytics,
+    ) -> None:
+        self.team_analytics_service._members_override = members
+
+    def test_manager_team_page_renders_all_members_with_default_filter(self) -> None:
+        self._set_identity("manager")
+        self._set_filter_members(
+            _page_filter_member_row(1, "Overdue Employee", overdue=1),
+            _page_filter_member_row(2, "Due Soon Employee", due_soon=1),
+            _page_filter_member_row(3, "Healthy Employee"),
+        )
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('href="/manager/team" class="admin-subnav-link is-active">Все</a>', response.text)
+        self.assertIn("Overdue Employee", response.text)
+        self.assertIn("Due Soon Employee", response.text)
+        self.assertIn("Healthy Employee", response.text)
+
+    def test_manager_team_page_attention_filter(self) -> None:
+        self._set_identity("manager")
+        self._set_filter_members(
+            _page_filter_member_row(1, "Overdue Employee", overdue=1),
+            _page_filter_member_row(2, "Due Soon Employee", due_soon=1),
+            _page_filter_member_row(3, "Failed Quiz", latest_failed=1),
+            _page_filter_member_row(4, "Healthy Employee"),
+        )
+
+        response = self.client.get("/manager/team?filter=attention")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('filter=attention" class="admin-subnav-link is-active">', response.text)
+        self.assertIn("Overdue Employee", response.text)
+        self.assertIn("Failed Quiz", response.text)
+        self.assertNotIn("Due Soon Employee", response.text)
+        self.assertNotIn("Healthy Employee", response.text)
+
+    def test_manager_team_page_overdue_filter(self) -> None:
+        self._set_identity("manager")
+        self._set_filter_members(
+            _page_filter_member_row(1, "Overdue Employee", overdue=2),
+            _page_filter_member_row(2, "Due Soon Employee", due_soon=1),
+        )
+
+        response = self.client.get("/manager/team?filter=overdue")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Overdue Employee", response.text)
+        self.assertNotIn("Due Soon Employee", response.text)
+
+    def test_manager_team_page_due_soon_filter(self) -> None:
+        self._set_identity("manager")
+        self._set_filter_members(
+            _page_filter_member_row(1, "Mixed Employee", due_soon=1, overdue=1),
+            _page_filter_member_row(2, "Due Soon Employee", due_soon=2),
+        )
+
+        response = self.client.get("/manager/team?filter=due_soon")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Due Soon Employee", response.text)
+        self.assertNotIn("Mixed Employee", response.text)
+
+    def test_manager_team_page_unknown_filter_behaves_as_all(self) -> None:
+        self._set_identity("manager")
+        self._set_filter_members(
+            _page_filter_member_row(1, "Overdue Employee", overdue=1),
+            _page_filter_member_row(2, "Healthy Employee"),
+        )
+
+        response = self.client.get("/manager/team?filter=unknown")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('href="/manager/team" class="admin-subnav-link is-active">Все</a>', response.text)
+        self.assertIn("Overdue Employee", response.text)
+        self.assertIn("Healthy Employee", response.text)
+        self.assertNotIn("<script>", response.text)
+
+    def test_manager_team_page_global_analytics_unchanged_under_filter(self) -> None:
+        self._set_identity("manager")
+        self._set_filter_members(
+            _page_filter_member_row(1, "Overdue Employee", overdue=1),
+            _page_filter_member_row(2, "Healthy Employee"),
+        )
+
+        response = self.client.get("/manager/team?filter=overdue")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("66.67%", response.text)
+        self.assertIn("78.5%", response.text)
+        self.assertIn("Рекомендуемые действия", response.text)
+        self.assertIn("Повторить обучение по непройденным тестам", response.text)
+
+    def test_manager_team_page_recommendations_visible_under_filter(self) -> None:
+        self._set_identity("manager")
+        self._set_filter_members(
+            _page_filter_member_row(1, "Overdue Employee", overdue=1),
+        )
+
+        response = self.client.get("/manager/team?filter=overdue")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Рекомендуемые действия", response.text)
+        self.assertIn("Посмотреть сотрудников", response.text)
+
+    def test_manager_team_page_filtered_empty_message(self) -> None:
+        self._set_identity("manager")
+        self._set_filter_members(
+            _page_filter_member_row(2, "Healthy Employee"),
+        )
+
+        response = self.client.get("/manager/team?filter=overdue")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("По выбранному фильтру сотрудников нет.", response.text)
+        self.assertNotIn("Healthy Employee", response.text)
+
+    def test_manager_team_page_real_empty_team_message(self) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._empty = True
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("В компании пока нет сотрудников.", response.text)
+        self.assertNotIn("По выбранному фильтру сотрудников нет.", response.text)
+        self.assertNotIn('aria-label="Фильтр сотрудников"', response.text)
 
     def test_admin_can_open_team_page(self) -> None:
         self._set_identity("admin")

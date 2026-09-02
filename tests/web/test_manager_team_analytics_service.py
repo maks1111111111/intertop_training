@@ -31,6 +31,8 @@ from app.web.manager_team_analytics_service import (
     ManagerTeamTopicAnalytics,
     _build_team_recommendations,
     _safe_recommendation_code_fragment,
+    filter_team_member_rows,
+    normalize_team_member_filter,
 )
 from app.web.manager_team_service import ManagerTeamMember
 
@@ -2260,6 +2262,125 @@ class ManagerTeamRecommendationDetailTests(unittest.TestCase):
         self.assertIn("2026-09-15 18:00:00", actions[0].description)
         self.assertIn("близ", actions[0].description.casefold())
         self.assertEqual(actions[0].url, "/manager/team/11")
+
+
+class ManagerTeamMemberFilterTests(unittest.TestCase):
+    def test_none_normalizes_to_all(self) -> None:
+        self.assertEqual(normalize_team_member_filter(None), "all")
+
+    def test_empty_string_normalizes_to_all(self) -> None:
+        self.assertEqual(normalize_team_member_filter(""), "all")
+        self.assertEqual(normalize_team_member_filter("   "), "all")
+
+    def test_unknown_filter_normalizes_to_all(self) -> None:
+        self.assertEqual(normalize_team_member_filter("unknown"), "all")
+        self.assertEqual(normalize_team_member_filter("<script>"), "all")
+
+    def test_all_preserves_all_rows_and_ordering(self) -> None:
+        rows = (
+            _member_row(1, assignment_history=_assignment_history(overdue=1)),
+            _member_row(2, assignment_history=_assignment_history(due_soon=1)),
+            _member_row(3),
+        )
+
+        filtered = filter_team_member_rows(rows, "all")
+
+        self.assertEqual(filtered, rows)
+
+    def test_attention_includes_overdue_assignment(self) -> None:
+        rows = (
+            _member_row(1, assignment_history=_assignment_history(overdue=1)),
+            _member_row(2),
+        )
+
+        filtered = filter_team_member_rows(rows, "attention")
+
+        self.assertEqual(tuple(row.member.user_id for row in filtered), (1,))
+
+    def test_attention_includes_failed_quiz(self) -> None:
+        rows = (
+            _member_row(1, latest_failed=1),
+            _member_row(2),
+        )
+
+        filtered = filter_team_member_rows(rows, "attention")
+
+        self.assertEqual(tuple(row.member.user_id for row in filtered), (1,))
+
+    def test_attention_includes_failed_practical(self) -> None:
+        rows = (
+            _member_row(1, failed_practical=1),
+            _member_row(2),
+        )
+
+        filtered = filter_team_member_rows(rows, "attention")
+
+        self.assertEqual(tuple(row.member.user_id for row in filtered), (1,))
+
+    def test_attention_includes_pending_practical(self) -> None:
+        rows = (
+            _member_row(1, pending_practical=1),
+            _member_row(2),
+        )
+
+        filtered = filter_team_member_rows(rows, "attention")
+
+        self.assertEqual(tuple(row.member.user_id for row in filtered), (1,))
+
+    def test_attention_excludes_due_soon_only_employee(self) -> None:
+        rows = (
+            _member_row(2, assignment_history=_assignment_history(due_soon=2)),
+            _member_row(1, latest_failed=1),
+        )
+
+        filtered = filter_team_member_rows(rows, "attention")
+
+        self.assertEqual(tuple(row.member.user_id for row in filtered), (1,))
+
+    def test_overdue_includes_only_overdue_members(self) -> None:
+        rows = (
+            _member_row(1, assignment_history=_assignment_history(overdue=2)),
+            _member_row(2, assignment_history=_assignment_history(due_soon=1)),
+            _member_row(3, latest_failed=1),
+        )
+
+        filtered = filter_team_member_rows(rows, "overdue")
+
+        self.assertEqual(tuple(row.member.user_id for row in filtered), (1,))
+
+    def test_due_soon_includes_due_soon_member(self) -> None:
+        rows = (
+            _member_row(1, assignment_history=_assignment_history(due_soon=1)),
+            _member_row(2),
+        )
+
+        filtered = filter_team_member_rows(rows, "due_soon")
+
+        self.assertEqual(tuple(row.member.user_id for row in filtered), (1,))
+
+    def test_due_soon_excludes_member_with_both_due_soon_and_overdue(self) -> None:
+        rows = (
+            _member_row(
+                1,
+                assignment_history=_assignment_history(due_soon=1, overdue=1),
+            ),
+            _member_row(2, assignment_history=_assignment_history(due_soon=1)),
+        )
+
+        filtered = filter_team_member_rows(rows, "due_soon")
+
+        self.assertEqual(tuple(row.member.user_id for row in filtered), (2,))
+
+    def test_filter_preserves_row_ordering(self) -> None:
+        rows = (
+            _member_row(3, assignment_history=_assignment_history(overdue=1)),
+            _member_row(1, assignment_history=_assignment_history(overdue=1)),
+            _member_row(2),
+        )
+
+        filtered = filter_team_member_rows(rows, "overdue")
+
+        self.assertEqual(tuple(row.member.user_id for row in filtered), (3, 1))
 
 
 if __name__ == "__main__":

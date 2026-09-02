@@ -276,8 +276,19 @@
     {% endif %}
 </section>
 
-{% if member_rows %}
+{% if team_members_total_count == 0 %}
+<div class="empty-state dashboard-empty-state">
+    <p class="dashboard-empty-state-message">В компании пока нет сотрудников.</p>
+</div>
+{% else %}
 <section class="section">
+    <nav class="admin-subnav" aria-label="Фильтр сотрудников">
+        <a href="/manager/team" class="admin-subnav-link{% if team_filter == 'all' %} is-active{% endif %}">Все</a>
+        <a href="/manager/team?filter=attention" class="admin-subnav-link{% if team_filter == 'attention' %} is-active{% endif %}">Требуют внимания</a>
+        <a href="/manager/team?filter=overdue" class="admin-subnav-link{% if team_filter == 'overdue' %} is-active{% endif %}">Просрочено</a>
+        <a href="/manager/team?filter=due_soon" class="admin-subnav-link{% if team_filter == 'due_soon' %} is-active{% endif %}">Срок скоро</a>
+    </nav>
+    {% if member_rows %}
     <ul class="course-list admin-course-list">
         {% for row in member_rows %}
         {% set member = row.member %}
@@ -421,10 +432,11 @@
         </li>
         {% endfor %}
     </ul>
+    {% else %}
+    <div class="empty-state dashboard-empty-state">
+        <p class="dashboard-empty-state-message">По выбранному фильтру сотрудников нет.</p>
+    </div>
+    {% endif %}
 </section>
-{% else %}
-<div class="empty-state dashboard-empty-state">
-    <p class="dashboard-empty-state-message">В компании пока нет сотрудников.</p>
-</div>
 {% endif %}
 {% endblock %}
