@@ -88,6 +88,7 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
             completed_count=0,
             no_deadline_count=0,
             on_track_count=0,
+            due_soon_count=0,
             overdue_count=0,
             completed_on_time_count=0,
             completed_late_count=0,
@@ -176,6 +177,7 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
                 completed_count=1,
                 no_deadline_count=3,
                 on_track_count=0,
+                due_soon_count=0,
                 overdue_count=0,
                 completed_on_time_count=0,
                 completed_late_count=0,
@@ -399,7 +401,7 @@ class ManagerCourseAssignmentComplianceTests(unittest.TestCase):
 
     def test_assigned_before_deadline_is_on_track(self) -> None:
         self._history_for(
-            self._record(status="assigned", due_at="2026-09-15 18:00:00"),
+            self._record(status="assigned", due_at="2026-09-20 18:00:00"),
         )
 
         item = self.service.get_for_member("intertop", 2).assignments[0]
@@ -409,7 +411,7 @@ class ManagerCourseAssignmentComplianceTests(unittest.TestCase):
 
     def test_in_progress_before_deadline_is_on_track(self) -> None:
         self._history_for(
-            self._record(status="in_progress", due_at="2026-09-15 18:00:00"),
+            self._record(status="in_progress", due_at="2026-09-20 18:00:00"),
         )
 
         item = self.service.get_for_member("intertop", 2).assignments[0]
@@ -488,19 +490,73 @@ class ManagerCourseAssignmentComplianceTests(unittest.TestCase):
 
         self.assertEqual(item.compliance_status, "no_deadline")
 
-    def test_now_exactly_equal_to_deadline_is_not_overdue(self) -> None:
+    def test_now_exactly_equal_to_deadline_is_due_soon_not_overdue(self) -> None:
         self._history_for(
             self._record(status="assigned", due_at="2026-09-15 12:00:00"),
         )
 
         item = self.service.get_for_member("intertop", 2).assignments[0]
 
+        self.assertEqual(item.compliance_status, "due_soon")
+        self.assertEqual(item.compliance_status_label, "Срок скоро")
+
+    def test_more_than_72_hours_remaining_is_on_track(self) -> None:
+        self._history_for(
+            self._record(status="assigned", due_at="2026-09-18 12:00:01"),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
         self.assertEqual(item.compliance_status, "on_track")
+
+    def test_exactly_72_hours_remaining_is_due_soon(self) -> None:
+        self._history_for(
+            self._record(status="assigned", due_at="2026-09-18 12:00:00"),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "due_soon")
+        self.assertEqual(item.compliance_status_label, "Срок скоро")
+
+    def test_less_than_72_hours_remaining_is_due_soon(self) -> None:
+        self._history_for(
+            self._record(status="in_progress", due_at="2026-09-16 12:00:00"),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "due_soon")
+
+    def test_just_after_deadline_is_overdue(self) -> None:
+        self._history_for(
+            self._record(status="assigned", due_at="2026-09-15 11:59:59"),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "overdue")
+
+    def test_completed_on_time_remains_completed_on_time_even_when_deadline_due_soon(
+        self,
+    ) -> None:
+        self._history_for(
+            self._record(
+                status="completed",
+                due_at="2026-09-15 18:00:00",
+                completed_at="2026-09-15 10:00:00",
+            ),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "completed_on_time")
 
     def test_compliance_counts_are_correct(self) -> None:
         self._history_for(
             self._record(status="assigned"),
             self._record(status="assigned", due_at="2026-09-20 18:00:00"),
+            self._record(status="assigned", due_at="2026-09-16 12:00:00"),
             self._record(status="in_progress", due_at="2026-09-10 10:00:00"),
             self._record(
                 status="completed",
@@ -516,15 +572,17 @@ class ManagerCourseAssignmentComplianceTests(unittest.TestCase):
 
         history = self.service.get_for_member("intertop", 2)
 
-        self.assertEqual(history.total_count, 5)
+        self.assertEqual(history.total_count, 6)
         self.assertEqual(history.no_deadline_count, 1)
         self.assertEqual(history.on_track_count, 1)
+        self.assertEqual(history.due_soon_count, 1)
         self.assertEqual(history.overdue_count, 1)
         self.assertEqual(history.completed_on_time_count, 1)
         self.assertEqual(history.completed_late_count, 1)
         self.assertEqual(
             history.no_deadline_count
             + history.on_track_count
+            + history.due_soon_count
             + history.overdue_count
             + history.completed_on_time_count
             + history.completed_late_count,
@@ -573,6 +631,20 @@ class ManagerCourseAssignmentComplianceTests(unittest.TestCase):
         item = self.service.get_for_member("intertop", 2).assignments[0]
 
         self.assertEqual(item.compliance_status, "overdue")
+
+    def test_completed_without_completed_at_within_due_soon_window_is_due_soon(
+        self,
+    ) -> None:
+        self._history_for(
+            self._record(
+                status="completed",
+                due_at="2026-09-15 18:00:00",
+            ),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.compliance_status, "due_soon")
 
     def test_completed_without_completed_at_before_deadline_is_on_track(self) -> None:
         self._history_for(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -21,11 +21,13 @@ _STATUS_LABELS = {
 _COMPLIANCE_STATUS_LABELS = {
     "no_deadline": "Без срока",
     "on_track": "В сроке",
+    "due_soon": "Срок скоро",
     "overdue": "Просрочен",
     "completed_on_time": "Завершён в срок",
     "completed_late": "Завершён с опозданием",
 }
 
+_DUE_SOON_WINDOW = timedelta(hours=72)
 _TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
@@ -58,6 +60,7 @@ class ManagerCourseAssignmentHistory:
     completed_count: int
     no_deadline_count: int
     on_track_count: int
+    due_soon_count: int
     overdue_count: int
     completed_on_time_count: int
     completed_late_count: int
@@ -108,6 +111,9 @@ class ManagerCourseAssignmentHistoryService:
         on_track_count = sum(
             1 for item in assignments if item.compliance_status == "on_track"
         )
+        due_soon_count = sum(
+            1 for item in assignments if item.compliance_status == "due_soon"
+        )
         overdue_count = sum(
             1 for item in assignments if item.compliance_status == "overdue"
         )
@@ -128,6 +134,7 @@ class ManagerCourseAssignmentHistoryService:
             completed_count=completed_count,
             no_deadline_count=no_deadline_count,
             on_track_count=on_track_count,
+            due_soon_count=due_soon_count,
             overdue_count=overdue_count,
             completed_on_time_count=completed_on_time_count,
             completed_late_count=completed_late_count,
@@ -182,13 +189,20 @@ def _classify_compliance(
                 return _compliance_result("completed_on_time")
             return _compliance_result("completed_late")
 
-        if now <= due_datetime:
-            return _compliance_result("on_track")
-        return _compliance_result("overdue")
+        return _classify_active_compliance(due_datetime, now)
 
-    if now <= due_datetime:
-        return _compliance_result("on_track")
-    return _compliance_result("overdue")
+    return _classify_active_compliance(due_datetime, now)
+
+
+def _classify_active_compliance(
+    due_datetime: datetime,
+    now: datetime,
+) -> tuple[str, str]:
+    if now > due_datetime:
+        return _compliance_result("overdue")
+    if due_datetime - now <= _DUE_SOON_WINDOW:
+        return _compliance_result("due_soon")
+    return _compliance_result("on_track")
 
 
 def _compliance_result(status: str) -> tuple[str, str]:

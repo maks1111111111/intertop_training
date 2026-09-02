@@ -1534,6 +1534,11 @@ a:focus-visible,
     background: #e0f2fe;
 }
 
+.dashboard-compliance-badge--due_soon {
+    color: #92400e;
+    background: #fef9c3;
+}
+
 .dashboard-compliance-badge--overdue {
     color: #b45309;
     background: #fef3c7;

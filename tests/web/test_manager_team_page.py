@@ -76,6 +76,7 @@ class FakeManagerCourseAssignmentHistoryService:
                 completed_count=0,
                 no_deadline_count=0,
                 on_track_count=0,
+                due_soon_count=0,
                 overdue_count=0,
                 completed_on_time_count=0,
                 completed_late_count=0,
@@ -93,8 +94,8 @@ class FakeManagerCourseAssignmentHistoryService:
                     due_at="2026-09-15 18:00:00",
                     started_at=None,
                     completed_at=None,
-                    compliance_status="on_track",
-                    compliance_status_label="В сроке",
+                    compliance_status="due_soon",
+                    compliance_status_label="Срок скоро",
                 ),
                 ManagerCourseAssignmentHistoryItem(
                     course_slug="beta",
@@ -144,7 +145,8 @@ class FakeManagerCourseAssignmentHistoryService:
             in_progress_count=2,
             completed_count=1,
             no_deadline_count=1,
-            on_track_count=1,
+            on_track_count=0,
+            due_soon_count=1,
             overdue_count=1,
             completed_on_time_count=0,
             completed_late_count=1,
@@ -1275,6 +1277,7 @@ class ManagerTeamPageTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("В сроке", response.text)
+        self.assertIn("Срок скоро", response.text)
         self.assertIn("Просрочено", response.text)
         self.assertIn("Завершено в срок", response.text)
         self.assertIn("С опозданием", response.text)
@@ -1285,10 +1288,11 @@ class ManagerTeamPageTests(unittest.TestCase):
         response = self.client.get("/manager/team/2")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("dashboard-compliance-badge--on_track", response.text)
+        self.assertIn("dashboard-compliance-badge--due_soon", response.text)
         self.assertIn("dashboard-compliance-badge--no_deadline", response.text)
         self.assertIn("dashboard-compliance-badge--overdue", response.text)
         self.assertIn("dashboard-compliance-badge--completed_late", response.text)
+        self.assertIn("Срок скоро", response.text)
         self.assertIn("Просрочен", response.text)
         self.assertIn("Завершён с опозданием", response.text)
         self.assertIn("Без срока", response.text)
