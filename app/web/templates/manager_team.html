@@ -338,7 +338,10 @@
                     <div class="dashboard-metric">
                         <span class="dashboard-metric-label">Статус</span>
                         <span class="dashboard-metric-value">
-                            <span class="dashboard-status-badge dashboard-status-badge--in_progress">Требует внимания</span>
+                            <a
+                                href="/manager/team/{{ member.user_id }}#quiz-analytics"
+                                class="dashboard-status-link dashboard-status-badge dashboard-status-badge--in_progress"
+                            >Требует внимания</a>
                         </span>
                     </div>
                     {% elif quiz_analytics.total_attempts_count > 0 %}
@@ -364,14 +367,20 @@
                     <div class="dashboard-metric">
                         <span class="dashboard-metric-label">Практические задания</span>
                         <span class="dashboard-metric-value">
-                            <span class="dashboard-status-badge dashboard-status-badge--in_progress">Ожидает проверки ({{ practical_task_analytics.pending_attempts_count }})</span>
+                            <a
+                                href="/manager/team/{{ member.user_id }}#practical-tasks"
+                                class="dashboard-status-link dashboard-status-badge dashboard-status-badge--in_progress"
+                            >Ожидает проверки ({{ practical_task_analytics.pending_attempts_count }})</a>
                         </span>
                     </div>
                     {% elif practical_task_analytics.failed_attempts_count > 0 %}
                     <div class="dashboard-metric">
                         <span class="dashboard-metric-label">Практические задания</span>
                         <span class="dashboard-metric-value">
-                            <span class="dashboard-status-badge dashboard-status-badge--in_progress">Требует внимания</span>
+                            <a
+                                href="/manager/team/{{ member.user_id }}#practical-tasks"
+                                class="dashboard-status-link dashboard-status-badge dashboard-status-badge--in_progress"
+                            >Требует внимания</a>
                         </span>
                     </div>
                     {% else %}
@@ -402,14 +411,20 @@
                     <div class="dashboard-metric">
                         <span class="dashboard-metric-label">Назначения</span>
                         <span class="dashboard-metric-value">
-                            <span class="dashboard-compliance-badge dashboard-compliance-badge--overdue">Просрочено: {{ assignment_history.overdue_count }}</span>
+                            <a
+                                href="/manager/team/{{ member.user_id }}#assignments"
+                                class="dashboard-status-link dashboard-compliance-badge dashboard-compliance-badge--overdue"
+                            >Просрочено: {{ assignment_history.overdue_count }}</a>
                         </span>
                     </div>
                     {% elif assignment_history.due_soon_count > 0 %}
                     <div class="dashboard-metric">
                         <span class="dashboard-metric-label">Назначения</span>
                         <span class="dashboard-metric-value">
-                            <span class="dashboard-compliance-badge dashboard-compliance-badge--due_soon">Срок скоро: {{ assignment_history.due_soon_count }}</span>
+                            <a
+                                href="/manager/team/{{ member.user_id }}#assignments"
+                                class="dashboard-status-link dashboard-compliance-badge dashboard-compliance-badge--due_soon"
+                            >Срок скоро: {{ assignment_history.due_soon_count }}</a>
                         </span>
                     </div>
                     {% elif assignment_history.total_count > 0 %}

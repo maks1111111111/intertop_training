@@ -84,7 +84,7 @@
     {% endif %}
 </section>
 
-<section class="section">
+<section class="section profile-section-anchor" id="assignments">
     <h2>Назначенные курсы</h2>
 
     {% if assignment_history.total_count > 0 %}
@@ -264,7 +264,7 @@
 </div>
 {% endif %}
 
-<section class="section">
+<section class="section profile-section-anchor" id="quiz-analytics">
     <h2>Результаты тестов</h2>
     {% if quiz_analytics.total_attempts_count > 0 %}
     <div class="dashboard-metrics">
@@ -344,7 +344,7 @@
     {% endif %}
 </section>
 
-<section class="section">
+<section class="section profile-section-anchor" id="development-profile">
     <h2>Сильные стороны и зоны развития</h2>
     {% if development_profile.quiz_strengths %}
     <h3>Сильные стороны</h3>
@@ -442,7 +442,7 @@
     {% endif %}
 </section>
 
-<section class="section">
+<section class="section profile-section-anchor" id="practical-tasks">
     <h2>Практические задания</h2>
     {% if practical_task_analytics.total_attempts_count > 0 %}
     <div class="dashboard-metrics">

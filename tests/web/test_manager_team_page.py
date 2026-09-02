@@ -825,11 +825,24 @@ class FakeTeamAnalyticsService:
                     display_name=member.display_name,
                     username=member.username,
                     reason="Последних непройденных курсов: 1.",
-                    profile_url=f"/manager/team/{member.user_id}",
+                    profile_url=(
+                        f"/manager/team/{member.user_id}"
+                        f"{_fake_recommendation_profile_anchor(recommendation.code)}"
+                    ),
                     development_actions=development_actions,
                 ),
             ),
         )
+
+
+def _fake_recommendation_profile_anchor(recommendation_code: str) -> str:
+    if recommendation_code in {"assignment_overdue", "assignment_due_soon"}:
+        return "#assignments"
+    if recommendation_code == "quiz_attention":
+        return "#quiz-analytics"
+    if recommendation_code in {"practical_attention", "practical_pending"}:
+        return "#practical-tasks"
+    return ""
 
 
 
@@ -2112,7 +2125,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Открыть курс", response.text)
         self.assertIn("/courses/alpha", response.text)
         self.assertIn("Открыть профиль", response.text)
-        self.assertIn("/manager/team/2", response.text)
+        self.assertIn("/manager/team/2#quiz-analytics", response.text)
         self.assertEqual(self.team_analytics_service.detail_calls, [("intertop", "quiz_attention")])
 
     def test_recommendation_detail_renders_practical_task_development_action(self) -> None:
@@ -2182,6 +2195,162 @@ class ManagerTeamPageTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("learner_answer", response.text.lower())
+
+    def test_manager_team_member_page_renders_section_anchors(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('id="assignments"', response.text)
+        self.assertIn('id="quiz-analytics"', response.text)
+        self.assertIn('id="practical-tasks"', response.text)
+        self.assertIn('id="development-profile"', response.text)
+        self.assertIn("profile-section-anchor", response.text)
+
+    def test_manager_team_overdue_badge_links_to_assignments_section(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('href="/manager/team/2#assignments"', response.text)
+        self.assertIn(
+            "dashboard-status-link dashboard-compliance-badge dashboard-compliance-badge--overdue",
+            response.text,
+        )
+        self.assertIn("Просрочено: 1", response.text)
+
+    def test_manager_team_due_soon_badge_links_to_assignments_section(self) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._assignment_history_override = (
+            ManagerCourseAssignmentHistory(
+                assignments=(),
+                total_count=2,
+                assigned_count=0,
+                in_progress_count=2,
+                completed_count=0,
+                no_deadline_count=0,
+                on_track_count=0,
+                due_soon_count=2,
+                overdue_count=0,
+                completed_on_time_count=0,
+                completed_late_count=0,
+            )
+        )
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('href="/manager/team/2#assignments"', response.text)
+        self.assertIn(
+            "dashboard-status-link dashboard-compliance-badge dashboard-compliance-badge--due_soon",
+            response.text,
+        )
+        self.assertIn("Срок скоро: 2", response.text)
+
+    def test_manager_team_failed_quiz_links_to_quiz_analytics(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('href="/manager/team/2#quiz-analytics"', response.text)
+        self.assertIn(
+            "dashboard-status-link dashboard-status-badge dashboard-status-badge--in_progress",
+            response.text,
+        )
+
+    def test_manager_team_pending_practical_links_to_practical_tasks(self) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._practical_analytics_override = (
+            EmployeePracticalTaskAnalytics(
+                total_attempts_count=1,
+                reviewed_attempts_count=0,
+                passed_attempts_count=0,
+                failed_attempts_count=0,
+                pending_attempts_count=1,
+                scorable_attempts_count=0,
+                average_score_percent=None,
+                best_score_percent=None,
+                recent_attempts=(),
+            )
+        )
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('href="/manager/team/2#practical-tasks"', response.text)
+        self.assertIn(
+            "dashboard-status-link dashboard-status-badge dashboard-status-badge--in_progress",
+            response.text,
+        )
+        self.assertIn("Ожидает проверки (1)", response.text)
+
+    def test_manager_team_failed_practical_links_to_practical_tasks(self) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._practical_analytics_override = (
+            EmployeePracticalTaskAnalytics(
+                total_attempts_count=2,
+                reviewed_attempts_count=2,
+                passed_attempts_count=0,
+                failed_attempts_count=2,
+                pending_attempts_count=0,
+                scorable_attempts_count=2,
+                average_score_percent=40.0,
+                best_score_percent=40.0,
+                recent_attempts=(),
+            )
+        )
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('href="/manager/team/2#practical-tasks"', response.text)
+        self.assertIn(
+            "dashboard-status-link dashboard-status-badge dashboard-status-badge--in_progress",
+            response.text,
+        )
+
+    def test_manager_team_neutral_statuses_are_not_action_links(self) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._quiz_analytics_override = EmployeeQuizAnalytics(
+            total_attempts_count=2,
+            tested_courses_count=1,
+            passed_courses_count=1,
+            latest_failed_courses_count=0,
+            best_score_percent=90.0,
+            average_score_percent=85.0,
+            courses=(),
+        )
+        self.team_analytics_service._practical_analytics_override = (
+            FakeAnalyticsService.empty_practical_task_analytics()
+        )
+        self.team_analytics_service._assignment_history_override = (
+            FakeTeamAnalyticsService._empty_member_assignment_history()
+        )
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Есть результаты", response.text)
+        self.assertIn("Нет назначений", response.text)
+        self.assertNotIn('href="/manager/team/2#quiz-analytics"', response.text)
+        self.assertNotIn('href="/manager/team/2#practical-tasks"', response.text)
+        self.assertNotIn('href="/manager/team/2#assignments"', response.text)
+
+    def test_recommendation_detail_practical_attention_links_to_practical_tasks(
+        self,
+    ) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get(
+            "/manager/team/recommendation",
+            params={"code": "practical_attention"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("/manager/team/2#practical-tasks", response.text)
 
 
 if __name__ == "__main__":

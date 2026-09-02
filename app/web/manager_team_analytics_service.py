@@ -260,6 +260,7 @@ class ManagerTeamAnalyticsService:
         if recommendation is None:
             return None
 
+        profile_anchor = _recommendation_profile_anchor(recommendation.code)
         members_by_id = {
             row.member.user_id: row for row in overview.members
         }
@@ -278,7 +279,7 @@ class ManagerTeamAnalyticsService:
                         row,
                         overview.analytics,
                     ),
-                    profile_url=f"/manager/team/{user_id}",
+                    profile_url=f"/manager/team/{user_id}{profile_anchor}",
                     development_actions=_member_recommendation_development_actions(
                         recommendation,
                         row,
@@ -708,6 +709,16 @@ def _member_practical_signal_evidence_count(
         if signal.text.casefold() == signal_key:
             return signal.evidence_count
     return 0
+
+
+def _recommendation_profile_anchor(recommendation_code: str) -> str:
+    if recommendation_code in {"assignment_overdue", "assignment_due_soon"}:
+        return "#assignments"
+    if recommendation_code == "quiz_attention":
+        return "#quiz-analytics"
+    if recommendation_code in {"practical_attention", "practical_pending"}:
+        return "#practical-tasks"
+    return ""
 
 
 def _member_recommendation_development_actions(

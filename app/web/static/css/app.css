@@ -1554,6 +1554,25 @@ a:focus-visible,
     background: #ffedd5;
 }
 
+.dashboard-status-link {
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+}
+
+.dashboard-status-link:hover {
+    opacity: 0.88;
+}
+
+.dashboard-status-link:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+.profile-section-anchor {
+    scroll-margin-top: 1.5rem;
+}
+
 .dashboard-progress-section {
     padding: 0.875rem 1rem;
     background: #f8fafc;

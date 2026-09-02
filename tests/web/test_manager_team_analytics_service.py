@@ -1937,7 +1937,7 @@ class ManagerTeamRecommendationDetailTests(unittest.TestCase):
         self.assertEqual(detail.recommendation.code, "quiz_attention")
         self.assertEqual(len(detail.members), 1)
         self.assertEqual(detail.members[0].user_id, 10)
-        self.assertEqual(detail.members[0].profile_url, "/manager/team/10")
+        self.assertEqual(detail.members[0].profile_url, "/manager/team/10#quiz-analytics")
         self.assertIn("Последних непройденных курсов: 1", detail.members[0].reason)
 
     def test_topic_reason_does_not_claim_individual_weakness(self) -> None:
