@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Удаление курса — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/admin">Админ</a>
+    <span aria-hidden="true">/</span>
+    <a href="{{ view.detail_url }}">{{ view.title }}</a>
+    <span aria-hidden="true">/</span>
+    <span>Удаление</span>
+</nav>
+
+<section class="page-header admin-page-header">
+    <h1 class="page-title">Удаление курса</h1>
+    <p class="page-lead">
+        Удаление необратимо: файлы курса будут удалены с сервера без возможности восстановления.
+    </p>
+</section>
+
+<section class="admin-upload-confirm">
+    <div class="admin-upload-confirm-card">
+        <h2 class="admin-upload-confirm-title">{{ view.title }}</h2>
+        <dl class="admin-upload-confirm-details">
+            <div class="admin-upload-confirm-row">
+                <dt>Идентификатор</dt>
+                <dd>{{ view.slug }}</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Уроков</dt>
+                <dd>{{ view.lesson_count }}</dd>
+            </div>
+        </dl>
+    </div>
+
+    {% if error_message %}
+    <div class="admin-form-error" role="alert">{{ error_message }}</div>
+    {% endif %}
+
+    {% if view.can_delete %}
+    <p class="page-meta">
+        Курс не использовался в обучении. Его можно удалить навсегда.
+    </p>
+    <div class="admin-course-delete-actions">
+        <a class="button button-secondary" href="{{ view.cancel_url }}">Отмена</a>
+        <form class="admin-course-delete-form" action="/admin/courses/{{ view.slug }}/delete" method="post">
+            <button class="button admin-course-delete-button" type="submit">Удалить навсегда</button>
+        </form>
+    </div>
+    {% else %}
+    <div class="admin-form-error" role="alert">
+        Курс использовался в обучении и не может быть удалён без потери истории.
+        Архивирование будет добавлено позже для таких курсов.
+    </div>
+    {% if view.history.enrollments_count > 0 %}
+    <p class="page-meta">Записей на курс: {{ view.history.enrollments_count }}</p>
+    {% endif %}
+    {% if view.history.quiz_attempts_count > 0 %}
+    <p class="page-meta">Попыток теста: {{ view.history.quiz_attempts_count }}</p>
+    {% endif %}
+    {% if view.history.practical_task_attempts_count > 0 %}
+    <p class="page-meta">Практических попыток: {{ view.history.practical_task_attempts_count }}</p>
+    {% endif %}
+    {% if view.history.web_lesson_progress_count > 0 %}
+    <p class="page-meta">Записей прогресса уроков: {{ view.history.web_lesson_progress_count }}</p>
+    {% endif %}
+    <div class="admin-course-delete-actions">
+        <a class="button button-secondary" href="{{ view.cancel_url }}">Вернуться к курсу</a>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

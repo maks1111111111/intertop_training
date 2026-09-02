@@ -26,6 +26,10 @@ from app.repositories.manager_course_assignment_repository import (
 from app.repositories.progress_repository import ProgressRepository
 from app.repositories.user_repository import UserRepository
 from app.services.tenant_context_service import TenantContextService
+from app.web.admin_course_delete_service import (
+    AdminCourseDeleteError,
+    AdminCourseDeleteService,
+)
 from app.web.admin_course_edit_service import (
     AdminCourseEditError,
     AdminCourseEditRequest,
@@ -576,6 +580,14 @@ def get_admin_course_edit_service(
 ) -> AdminCourseEditService:
     """Return the admin course edit service for the current application."""
     return AdminCourseEditService(runtime.base_dir, runtime)
+
+
+def get_admin_course_delete_service(
+    runtime: ContentRuntime = Depends(get_content_runtime),
+    db_path: Path = Depends(get_db_path),
+) -> AdminCourseDeleteService:
+    """Return the admin course delete service for the current application."""
+    return AdminCourseDeleteService(runtime.base_dir, runtime, db_path)
 
 
 def get_admin_lesson_edit_service(
@@ -1772,6 +1784,136 @@ def admin_course_detail_page(
         )
 
     return _render_admin_course_detail_page(request, detail)
+
+
+def _render_admin_course_delete_page(
+    request: Request,
+    view,
+    *,
+    error_message: str = "",
+) -> HTMLResponse:
+    """Render the admin course delete confirmation page."""
+    return templates.TemplateResponse(
+        request,
+        "admin_course_delete.html",
+        {
+            "active_nav": "admin",
+            "view": view,
+            "error_message": error_message,
+        },
+    )
+
+
+@admin_router.get(
+    "/admin/courses/{slug}/delete",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_course_delete_page(
+    slug: str,
+    request: Request,
+    delete_service: AdminCourseDeleteService = Depends(get_admin_course_delete_service),
+) -> HTMLResponse:
+    """Render the delete confirmation page for one admin course."""
+    try:
+        view = delete_service.get_delete_view(slug)
+    except AdminCourseDeleteError:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    if view is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    return _render_admin_course_delete_page(request, view)
+
+
+@admin_router.post(
+    "/admin/courses/{slug}/delete",
+    include_in_schema=False,
+)
+def admin_course_delete_submit(
+    slug: str,
+    request: Request,
+    delete_service: AdminCourseDeleteService = Depends(get_admin_course_delete_service),
+    admin_service: AdminService = Depends(get_admin_service),
+):
+    """Permanently delete one unused course and redirect to the admin dashboard."""
+    try:
+        result = delete_service.delete_course(slug)
+    except AdminCourseDeleteError:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    if result.code == "not_found":
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    if result.code == "course_has_history":
+        view = delete_service.get_delete_view(slug)
+        if view is None:
+            return templates.TemplateResponse(
+                request,
+                "not_found.html",
+                {
+                    "title": "Курс не найден",
+                    "message": "Запрошенный курс недоступен или не существует.",
+                },
+                status_code=404,
+            )
+        return _render_admin_course_delete_page(
+            request,
+            view,
+            error_message=result.message,
+        )
+
+    if result.code in ("filesystem_delete_failure", "delete_finalize_failure"):
+        detail = admin_service.get_course_detail(slug)
+        if detail is None:
+            return templates.TemplateResponse(
+                request,
+                "not_found.html",
+                {
+                    "title": "Курс не найден",
+                    "message": "Запрошенный курс недоступен или не существует.",
+                },
+                status_code=404,
+            )
+        return _render_admin_course_detail_page(
+            request,
+            detail,
+            error_message=result.message,
+        )
+
+    return RedirectResponse(url="/admin", status_code=303)
 
 
 def _get_preview_course_or_not_found(

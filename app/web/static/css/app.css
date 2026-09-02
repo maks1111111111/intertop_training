@@ -3847,6 +3847,38 @@ a:focus-visible,
     border-color: #fca5a5;
 }
 
+.admin-course-delete-link {
+    color: #b91c1c;
+    border-color: #fecaca;
+}
+
+.admin-course-delete-link:hover {
+    background: #fef2f2;
+    border-color: #fca5a5;
+}
+
+.admin-course-delete-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.admin-course-delete-form {
+    margin: 0;
+}
+
+.admin-course-delete-button {
+    color: #b91c1c;
+    border-color: #fecaca;
+    background: #fff;
+}
+
+.admin-course-delete-button:hover {
+    background: #fef2f2;
+    border-color: #fca5a5;
+}
+
 .admin-quiz-option-edit-list {
     display: flex;
     flex-direction: column;

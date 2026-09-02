@@ -91,3 +91,19 @@ class CourseRepository:
                 )
 
             return int(row["id"])
+
+    def delete_by_slug(
+        self,
+        db_path: Path,
+        slug: str,
+    ) -> bool:
+        """Delete one course row by slug. Returns True when a row was removed."""
+        with get_connection(db_path) as connection:
+            cursor = connection.execute(
+                """
+                DELETE FROM courses
+                WHERE slug = ?
+                """,
+                (slug,),
+            )
+            return cursor.rowcount > 0
