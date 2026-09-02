@@ -7,6 +7,7 @@ from typing import Optional
 
 from app.web.manager_course_assignment_history_service import (
     ManagerCourseAssignmentHistory,
+    ManagerCourseAssignmentHistoryItem,
 )
 from app.web.manager_employee_analytics_service import (
     EmployeeCourseQuizAnalytics,
@@ -132,6 +133,7 @@ def _member_row(
     pending_practical: int = 0,
     topics=(),
     development_signals=(),
+    assignment_history: ManagerCourseAssignmentHistory | None = None,
 ) -> ManagerTeamMemberAnalytics:
     return ManagerTeamMemberAnalytics(
         member=_member(user_id, started=started),
@@ -147,6 +149,83 @@ def _member_row(
         practical_signal_evidence=_practical_evidence(
             development_areas=development_signals,
         ),
+        assignment_history=assignment_history or _assignment_history(),
+    )
+
+
+def _assignment_item(
+    *,
+    course_slug: str = "alpha",
+    course_title: str = "Alpha Course",
+    compliance_status: str = "overdue",
+    progress_percent: int = 25,
+    due_at: Optional[str] = "2026-09-10 18:00:00",
+) -> ManagerCourseAssignmentHistoryItem:
+    compliance_labels = {
+        "overdue": "Просрочен",
+        "due_soon": "Срок скоро",
+        "on_track": "В сроке",
+        "no_deadline": "Без срока",
+        "completed_on_time": "Завершён в срок",
+        "completed_late": "Завершён с опозданием",
+    }
+    return ManagerCourseAssignmentHistoryItem(
+        course_slug=course_slug,
+        course_title=course_title,
+        status="in_progress",
+        status_label="В процессе",
+        progress_percent=progress_percent,
+        assigned_at="2026-09-01 10:00:00",
+        assigned_by_display_name="Manager One",
+        due_at=due_at,
+        started_at="2026-09-02 10:00:00",
+        completed_at=None,
+        compliance_status=compliance_status,
+        compliance_status_label=compliance_labels.get(
+            compliance_status,
+            compliance_status,
+        ),
+    )
+
+
+def _assignment_history_with(
+    *assignments: ManagerCourseAssignmentHistoryItem,
+) -> ManagerCourseAssignmentHistory:
+    overdue_count = sum(
+        1 for item in assignments if item.compliance_status == "overdue"
+    )
+    due_soon_count = sum(
+        1 for item in assignments if item.compliance_status == "due_soon"
+    )
+    on_track_count = sum(
+        1 for item in assignments if item.compliance_status == "on_track"
+    )
+    no_deadline_count = sum(
+        1 for item in assignments if item.compliance_status == "no_deadline"
+    )
+    completed_on_time_count = sum(
+        1 for item in assignments if item.compliance_status == "completed_on_time"
+    )
+    completed_late_count = sum(
+        1 for item in assignments if item.compliance_status == "completed_late"
+    )
+    assigned_count = sum(1 for item in assignments if item.status == "assigned")
+    in_progress_count = sum(
+        1 for item in assignments if item.status == "in_progress"
+    )
+    completed_count = sum(1 for item in assignments if item.status == "completed")
+    return ManagerCourseAssignmentHistory(
+        assignments=assignments,
+        total_count=len(assignments),
+        assigned_count=assigned_count,
+        in_progress_count=in_progress_count,
+        completed_count=completed_count,
+        no_deadline_count=no_deadline_count,
+        on_track_count=on_track_count,
+        due_soon_count=due_soon_count,
+        overdue_count=overdue_count,
+        completed_on_time_count=completed_on_time_count,
+        completed_late_count=completed_late_count,
     )
 
 
@@ -1580,6 +1659,115 @@ class ManagerTeamRecommendationsTests(unittest.TestCase):
         self.assertEqual(employee_service.practical_calls, [1])
         self.assertEqual(employee_service.practical_evidence_calls, [1])
 
+    def test_assignment_overdue_recommendation(self) -> None:
+        history = _assignment_history_with(
+            _assignment_item(compliance_status="overdue"),
+        )
+        members = (
+            _member_row(1, assignment_history=history),
+            _member_row(2, assignment_history=_assignment_history()),
+        )
+        recommendations = _build_team_recommendations(self._analytics(), members)
+
+        rec = next(r for r in recommendations if r.code == "assignment_overdue")
+        self.assertEqual(rec.priority, "high")
+        self.assertEqual(rec.affected_user_ids, (1,))
+        self.assertEqual(rec.affected_employees_count, 1)
+        self.assertIn("Просроченные назначения", rec.title)
+
+    def test_assignment_due_soon_recommendation(self) -> None:
+        history = _assignment_history_with(
+            _assignment_item(
+                compliance_status="due_soon",
+                due_at="2026-09-15 18:00:00",
+            ),
+        )
+        members = (_member_row(3, assignment_history=history),)
+        recommendations = _build_team_recommendations(self._analytics(), members)
+
+        rec = next(r for r in recommendations if r.code == "assignment_due_soon")
+        self.assertEqual(rec.priority, "medium")
+        self.assertEqual(rec.affected_user_ids, (3,))
+        self.assertIn("Скоро истекают сроки", rec.title)
+
+    def test_employee_with_overdue_and_due_soon_only_in_overdue_recommendation(self) -> None:
+        history = _assignment_history_with(
+            _assignment_item(compliance_status="overdue"),
+            _assignment_item(
+                course_slug="beta",
+                course_title="Beta Course",
+                compliance_status="due_soon",
+                due_at="2026-09-15 18:00:00",
+            ),
+        )
+        members = (_member_row(5, assignment_history=history),)
+        recommendations = _build_team_recommendations(self._analytics(), members)
+
+        codes = {rec.code for rec in recommendations}
+        self.assertIn("assignment_overdue", codes)
+        self.assertNotIn("assignment_due_soon", codes)
+        overdue = next(r for r in recommendations if r.code == "assignment_overdue")
+        self.assertEqual(overdue.affected_user_ids, (5,))
+
+    def test_no_assignment_recommendations_without_relevant_statuses(self) -> None:
+        members = (
+            _member_row(1, assignment_history=_assignment_history(total=0)),
+            _member_row(
+                2,
+                assignment_history=_assignment_history_with(
+                    _assignment_item(
+                        compliance_status="on_track",
+                        due_at="2026-09-20 18:00:00",
+                    ),
+                ),
+            ),
+        )
+        recommendations = _build_team_recommendations(self._analytics(), members)
+
+        codes = {rec.code for rec in recommendations}
+        self.assertNotIn("assignment_overdue", codes)
+        self.assertNotIn("assignment_due_soon", codes)
+
+    def test_assignment_recommendation_ordering(self) -> None:
+        overdue_history = _assignment_history_with(
+            _assignment_item(compliance_status="overdue"),
+        )
+        due_soon_history = _assignment_history_with(
+            _assignment_item(
+                compliance_status="due_soon",
+                due_at="2026-09-15 18:00:00",
+            ),
+        )
+        members = (
+            _member_row(1, assignment_history=overdue_history),
+            _member_row(2, assignment_history=due_soon_history),
+            _member_row(3, pending_practical=1),
+            _member_row(4, started=0),
+        )
+        recommendations = _build_team_recommendations(
+            self._analytics(
+                members_with_pending_practical_tasks_count=1,
+                members_count=4,
+                started_members_count=3,
+            ),
+            members,
+        )
+
+        overdue_index = next(
+            index for index, rec in enumerate(recommendations)
+            if rec.code == "assignment_overdue"
+        )
+        due_soon_index = next(
+            index for index, rec in enumerate(recommendations)
+            if rec.code == "assignment_due_soon"
+        )
+        learning_index = next(
+            index for index, rec in enumerate(recommendations)
+            if rec.code == "learning_not_started"
+        )
+        self.assertLess(overdue_index, due_soon_index)
+        self.assertLess(due_soon_index, learning_index)
+
 
 class ManagerTeamRecommendationTargetingTests(unittest.TestCase):
     def test_quiz_attention_targets_only_failed_latest_users(self) -> None:
@@ -1957,6 +2145,121 @@ class ManagerTeamRecommendationDetailTests(unittest.TestCase):
                 assert detail is not None
                 for member in detail.members:
                     self.assertEqual(member.development_actions, ())
+
+    def test_assignment_overdue_drill_down_reason(self) -> None:
+        history = _assignment_history_with(
+            _assignment_item(compliance_status="overdue"),
+            _assignment_item(
+                course_slug="beta",
+                course_title="Beta Course",
+                compliance_status="overdue",
+            ),
+        )
+        members = (_member(10),)
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService()
+        assignment_service = FakeAssignmentHistoryService({10: history})
+        service = _build_team_analytics_service(
+            team_service,
+            employee_service,
+            assignment_service,
+        )
+
+        detail = service.get_recommendation_detail("company-a", "assignment_overdue")
+
+        assert detail is not None
+        self.assertEqual(detail.members[0].reason, "Просроченных назначений: 2.")
+
+    def test_assignment_due_soon_drill_down_reason(self) -> None:
+        history = _assignment_history_with(
+            _assignment_item(
+                compliance_status="due_soon",
+                due_at="2026-09-15 18:00:00",
+            ),
+        )
+        members = (_member(10),)
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService()
+        assignment_service = FakeAssignmentHistoryService({10: history})
+        service = _build_team_analytics_service(
+            team_service,
+            employee_service,
+            assignment_service,
+        )
+
+        detail = service.get_recommendation_detail("company-a", "assignment_due_soon")
+
+        assert detail is not None
+        self.assertEqual(detail.members[0].reason, "Назначений с близким сроком: 1.")
+
+    def test_assignment_overdue_development_actions(self) -> None:
+        history = _assignment_history_with(
+            _assignment_item(
+                course_slug="alpha",
+                course_title="Alpha Course",
+                compliance_status="overdue",
+                progress_percent=10,
+                due_at="2026-09-10 18:00:00",
+            ),
+            _assignment_item(
+                course_slug="beta",
+                course_title="Beta Course",
+                compliance_status="on_track",
+                due_at="2026-09-20 18:00:00",
+            ),
+        )
+        members = (_member(10),)
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService()
+        assignment_service = FakeAssignmentHistoryService({10: history})
+        service = _build_team_analytics_service(
+            team_service,
+            employee_service,
+            assignment_service,
+        )
+
+        detail = service.get_recommendation_detail("company-a", "assignment_overdue")
+
+        assert detail is not None
+        actions = detail.members[0].development_actions
+        self.assertEqual(len(actions), 1)
+        self.assertEqual(actions[0].kind, "course_assignment")
+        self.assertEqual(actions[0].title, "Alpha Course")
+        self.assertIn("10%", actions[0].description)
+        self.assertIn("2026-09-10 18:00:00", actions[0].description)
+        self.assertIn("просроч", actions[0].description.casefold())
+        self.assertEqual(actions[0].url, "/manager/team/10")
+
+    def test_assignment_due_soon_development_actions(self) -> None:
+        history = _assignment_history_with(
+            _assignment_item(
+                course_slug="gamma",
+                course_title="Gamma Course",
+                compliance_status="due_soon",
+                progress_percent=40,
+                due_at="2026-09-15 18:00:00",
+            ),
+        )
+        members = (_member(11),)
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService()
+        assignment_service = FakeAssignmentHistoryService({11: history})
+        service = _build_team_analytics_service(
+            team_service,
+            employee_service,
+            assignment_service,
+        )
+
+        detail = service.get_recommendation_detail("company-a", "assignment_due_soon")
+
+        assert detail is not None
+        actions = detail.members[0].development_actions
+        self.assertEqual(len(actions), 1)
+        self.assertEqual(actions[0].title, "Gamma Course")
+        self.assertIn("40%", actions[0].description)
+        self.assertIn("2026-09-15 18:00:00", actions[0].description)
+        self.assertIn("близ", actions[0].description.casefold())
+        self.assertEqual(actions[0].url, "/manager/team/11")
 
 
 if __name__ == "__main__":

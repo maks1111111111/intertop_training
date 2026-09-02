@@ -757,6 +757,32 @@ def _member_recommendation_development_actions(
                 )
         return tuple(actions)
 
+    if code in {"assignment_overdue", "assignment_due_soon"}:
+        target_status = "overdue" if code == "assignment_overdue" else "due_soon"
+        status_note = (
+            "Назначение просрочено."
+            if target_status == "overdue"
+            else "Срок прохождения близок."
+        )
+        profile_url = f"/manager/team/{row.member.user_id}"
+        actions = []
+        for assignment in row.assignment_history.assignments:
+            if assignment.compliance_status != target_status:
+                continue
+            description_parts = [f"Прогресс — {assignment.progress_percent}%."]
+            if assignment.due_at:
+                description_parts.append(f"Срок прохождения — {assignment.due_at}.")
+            description_parts.append(status_note)
+            actions.append(
+                ManagerRecommendationDevelopmentAction(
+                    kind="course_assignment",
+                    title=assignment.course_title,
+                    description=" ".join(description_parts),
+                    url=profile_url,
+                )
+            )
+        return tuple(actions)
+
     return ()
 
 
@@ -787,6 +813,14 @@ def _member_recommendation_reason(
 
     if code == "learning_not_started":
         return "Сотрудник ещё не начал обучение."
+
+    if code == "assignment_overdue":
+        overdue_count = row.assignment_history.overdue_count
+        return f"Просроченных назначений: {overdue_count}."
+
+    if code == "assignment_due_soon":
+        due_soon_count = row.assignment_history.due_soon_count
+        return f"Назначений с близким сроком: {due_soon_count}."
 
     topic_tag = _topic_tag_for_recommendation_code(code, analytics)
     if topic_tag is not None:
@@ -861,6 +895,45 @@ def _build_team_recommendations(
                     "Рекомендуется разобрать ошибки и повторить практику."
                 ),
                 affected_user_ids=practical_attention_ids,
+            )
+        )
+
+    assignment_overdue_ids = _sorted_user_ids(
+        row.member.user_id
+        for row in members
+        if row.assignment_history.overdue_count > 0
+    )
+    if assignment_overdue_ids:
+        add_recommendation(
+            _make_recommendation(
+                code="assignment_overdue",
+                priority="high",
+                title="Просроченные назначения",
+                description=(
+                    "У части сотрудников есть назначенные курсы с истёкшим сроком "
+                    "прохождения. Требуется внимание менеджера."
+                ),
+                affected_user_ids=assignment_overdue_ids,
+            )
+        )
+
+    assignment_due_soon_ids = _sorted_user_ids(
+        row.member.user_id
+        for row in members
+        if row.assignment_history.due_soon_count > 0
+        and row.assignment_history.overdue_count == 0
+    )
+    if assignment_due_soon_ids:
+        add_recommendation(
+            _make_recommendation(
+                code="assignment_due_soon",
+                priority="medium",
+                title="Скоро истекают сроки",
+                description=(
+                    "У части сотрудников приближается срок прохождения "
+                    "назначенных курсов в ближайшие 72 часа."
+                ),
+                affected_user_ids=assignment_due_soon_ids,
             )
         )
 
