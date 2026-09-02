@@ -92,6 +92,61 @@ class CourseRepository:
 
             return int(row["id"])
 
+    _LIFECYCLE_STATUSES = frozenset({"published", "archived"})
+
+    def set_status(
+        self,
+        db_path: Path,
+        slug: str,
+        status: str,
+    ) -> bool:
+        """Update one course lifecycle status. Returns False when the row is missing."""
+        normalized_slug = str(slug or "").strip()
+        normalized_status = str(status or "").strip().lower()
+        if not normalized_slug:
+            raise ValueError("Course slug is required.")
+        if normalized_status not in self._LIFECYCLE_STATUSES:
+            raise ValueError(
+                f"Unsupported course status: {status!r}. "
+                f"Allowed values: {', '.join(sorted(self._LIFECYCLE_STATUSES))}."
+            )
+
+        with get_connection(db_path) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE courses
+                SET status = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE slug = ?
+                """,
+                (normalized_status, normalized_slug),
+            )
+            return cursor.rowcount > 0
+
+    def count_active_enrollments(
+        self,
+        db_path: Path,
+        slug: str,
+    ) -> int:
+        """Return enrollments with active assignment or in-progress status."""
+        normalized_slug = str(slug or "").strip()
+        if not normalized_slug:
+            return 0
+
+        with get_connection(db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM enrollments
+                INNER JOIN courses ON courses.id = enrollments.course_id
+                WHERE courses.slug = ?
+                  AND enrollments.status IN ('assigned', 'in_progress')
+                """,
+                (normalized_slug,),
+            ).fetchone()
+
+        return int(row["count"]) if row is not None else 0
+
     def delete_by_slug(
         self,
         db_path: Path,

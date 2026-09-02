@@ -100,5 +100,38 @@ class AdminDashboardPageTests(unittest.TestCase):
         self.assertIn("Моё обучение", response.text)
 
 
+    def test_admin_renders_archived_course_without_open_link(self) -> None:
+        _write_course(self.courses_dir, "alpha", title="Alpha Course")
+        course_dir = self.courses_dir / "archived"
+        course_dir.mkdir()
+        (course_dir / "course.json").write_text(
+            json.dumps(
+                {
+                    "title": "Archived Course",
+                    "description": "Archived description",
+                    "status": "archived",
+                    "language": "ru",
+                }
+            ),
+            encoding="utf-8",
+        )
+        lesson_dir = course_dir / "lesson_01"
+        lesson_dir.mkdir()
+        (lesson_dir / "lesson.json").write_text(
+            '{"title": "First lesson", "order": 1, "description": "Body text."}',
+            encoding="utf-8",
+        )
+        self.app.state.content_runtime.refresh()
+
+        response = self.client.get("/admin")
+        html = response.text
+
+        self.assertIn("Archived Course", html)
+        self.assertIn("Архив", html)
+        self.assertIn('admin-course-card--archived', html)
+        self.assertIn('href="/courses/alpha"', html)
+        self.assertNotIn('href="/courses/archived"', html)
+
+
 if __name__ == "__main__":
     unittest.main()

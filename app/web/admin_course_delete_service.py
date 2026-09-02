@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.content.runtime import ContentRuntime
+from app.content.runtime_loader import get_course
 from app.content.runtime_manager import ContentRuntimeManager
 from app.database.db import get_connection
 from app.repositories.course_repository import CourseRepository
@@ -163,8 +164,10 @@ class AdminCourseDeleteService:
     def get_delete_view(self, slug: str) -> Optional[AdminCourseDeleteView]:
         """Build the delete confirmation view for one course slug."""
         normalized_slug = self._normalize_slug(slug)
-        course = self._runtime.get_course(normalized_slug)
+        course = get_course(self._courses_dir, normalized_slug)
         if course is None:
+            return None
+        if course.status not in {"published", "archived"}:
             return None
 
         course_dir = _resolve_course_dir(self._courses_dir, normalized_slug)

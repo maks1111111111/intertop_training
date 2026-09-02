@@ -30,6 +30,7 @@ from app.web.admin_course_delete_service import (
     AdminCourseDeleteError,
     AdminCourseDeleteService,
 )
+from app.web.admin_course_lifecycle_service import AdminCourseLifecycleService
 from app.web.admin_course_edit_service import (
     AdminCourseEditError,
     AdminCourseEditRequest,
@@ -588,6 +589,14 @@ def get_admin_course_delete_service(
 ) -> AdminCourseDeleteService:
     """Return the admin course delete service for the current application."""
     return AdminCourseDeleteService(runtime.base_dir, runtime, db_path)
+
+
+def get_admin_course_lifecycle_service(
+    runtime: ContentRuntime = Depends(get_content_runtime),
+    db_path: Path = Depends(get_db_path),
+) -> AdminCourseLifecycleService:
+    """Return the admin course lifecycle service for the current application."""
+    return AdminCourseLifecycleService(runtime.base_dir, runtime, db_path)
 
 
 def get_admin_lesson_edit_service(
@@ -1914,6 +1923,193 @@ def admin_course_delete_submit(
         )
 
     return RedirectResponse(url="/admin", status_code=303)
+
+
+def _render_admin_course_archive_page(
+    request: Request,
+    view,
+    *,
+    error_message: str = "",
+) -> HTMLResponse:
+    """Render the admin course archive confirmation page."""
+    return templates.TemplateResponse(
+        request,
+        "admin_course_archive.html",
+        {
+            "active_nav": "admin",
+            "view": view,
+            "error_message": error_message,
+        },
+    )
+
+
+@admin_router.get(
+    "/admin/courses/{slug}/archive",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def admin_course_archive_page(
+    slug: str,
+    request: Request,
+    lifecycle_service: AdminCourseLifecycleService = Depends(
+        get_admin_course_lifecycle_service
+    ),
+) -> HTMLResponse:
+    """Render the archive confirmation page for one admin course."""
+    try:
+        view = lifecycle_service.get_archive_view(slug)
+    except AdminCourseEditError:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    if view is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    return _render_admin_course_archive_page(request, view)
+
+
+@admin_router.post(
+    "/admin/courses/{slug}/archive",
+    include_in_schema=False,
+)
+def admin_course_archive_submit(
+    slug: str,
+    request: Request,
+    lifecycle_service: AdminCourseLifecycleService = Depends(
+        get_admin_course_lifecycle_service
+    ),
+    admin_service: AdminService = Depends(get_admin_service),
+):
+    """Archive one published course and redirect to its admin detail page."""
+    try:
+        result = lifecycle_service.archive_course(slug)
+    except AdminCourseEditError:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    if result.success:
+        return RedirectResponse(
+            url=f"/admin/courses/{result.slug}",
+            status_code=303,
+        )
+
+    if result.code == "not_found":
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    if result.code == "active_assignments":
+        view = lifecycle_service.get_archive_view(slug)
+        if view is None:
+            return templates.TemplateResponse(
+                request,
+                "not_found.html",
+                {
+                    "title": "Курс не найден",
+                    "message": "Запрошенный курс недоступен или не существует.",
+                },
+                status_code=404,
+            )
+        return _render_admin_course_archive_page(
+            request,
+            view,
+            error_message=result.message,
+        )
+
+    detail = admin_service.get_course_detail(slug)
+    if detail is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+    return _render_admin_course_detail_page(
+        request,
+        detail,
+        error_message=result.message,
+    )
+
+
+@admin_router.post(
+    "/admin/courses/{slug}/restore",
+    include_in_schema=False,
+)
+def admin_course_restore_submit(
+    slug: str,
+    request: Request,
+    lifecycle_service: AdminCourseLifecycleService = Depends(
+        get_admin_course_lifecycle_service
+    ),
+    admin_service: AdminService = Depends(get_admin_service),
+):
+    """Restore one archived course and redirect to its admin detail page."""
+    try:
+        result = lifecycle_service.restore_course(slug)
+    except AdminCourseEditError:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    if result.success:
+        return RedirectResponse(
+            url=f"/admin/courses/{result.slug}",
+            status_code=303,
+        )
+
+    detail = admin_service.get_course_detail(slug)
+    if detail is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+    return _render_admin_course_detail_page(
+        request,
+        detail,
+        error_message=result.message,
+    )
 
 
 def _get_preview_course_or_not_found(

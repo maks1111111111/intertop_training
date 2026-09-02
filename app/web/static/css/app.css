@@ -1725,6 +1725,12 @@ a:focus-visible,
     border-radius: 0.75rem;
 }
 
+.admin-course-card--archived {
+    background: #f9fafb;
+    border-color: #e5e7eb;
+    opacity: 0.92;
+}
+
 .admin-course-body {
     display: flex;
     flex-direction: column;

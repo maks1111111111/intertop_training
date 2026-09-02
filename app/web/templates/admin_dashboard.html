@@ -22,7 +22,7 @@
 <section class="section">
     <ul class="course-list admin-course-list">
         {% for course in courses %}
-        <li class="course-card admin-course-card">
+        <li class="course-card admin-course-card{% if course.status == 'archived' %} admin-course-card--archived{% endif %}">
             <div class="admin-course-body">
                 <header class="admin-course-header">
                     <h2 class="course-card-title">{{ course.title }}</h2>
@@ -59,7 +59,9 @@
 
             <div class="admin-course-actions">
                 <a class="button button-primary" href="{{ course.manage_url }}">Управление</a>
+                {% if course.view_url %}
                 <a class="button button-secondary" href="{{ course.view_url }}">Открыть курс</a>
+                {% endif %}
             </div>
         </li>
         {% endfor %}

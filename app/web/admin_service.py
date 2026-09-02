@@ -1,7 +1,8 @@
 """Admin dashboard data for the Web UI.
 
-This module builds course-level admin rows from published runtime content.
-No database access is performed in this step.
+This module builds course-level admin rows from filesystem content.
+Admin views include published and archived courses; learner runtime still
+loads only published courses.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from typing import Optional
 from app.content.contract import QUIZ_JSON_FILENAME
 from app.content.course_generation_wizard import DifficultyLevel, Language, LessonSize
 from app.content.runtime import ContentRuntime
+from app.content.runtime_loader import get_course, load_courses
 
 
 @dataclass(frozen=True)
@@ -123,7 +125,7 @@ class AdminCourseItem:
     language: str
     lessons_count: int
     status: str
-    view_url: str
+    view_url: Optional[str]
     manage_url: str
 
 
@@ -187,7 +189,7 @@ def _load_draft_quiz_summary(courses_dir, slug: str) -> AdminCourseQuizSummary:
 
 @dataclass(frozen=True)
 class AdminCourseDetailView:
-    """Read-only admin overview for one published course."""
+    """Read-only admin overview for one course."""
 
     slug: str
     title: str
@@ -198,20 +200,24 @@ class AdminCourseDetailView:
     lessons_count: int
     lessons: tuple[AdminCourseLessonItem, ...]
     quiz: AdminCourseQuizSummary
-    preview_url: str
+    preview_url: Optional[str]
     admin_url: str
+    is_archived: bool
 
 
 class AdminService:
-    """Assemble admin dashboard rows from runtime content."""
+    """Assemble admin dashboard rows from filesystem content."""
 
     def __init__(self, runtime: ContentRuntime) -> None:
         self._runtime = runtime
+        self._courses_dir = runtime.base_dir
 
     def get_courses(self) -> tuple[AdminCourseItem, ...]:
-        """Return admin rows for all published runtime courses."""
+        """Return admin rows for published and archived courses."""
         items: list[AdminCourseItem] = []
-        for course in self._runtime.get_courses():
+        for course in load_courses(self._courses_dir):
+            if course.status not in {"published", "archived"}:
+                continue
             items.append(
                 AdminCourseItem(
                     slug=course.slug,
@@ -220,18 +226,25 @@ class AdminService:
                     language=course.language,
                     lessons_count=len(course.lessons),
                     status=course.status,
-                    view_url=f"/courses/{course.slug}",
+                    view_url=(
+                        f"/courses/{course.slug}"
+                        if course.status == "published"
+                        else None
+                    ),
                     manage_url=f"/admin/courses/{course.slug}",
                 )
             )
         return tuple(items)
 
     def get_course_detail(self, slug: str) -> Optional[AdminCourseDetailView]:
-        """Return the admin detail view for one published course, or ``None``."""
-        course = self._runtime.get_course(slug)
+        """Return the admin detail view for one course, or ``None``."""
+        course = get_course(self._courses_dir, slug)
         if course is None:
             return None
+        if course.status not in {"published", "archived"}:
+            return None
 
+        is_archived = course.status == "archived"
         lessons: list[AdminCourseLessonItem] = []
         for lesson in course.lessons:
             lessons.append(
@@ -257,8 +270,8 @@ class AdminService:
                 questions_count=len(course.quiz.questions),
                 passing_score=course.quiz.passing_score,
             )
-        elif _admin_quiz_json_exists(self._runtime.base_dir, course.slug):
-            quiz = _load_draft_quiz_summary(self._runtime.base_dir, course.slug)
+        elif _admin_quiz_json_exists(self._courses_dir, course.slug):
+            quiz = _load_draft_quiz_summary(self._courses_dir, course.slug)
         else:
             quiz = AdminCourseQuizSummary(
                 exists=False,
@@ -276,8 +289,13 @@ class AdminService:
             lessons_count=len(course.lessons),
             lessons=tuple(lessons),
             quiz=quiz,
-            preview_url=f"/admin/courses/{course.slug}/preview",
+            preview_url=(
+                None
+                if is_archived
+                else f"/admin/courses/{course.slug}/preview"
+            ),
             admin_url="/admin",
+            is_archived=is_archived,
         )
 
     def get_course_create_view(self) -> AdminCourseCreateView:

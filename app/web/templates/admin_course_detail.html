@@ -41,8 +41,15 @@
         </div>
     </div>
     <div class="admin-page-header-actions admin-course-detail-actions">
+        {% if not detail.is_archived %}
         <a class="button button-primary" href="{{ detail.preview_url }}">Предпросмотр курса</a>
         <a class="button button-secondary" href="/admin/courses/{{ detail.slug }}/edit">Редактировать</a>
+        <a class="button button-secondary" href="/admin/courses/{{ detail.slug }}/archive">Архивировать курс</a>
+        {% else %}
+        <form class="admin-course-restore-form" action="/admin/courses/{{ detail.slug }}/restore" method="post">
+            <button class="button button-primary" type="submit">Восстановить курс</button>
+        </form>
+        {% endif %}
         <a class="button button-secondary admin-course-delete-link" href="/admin/courses/{{ detail.slug }}/delete">Удалить курс</a>
         <a class="button button-secondary" href="{{ detail.admin_url }}">К курсам</a>
     </div>
@@ -51,9 +58,11 @@
 <section class="section admin-course-detail-section">
     <div class="admin-course-detail-section-header">
         <h2 class="section-title">Структура курса</h2>
+        {% if not detail.is_archived %}
         <form class="admin-lesson-create-form" action="/admin/courses/{{ detail.slug }}/lessons/create" method="post">
             <button class="button button-primary button-small" type="submit">Добавить урок</button>
         </form>
+        {% endif %}
     </div>
     {% if error_message %}
     <div class="admin-form-error" role="alert">{{ error_message }}</div>
@@ -89,8 +98,10 @@
                 {% endif %}
             </div>
             <div class="admin-lesson-actions">
+                {% if not detail.is_archived %}
                 <a class="button button-secondary button-small" href="/admin/courses/{{ detail.slug }}/lessons/{{ lesson.id }}/edit">Редактировать</a>
                 <a class="button button-secondary button-small" href="{{ lesson.preview_url }}">Предпросмотр</a>
+                {% endif %}
             </div>
         </li>
         {% endfor %}
@@ -119,15 +130,19 @@
             </div>
         </dl>
         <div class="admin-quiz-summary-actions">
+            {% if not detail.is_archived %}
             <a class="button button-secondary button-small" href="/admin/courses/{{ detail.slug }}/quiz/edit">Управлять тестом</a>
             <a class="button button-secondary button-small" href="/admin/courses/{{ detail.slug }}/preview/quiz">Предпросмотр теста</a>
+            {% endif %}
         </div>
     </div>
     {% else %}
     <p class="admin-course-detail-empty">Для этого курса итоговый тест не создан.</p>
+    {% if not detail.is_archived %}
     <form class="admin-quiz-create-form" action="/admin/courses/{{ detail.slug }}/quiz/create" method="post">
         <button class="button button-primary button-small" type="submit">Создать итоговый тест</button>
     </form>
+    {% endif %}
     {% endif %}
 </section>
 {% endblock %}

@@ -13,7 +13,9 @@ from app.content.content_pack import ContentPack, build_content_pack
 from app.content.practical_task import PracticalTask
 from app.content.runtime_loader import (
     RuntimeContent,
+    get_course,
     get_published_course,
+    load_courses,
     load_published_courses,
     load_runtime_content,
 )
@@ -707,3 +709,79 @@ class CourseDescriptionLoaderTests(unittest.TestCase):
         self.assertIsNotNone(course)
         assert course is not None
         self.assertEqual(course.description, "")
+
+
+def _write_course_with_status(
+    courses_dir: Path,
+    slug: str,
+    *,
+    status: str,
+    title: str = "Sample Course",
+) -> Path:
+    course_dir = courses_dir / slug
+    course_dir.mkdir()
+    (course_dir / "course.json").write_text(
+        json.dumps({"title": title, "status": status, "version": 1}),
+        encoding="utf-8",
+    )
+    lesson_dir = course_dir / "lesson_01"
+    lesson_dir.mkdir()
+    (lesson_dir / "lesson.json").write_text(
+        json.dumps({"title": "Lesson 1", "order": 1, "description": "Body"}),
+        encoding="utf-8",
+    )
+    return course_dir
+
+
+class AllStatusLoaderTests(unittest.TestCase):
+    """Tests for all-status course loading helpers."""
+
+    def test_load_courses_returns_published_and_archived(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _write_course_with_status(courses_dir, "published", status="published")
+            _write_course_with_status(courses_dir, "archived", status="archived")
+
+            courses = load_courses(courses_dir)
+
+        self.assertEqual([course.slug for course in courses], ["archived", "published"])
+
+    def test_load_published_courses_excludes_archived(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _write_course_with_status(courses_dir, "published", status="published")
+            _write_course_with_status(courses_dir, "archived", status="archived")
+
+            courses = load_published_courses(courses_dir)
+
+        self.assertEqual([course.slug for course in courses], ["published"])
+
+    def test_get_course_returns_archived_course(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _write_course_with_status(
+                courses_dir,
+                "archived",
+                status="archived",
+                title="Archived Course",
+            )
+
+            course = get_course(courses_dir, "archived")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(course.status, "archived")
+        self.assertEqual(course.title, "Archived Course")
+
+    def test_get_published_course_excludes_archived(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            _write_course_with_status(courses_dir, "archived", status="archived")
+
+            course = get_published_course(courses_dir, "archived")
+
+        self.assertIsNone(course)
+
+
+if __name__ == "__main__":
+    unittest.main()

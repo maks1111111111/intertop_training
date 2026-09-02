@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Архивирование курса — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="Навигация">
+    <a href="/admin">Админ</a>
+    <span aria-hidden="true">/</span>
+    <a href="{{ view.detail_url }}">{{ view.title }}</a>
+    <span aria-hidden="true">/</span>
+    <span>Архивирование</span>
+</nav>
+
+<section class="page-header admin-page-header">
+    <h1 class="page-title">Архивирование курса</h1>
+    <p class="page-lead">
+        Курс исчезнет из каталога и станет недоступен для новых назначений. История обучения сохранится.
+    </p>
+</section>
+
+<section class="admin-upload-confirm">
+    <div class="admin-upload-confirm-card">
+        <h2 class="admin-upload-confirm-title">{{ view.title }}</h2>
+        <dl class="admin-upload-confirm-details">
+            <div class="admin-upload-confirm-row">
+                <dt>Идентификатор</dt>
+                <dd>{{ view.slug }}</dd>
+            </div>
+            <div class="admin-upload-confirm-row">
+                <dt>Уроков</dt>
+                <dd>{{ view.lesson_count }}</dd>
+            </div>
+        </dl>
+    </div>
+
+    {% if error_message %}
+    <div class="admin-form-error" role="alert">{{ error_message }}</div>
+    {% endif %}
+
+    {% if view.can_archive %}
+    <p class="page-meta">
+        Курс будет скрыт из каталога обучения, но все данные и история сохранятся.
+    </p>
+    <div class="admin-course-delete-actions">
+        <a class="button button-secondary" href="{{ view.cancel_url }}">Отмена</a>
+        <form class="admin-course-delete-form" action="/admin/courses/{{ view.slug }}/archive" method="post">
+            <button class="button button-secondary" type="submit">Архивировать курс</button>
+        </form>
+    </div>
+    {% else %}
+    <div class="admin-form-error" role="alert">
+        Курс нельзя архивировать, пока есть активные назначения.
+    </div>
+    {% if view.active_assignments_count > 0 %}
+    <p class="page-meta">Активных назначений: {{ view.active_assignments_count }}</p>
+    {% endif %}
+    <div class="admin-course-delete-actions">
+        <a class="button button-secondary" href="{{ view.cancel_url }}">Вернуться к курсу</a>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

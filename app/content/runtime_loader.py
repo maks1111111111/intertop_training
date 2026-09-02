@@ -602,12 +602,8 @@ def _load_course_from_directory(course_dir: Path) -> Optional[tuple[int, Course]
     return order, course
 
 
-def load_published_courses(base_dir: Path) -> list[Course]:
-    """Load all published courses from ``base_dir``.
-
-    Each course directory is loaded independently. A malformed course is
-    skipped without preventing other courses from loading.
-    """
+def _load_sorted_courses(base_dir: Path) -> list[Course]:
+    """Load valid courses from ``base_dir`` regardless of publication status."""
     if not base_dir.is_dir():
         return []
 
@@ -623,21 +619,46 @@ def load_published_courses(base_dir: Path) -> list[Course]:
             loaded_courses.append(loaded_course)
 
     loaded_courses.sort(key=lambda item: (item[0], item[1].slug))
+    return [course for _, course in loaded_courses]
 
+
+def load_courses(base_dir: Path) -> list[Course]:
+    """Load valid courses from ``base_dir`` regardless of publication status."""
+    return _load_sorted_courses(base_dir)
+
+
+def get_course(base_dir: Path, slug: str) -> Optional[Course]:
+    """Return one course by slug regardless of publication status."""
+    normalized_slug = str(slug or "").strip()
+    if not normalized_slug:
+        return None
+
+    for course in load_courses(base_dir):
+        if course.slug == normalized_slug:
+            return course
+
+    return None
+
+
+def load_published_courses(base_dir: Path) -> list[Course]:
+    """Load all published courses from ``base_dir``.
+
+    Each course directory is loaded independently. A malformed course is
+    skipped without preventing other courses from loading.
+    """
     return [
         course
-        for _, course in loaded_courses
+        for course in _load_sorted_courses(base_dir)
         if course.status == _PUBLISHED_STATUS
     ]
 
 
 def get_published_course(base_dir: Path, slug: str) -> Optional[Course]:
     """Return a published course by slug, or ``None`` if unavailable."""
-    for course in load_published_courses(base_dir):
-        if course.slug == slug:
-            return course
-
-    return None
+    course = get_course(base_dir, slug)
+    if course is None or course.status != _PUBLISHED_STATUS:
+        return None
+    return course
 
 
 def _validate_content_pack_version(version: int) -> None:
