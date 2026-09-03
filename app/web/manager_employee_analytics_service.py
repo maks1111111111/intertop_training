@@ -96,9 +96,19 @@ class EmployeePracticalSignal:
 
 
 @dataclass(frozen=True)
+class EmployeePracticalSignalSourceEvidence:
+    course_slug: str
+    course_title: str
+    lesson_slug: str
+    lesson_title: str
+    evidence_count: int
+
+
+@dataclass(frozen=True)
 class EmployeePracticalSignalEvidence:
     text: str
     evidence_count: int
+    sources: tuple[EmployeePracticalSignalSourceEvidence, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -118,6 +128,8 @@ class EmployeeDevelopmentProfile:
     has_sufficient_practical_evidence: bool
     quiz_strength_evidence: tuple[EmployeeQuizTopicEvidence, ...] = ()
     quiz_development_evidence: tuple[EmployeeQuizTopicEvidence, ...] = ()
+    practical_strength_evidence: tuple[EmployeePracticalSignalEvidence, ...] = ()
+    practical_development_evidence: tuple[EmployeePracticalSignalEvidence, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -287,11 +299,20 @@ class ManagerEmployeeAnalyticsService:
             )
         )
 
+        course_titles, lesson_titles = _build_course_lesson_title_maps(self._runtime)
+
         return EmployeePracticalSignalEvidenceSet(
-            strengths=_collect_practical_signal_evidence(feedback_rows, "strengths"),
+            strengths=_collect_practical_signal_evidence(
+                feedback_rows,
+                "strengths",
+                course_titles,
+                lesson_titles,
+            ),
             development_areas=_collect_practical_signal_evidence(
                 feedback_rows,
                 "improvements",
+                course_titles,
+                lesson_titles,
             ),
             reviewed_attempts_count=len(feedback_rows),
         )
@@ -326,6 +347,12 @@ class ManagerEmployeeAnalyticsService:
             quiz_development_evidence=_build_quiz_topic_evidence(
                 aggregation,
                 topic_classification.development_areas,
+            ),
+            practical_strength_evidence=_filter_recurring_practical_signal_evidence(
+                signal_evidence.strengths,
+            ),
+            practical_development_evidence=_filter_recurring_practical_signal_evidence(
+                signal_evidence.development_areas,
             ),
         )
 
@@ -397,11 +424,17 @@ def _normalize_practical_signal(text: object) -> Optional[str]:
 def _collect_practical_signal_evidence(
     feedback_rows,
     field: str,
+    course_titles: dict[str, str],
+    lesson_titles: dict[tuple[str, str], str],
 ) -> tuple[EmployeePracticalSignalEvidence, ...]:
     evidence: dict[str, dict[str, object]] = {}
 
     for row in feedback_rows:
+        course_slug = str(getattr(row, "course_slug", ""))
+        lesson_slug = str(getattr(row, "lesson_slug", ""))
+        source_key = (course_slug, lesson_slug)
         signals_in_attempt: set[str] = set()
+
         for item in getattr(row, field):
             normalized = _normalize_practical_signal(item)
             if normalized is None:
@@ -413,8 +446,16 @@ def _collect_practical_signal_evidence(
 
             signals_in_attempt.add(signal_key)
             if signal_key not in evidence:
-                evidence[signal_key] = {"display": normalized, "count": 0}
-            evidence[signal_key]["count"] = int(evidence[signal_key]["count"]) + 1
+                evidence[signal_key] = {
+                    "display": normalized,
+                    "count": 0,
+                    "sources": {},
+                }
+
+            info = evidence[signal_key]
+            info["count"] = int(info["count"]) + 1
+            sources: dict[tuple[str, str], int] = info["sources"]
+            sources[source_key] = sources.get(source_key, 0) + 1
 
     return tuple(
         sorted(
@@ -422,6 +463,11 @@ def _collect_practical_signal_evidence(
                 EmployeePracticalSignalEvidence(
                     text=str(info["display"]),
                     evidence_count=int(info["count"]),
+                    sources=_build_practical_signal_source_evidence(
+                        info["sources"],
+                        course_titles,
+                        lesson_titles,
+                    ),
                 )
                 for info in evidence.values()
             ),
@@ -429,6 +475,37 @@ def _collect_practical_signal_evidence(
                 -signal.evidence_count,
                 signal.text.casefold(),
                 signal.text,
+            ),
+        )
+    )
+
+
+def _build_practical_signal_source_evidence(
+    source_counts: dict[tuple[str, str], int],
+    course_titles: dict[str, str],
+    lesson_titles: dict[tuple[str, str], str],
+) -> tuple[EmployeePracticalSignalSourceEvidence, ...]:
+    return tuple(
+        sorted(
+            (
+                EmployeePracticalSignalSourceEvidence(
+                    course_slug=course_slug,
+                    course_title=course_titles.get(course_slug, course_slug),
+                    lesson_slug=lesson_slug,
+                    lesson_title=lesson_titles.get(
+                        (course_slug, lesson_slug),
+                        lesson_slug,
+                    ),
+                    evidence_count=count,
+                )
+                for (course_slug, lesson_slug), count in source_counts.items()
+            ),
+            key=lambda source: (
+                -source.evidence_count,
+                source.course_title.casefold(),
+                source.lesson_title.casefold(),
+                source.course_slug,
+                source.lesson_slug,
             ),
         )
     )
@@ -442,6 +519,16 @@ def _filter_recurring_practical_signals(
             text=signal.text,
             evidence_count=signal.evidence_count,
         )
+        for signal in evidence
+        if signal.evidence_count >= MIN_PRACTICAL_SIGNAL_OCCURRENCES
+    )
+
+
+def _filter_recurring_practical_signal_evidence(
+    evidence: tuple[EmployeePracticalSignalEvidence, ...],
+) -> tuple[EmployeePracticalSignalEvidence, ...]:
+    return tuple(
+        signal
         for signal in evidence
         if signal.evidence_count >= MIN_PRACTICAL_SIGNAL_OCCURRENCES
     )

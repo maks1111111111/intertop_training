@@ -1269,11 +1269,15 @@ class FakeReviewFeedback:
         *,
         id: int,
         status: str = "reviewed",
+        course_slug: str = "alpha",
+        lesson_slug: str = "lesson_01",
         strengths=(),
         improvements=(),
     ) -> None:
         self.id = id
         self.status = status
+        self.course_slug = course_slug
+        self.lesson_slug = lesson_slug
         self.strengths = strengths
         self.improvements = improvements
 
@@ -1642,6 +1646,251 @@ class ManagerEmployeePracticalSignalEvidenceTests(unittest.TestCase):
             profile.practical_strengths[0].evidence_count,
             evidence.strengths[0].evidence_count,
         )
+
+
+class ManagerEmployeePracticalSignalSourceEvidenceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.db_path = Path("/tmp/training.db")
+        self.practical_repository = FakePracticalTaskAttemptRepository()
+        self.runtime = TopicAnalyticsFakeRuntime(
+            (
+                SimpleNamespace(
+                    slug="alpha",
+                    title="Alpha Course",
+                    quiz=None,
+                    lessons=(
+                        SimpleNamespace(
+                            path=SimpleNamespace(name="lesson_01"),
+                            title="Lesson One",
+                        ),
+                    ),
+                ),
+                SimpleNamespace(
+                    slug="beta",
+                    title="Beta Course",
+                    quiz=None,
+                    lessons=(
+                        SimpleNamespace(
+                            path=SimpleNamespace(name="lesson_02"),
+                            title="Lesson Two",
+                        ),
+                    ),
+                ),
+            )
+        )
+        self.service = ManagerEmployeeAnalyticsService(
+            self.runtime,
+            TopicAnalyticsFakeQuizRepository({}),
+            self.db_path,
+            self.practical_repository,
+        )
+
+    def _set_feedback(self, feedback_rows: list[FakeReviewFeedback]) -> None:
+        self.practical_repository._reviewed_feedback = feedback_rows
+
+    def test_same_improvement_in_two_attempts_same_lesson_has_one_source(self) -> None:
+        self._set_feedback(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    course_slug="alpha",
+                    lesson_slug="lesson_01",
+                    improvements=("Add detail",),
+                ),
+                FakeReviewFeedback(
+                    id=2,
+                    course_slug="alpha",
+                    lesson_slug="lesson_01",
+                    improvements=("Add detail",),
+                ),
+            ]
+        )
+
+        evidence = self.service.get_practical_signal_evidence(42)
+        profile = self.service.get_development_profile(42)
+
+        self.assertEqual(len(evidence.development_areas), 1)
+        signal = evidence.development_areas[0]
+        self.assertEqual(signal.text, "Add detail")
+        self.assertEqual(signal.evidence_count, 2)
+        self.assertEqual(len(signal.sources), 1)
+        self.assertEqual(signal.sources[0].course_slug, "alpha")
+        self.assertEqual(signal.sources[0].lesson_slug, "lesson_01")
+        self.assertEqual(signal.sources[0].course_title, "Alpha Course")
+        self.assertEqual(signal.sources[0].lesson_title, "Lesson One")
+        self.assertEqual(signal.sources[0].evidence_count, 2)
+
+        self.assertEqual(len(profile.practical_development_evidence), 1)
+        profile_signal = profile.practical_development_evidence[0]
+        self.assertEqual(profile_signal.text, "Add detail")
+        self.assertEqual(len(profile_signal.sources), 1)
+        self.assertEqual(profile_signal.sources[0].evidence_count, 2)
+
+    def test_same_improvement_across_two_lessons_has_multiple_sources(self) -> None:
+        self._set_feedback(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    course_slug="alpha",
+                    lesson_slug="lesson_01",
+                    improvements=("Add detail",),
+                ),
+                FakeReviewFeedback(
+                    id=2,
+                    course_slug="beta",
+                    lesson_slug="lesson_02",
+                    improvements=("Add detail",),
+                ),
+            ]
+        )
+
+        evidence = self.service.get_practical_signal_evidence(42)
+        profile = self.service.get_development_profile(42)
+
+        self.assertEqual(evidence.development_areas[0].evidence_count, 2)
+        self.assertEqual(len(evidence.development_areas[0].sources), 2)
+        self.assertEqual(
+            [source.course_slug for source in evidence.development_areas[0].sources],
+            ["alpha", "beta"],
+        )
+        self.assertEqual(
+            [source.lesson_slug for source in evidence.development_areas[0].sources],
+            ["lesson_01", "lesson_02"],
+        )
+        self.assertEqual(len(profile.practical_development_evidence), 1)
+        self.assertEqual(len(profile.practical_development_evidence[0].sources), 2)
+
+    def test_duplicate_signal_inside_same_attempt_counts_once_for_source(self) -> None:
+        self._set_feedback(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    improvements=("Add detail", "add detail"),
+                ),
+                FakeReviewFeedback(id=2, improvements=("Add detail",)),
+            ]
+        )
+
+        evidence = self.service.get_practical_signal_evidence(42)
+
+        self.assertEqual(evidence.development_areas[0].evidence_count, 2)
+        self.assertEqual(evidence.development_areas[0].sources[0].evidence_count, 2)
+
+    def test_case_and_whitespace_variants_merge_provenance(self) -> None:
+        self._set_feedback(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    improvements=("  Add   detail ",),
+                ),
+                FakeReviewFeedback(
+                    id=2,
+                    improvements=("add detail",),
+                ),
+            ]
+        )
+
+        evidence = self.service.get_practical_signal_evidence(42)
+
+        self.assertEqual(len(evidence.development_areas), 1)
+        self.assertEqual(evidence.development_areas[0].text, "Add detail")
+        self.assertEqual(evidence.development_areas[0].evidence_count, 2)
+        self.assertEqual(evidence.development_areas[0].sources[0].evidence_count, 2)
+
+    def test_non_recurring_signal_excluded_from_development_profile_evidence(self) -> None:
+        self._set_feedback(
+            [
+                FakeReviewFeedback(id=1, improvements=("Single occurrence",)),
+            ]
+        )
+
+        evidence = self.service.get_practical_signal_evidence(42)
+        profile = self.service.get_development_profile(42)
+
+        self.assertEqual(len(evidence.development_areas), 1)
+        self.assertEqual(evidence.development_areas[0].evidence_count, 1)
+        self.assertEqual(profile.practical_development_evidence, ())
+        self.assertEqual(profile.practical_development_areas, ())
+
+    def test_stale_runtime_content_uses_slug_fallback_titles(self) -> None:
+        self._set_feedback(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    course_slug="missing-course",
+                    lesson_slug="missing-lesson",
+                    improvements=("Add detail",),
+                ),
+                FakeReviewFeedback(
+                    id=2,
+                    course_slug="missing-course",
+                    lesson_slug="missing-lesson",
+                    improvements=("Add detail",),
+                ),
+            ]
+        )
+
+        evidence = self.service.get_practical_signal_evidence(42)
+
+        source = evidence.development_areas[0].sources[0]
+        self.assertEqual(source.course_title, "missing-course")
+        self.assertEqual(source.lesson_title, "missing-lesson")
+
+    def test_strength_and_development_evidence_are_separated(self) -> None:
+        self._set_feedback(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    strengths=("Strong empathy",),
+                    improvements=("Add detail",),
+                ),
+                FakeReviewFeedback(
+                    id=2,
+                    strengths=("Strong empathy",),
+                    improvements=("Add detail",),
+                ),
+            ]
+        )
+
+        profile = self.service.get_development_profile(42)
+
+        self.assertEqual(len(profile.practical_strength_evidence), 1)
+        self.assertEqual(profile.practical_strength_evidence[0].text, "Strong empathy")
+        self.assertEqual(len(profile.practical_development_evidence), 1)
+        self.assertEqual(profile.practical_development_evidence[0].text, "Add detail")
+
+    def test_source_ordering_is_deterministic(self) -> None:
+        self._set_feedback(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    course_slug="beta",
+                    lesson_slug="lesson_02",
+                    improvements=("Add detail",),
+                ),
+                FakeReviewFeedback(
+                    id=2,
+                    course_slug="alpha",
+                    lesson_slug="lesson_01",
+                    improvements=("Add detail",),
+                ),
+                FakeReviewFeedback(
+                    id=3,
+                    course_slug="alpha",
+                    lesson_slug="lesson_01",
+                    improvements=("Add detail",),
+                ),
+            ]
+        )
+
+        evidence = self.service.get_practical_signal_evidence(42)
+        sources = evidence.development_areas[0].sources
+
+        self.assertEqual(len(sources), 2)
+        self.assertEqual(sources[0].course_slug, "alpha")
+        self.assertEqual(sources[0].evidence_count, 2)
+        self.assertEqual(sources[1].course_slug, "beta")
+        self.assertEqual(sources[1].evidence_count, 1)
 
 
 class ManagerEmployeeQuizTopicEvidenceTests(unittest.TestCase):

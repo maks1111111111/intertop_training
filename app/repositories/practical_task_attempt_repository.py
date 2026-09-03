@@ -27,6 +27,8 @@ class PracticalTaskReviewFeedback:
 
     id: int
     status: str
+    course_slug: str
+    lesson_slug: str
     strengths: Tuple[str, ...]
     improvements: Tuple[str, ...]
 
@@ -478,6 +480,8 @@ def get_reviewed_feedback_for_user(
             SELECT
                 id,
                 status,
+                course_slug,
+                lesson_slug,
                 feedback_strengths_json,
                 feedback_improvements_json
             FROM practical_task_attempts
@@ -492,6 +496,8 @@ def get_reviewed_feedback_for_user(
         PracticalTaskReviewFeedback(
             id=int(row["id"]),
             status=str(row["status"]),
+            course_slug=str(row["course_slug"]),
+            lesson_slug=str(row["lesson_slug"]),
             strengths=_deserialize_string_list(row["feedback_strengths_json"]),
             improvements=_deserialize_string_list(row["feedback_improvements_json"]),
         )

@@ -850,6 +850,8 @@ class PracticalTaskAttemptRepositoryTests(unittest.TestCase):
         self.assertEqual(len(feedback_rows), 1)
         self.assertEqual(feedback_rows[0].id, reviewed_id)
         self.assertEqual(feedback_rows[0].status, "reviewed")
+        self.assertEqual(feedback_rows[0].course_slug, "web-course")
+        self.assertEqual(feedback_rows[0].lesson_slug, "lesson_01")
         self.assertEqual(feedback_rows[0].strengths, ("Strong empathy",))
         self.assertEqual(feedback_rows[0].improvements, ("Improve closing",))
         self.assertFalse(hasattr(feedback_rows[0], "learner_answer"))
