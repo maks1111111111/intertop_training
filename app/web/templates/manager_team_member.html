@@ -461,6 +461,23 @@
                     <h5 class="course-card-title">{{ signal.text }}</h5>
                 </header>
                 <p class="page-meta">Наблюдений: {{ signal.evidence_count }}</p>
+                {% for evidence in development_profile.practical_strength_evidence %}
+                {% if evidence.text == signal.text and evidence.sources %}
+                <div class="dashboard-metrics">
+                    <p class="page-meta">Источники данных</p>
+                    {% for source in evidence.sources %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">
+                            {{ source.course_title }} / {{ source.lesson_title }}
+                        </span>
+                        <span class="dashboard-metric-value">
+                            Наблюдений: {{ source.evidence_count }}
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endfor %}
             </div>
         </li>
         {% endfor %}
@@ -477,6 +494,39 @@
                     <h5 class="course-card-title">{{ signal.text }}</h5>
                 </header>
                 <p class="page-meta">Наблюдений: {{ signal.evidence_count }}</p>
+                {% for evidence in practical_development_actionable_evidence %}
+                {% if evidence.text == signal.text and evidence.sources %}
+                <div class="dashboard-metrics">
+                    <p class="page-meta">Источники данных</p>
+                    {% for source in evidence.sources %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">
+                            {{ source.course_title }} / {{ source.lesson_title }}
+                        </span>
+                        <span class="dashboard-metric-value">
+                            Наблюдений: {{ source.evidence_count }}
+                        </span>
+                        {% if source.lesson_url or source.can_assign %}
+                        <div class="dashboard-metric-actions">
+                            {% if source.lesson_url %}
+                            <a
+                                class="button button-secondary button-small"
+                                href="{{ source.lesson_url }}"
+                            >Открыть урок</a>
+                            {% endif %}
+                            {% if source.can_assign %}
+                            <a
+                                class="button button-primary button-small"
+                                href="/manager/team/{{ member.user_id }}?assign_course={{ source.course_slug | urlencode }}#assign-course"
+                            >Назначить курс</a>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endfor %}
             </div>
         </li>
         {% endfor %}

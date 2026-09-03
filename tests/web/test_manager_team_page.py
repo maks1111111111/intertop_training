@@ -23,6 +23,7 @@ from app.web.manager_employee_analytics_service import (
     EmployeePracticalSignal,
     EmployeePracticalSignalEvidence,
     EmployeePracticalSignalEvidenceSet,
+    EmployeePracticalSignalSourceEvidence,
     EmployeePracticalTaskAttemptAnalytics,
     EmployeePracticalTaskAnalytics,
     EmployeeQuizAnalytics,
@@ -343,6 +344,43 @@ class FakeAnalyticsService:
                             answers_count=2,
                             correct_answers_count=1,
                             accuracy_percent=50.0,
+                        ),
+                    ),
+                ),
+            ),
+            practical_strength_evidence=(
+                EmployeePracticalSignalEvidence(
+                    text="Чёткая структура ответа",
+                    evidence_count=2,
+                    sources=(
+                        EmployeePracticalSignalSourceEvidence(
+                            course_slug="alpha",
+                            course_title="Alpha Course",
+                            lesson_slug="lesson_01",
+                            lesson_title="Lesson One",
+                            evidence_count=2,
+                        ),
+                    ),
+                ),
+            ),
+            practical_development_evidence=(
+                EmployeePracticalSignalEvidence(
+                    text="Добавить больше деталей",
+                    evidence_count=3,
+                    sources=(
+                        EmployeePracticalSignalSourceEvidence(
+                            course_slug="alpha",
+                            course_title="Alpha Course",
+                            lesson_slug="lesson_01",
+                            lesson_title="Lesson One",
+                            evidence_count=2,
+                        ),
+                        EmployeePracticalSignalSourceEvidence(
+                            course_slug="beta",
+                            course_title="Beta Course",
+                            lesson_slug="lesson_01",
+                            lesson_title="Lesson One",
+                            evidence_count=1,
                         ),
                     ),
                 ),
@@ -904,9 +942,13 @@ class FakeContentRuntimeForAssignment:
             return None
 
         lesson_count = self.lesson_counts[slug]
+        lessons = [
+            SimpleNamespace(path=SimpleNamespace(name=f"lesson_{index + 1:02d}"))
+            for index in range(lesson_count)
+        ]
         return SimpleNamespace(
             slug=slug,
-            lessons=[SimpleNamespace()] * lesson_count,
+            lessons=lessons,
         )
 
 
@@ -1780,6 +1822,159 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertNotIn('href="/courses/missing-runtime"', response.text)
         self.assertNotIn(
             '<input type="hidden" name="course_slug" value="missing-runtime">',
+            response.text,
+        )
+
+    def test_practical_development_source_renders_course_and_lesson(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Alpha Course / Lesson One", response.text)
+        self.assertIn("Beta Course / Lesson One", response.text)
+        self.assertIn("Наблюдений: 2", response.text)
+        self.assertIn("Наблюдений: 1", response.text)
+
+    def test_practical_development_source_renders_open_lesson_link(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('href="/courses/alpha/lessons/lesson_01"', response.text)
+        self.assertIn('href="/courses/beta/lessons/lesson_01"', response.text)
+        self.assertIn("Открыть урок", response.text)
+
+    def test_assignable_practical_source_renders_prefill_assign_link(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        practical_assign_links = [
+            link
+            for link in response.text.split('href="')
+            if "assign_course=beta" in link and "#assign-course" in link
+        ]
+        self.assertTrue(practical_assign_links)
+        self.assertIn(
+            '/manager/team/2?assign_course=beta#assign-course"',
+            response.text,
+        )
+        self.assertNotIn(
+            '<input type="hidden" name="course_slug" value="beta">',
+            response.text,
+        )
+
+    def test_non_assignable_practical_source_has_no_assign_action(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('href="/courses/alpha/lessons/lesson_01"', response.text)
+        self.assertNotIn(
+            'href="/manager/team/2?assign_course=alpha#assign-course"',
+            response.text,
+        )
+
+    def test_practical_strength_source_renders_without_actions(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        strength_section = response.text.split("Повторяющиеся сильные стороны", 1)[1]
+        strength_section = strength_section.split("Повторяющиеся зоны развития", 1)[0]
+        self.assertIn("Alpha Course / Lesson One", strength_section)
+        self.assertIn("Источники данных", strength_section)
+        self.assertNotIn("Открыть урок", strength_section)
+        self.assertNotIn("assign_course=", strength_section)
+
+    def test_practical_development_missing_runtime_shows_evidence_without_links(
+        self,
+    ) -> None:
+        self._set_identity("manager")
+        self.analytics_service._development_profile_override = EmployeeDevelopmentProfile(
+            quiz_strengths=(),
+            quiz_development_areas=(),
+            practical_strengths=(),
+            practical_development_areas=(
+                EmployeePracticalSignal(
+                    text="Stale practical signal",
+                    evidence_count=2,
+                ),
+            ),
+            reviewed_practical_attempts_count=2,
+            has_sufficient_practical_evidence=True,
+            practical_development_evidence=(
+                EmployeePracticalSignalEvidence(
+                    text="Stale practical signal",
+                    evidence_count=2,
+                    sources=(
+                        EmployeePracticalSignalSourceEvidence(
+                            course_slug="missing-practical",
+                            course_title="Missing Practical Course",
+                            lesson_slug="stale_lesson",
+                            lesson_title="Stale Lesson",
+                            evidence_count=2,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Missing Practical Course / Stale Lesson", response.text)
+        self.assertNotIn('href="/courses/missing-practical', response.text)
+        self.assertNotIn(
+            'href="/manager/team/2?assign_course=missing-practical#assign-course"',
+            response.text,
+        )
+
+    def test_practical_development_stale_lesson_keeps_assign_when_course_assignable(
+        self,
+    ) -> None:
+        self._set_identity("manager")
+        self.analytics_service._development_profile_override = EmployeeDevelopmentProfile(
+            quiz_strengths=(),
+            quiz_development_areas=(),
+            practical_strengths=(),
+            practical_development_areas=(
+                EmployeePracticalSignal(
+                    text="Stale lesson signal",
+                    evidence_count=2,
+                ),
+            ),
+            reviewed_practical_attempts_count=2,
+            has_sufficient_practical_evidence=True,
+            practical_development_evidence=(
+                EmployeePracticalSignalEvidence(
+                    text="Stale lesson signal",
+                    evidence_count=2,
+                    sources=(
+                        EmployeePracticalSignalSourceEvidence(
+                            course_slug="beta",
+                            course_title="Beta Course",
+                            lesson_slug="removed_lesson",
+                            lesson_title="Removed Lesson",
+                            evidence_count=2,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Beta Course / Removed Lesson", response.text)
+        self.assertNotIn('href="/courses/beta/lessons/removed_lesson"', response.text)
+        self.assertIn(
+            'href="/manager/team/2?assign_course=beta#assign-course"',
             response.text,
         )
 

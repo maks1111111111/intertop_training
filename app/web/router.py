@@ -144,6 +144,9 @@ from app.web.dashboard_service import DashboardService
 from app.web.manager_course_assignment_history_service import (
     ManagerCourseAssignmentHistoryService,
 )
+from app.web.manager_practical_development_actions import (
+    build_practical_development_actionable_evidence,
+)
 from app.web.manager_quiz_development_actions import (
     build_quiz_development_actionable_evidence,
 )
@@ -1045,6 +1048,13 @@ def manager_team_member_page(
                 development_profile,
                 assignable_courses,
                 runtime,
+            ),
+            "practical_development_actionable_evidence": (
+                build_practical_development_actionable_evidence(
+                    development_profile,
+                    assignable_courses,
+                    runtime,
+                )
             ),
             "practical_task_analytics": practical_task_analytics,
         },
