@@ -12,6 +12,8 @@ from app.web.manager_employee_analytics_service import (
     EmployeePracticalSignal,
     EmployeePracticalTaskAttemptAnalytics,
     EmployeePracticalTaskAnalytics,
+    EmployeeQuizTopicCourseEvidence,
+    EmployeeQuizTopicEvidence,
     ManagerEmployeeAnalyticsService,
 )
 
@@ -285,9 +287,10 @@ def _quiz(*questions: SimpleNamespace) -> SimpleNamespace:
 def _course(
     slug: str,
     *,
+    title: Optional[str] = None,
     quiz: Optional[SimpleNamespace] = None,
 ) -> SimpleNamespace:
-    return SimpleNamespace(slug=slug, quiz=quiz)
+    return SimpleNamespace(slug=slug, title=title or slug.replace("_", " ").title(), quiz=quiz)
 
 
 def _answer_row(
@@ -675,12 +678,16 @@ def _topic_service(
     *,
     answers_by_course: dict[str, list[dict[str, object]]],
     courses: tuple[SimpleNamespace, ...],
+    practical_task_attempt_repository: Optional[FakePracticalTaskAttemptRepository] = None,
 ) -> tuple[ManagerEmployeeAnalyticsService, TopicAnalyticsFakeQuizRepository]:
     repository = TopicAnalyticsFakeQuizRepository(answers_by_course)
+    if practical_task_attempt_repository is None:
+        practical_task_attempt_repository = FakePracticalTaskAttemptRepository()
     service = ManagerEmployeeAnalyticsService(
         TopicAnalyticsFakeRuntime(courses),
         repository,
         db_path,
+        practical_task_attempt_repository,
     )
     return service, repository
 
@@ -1271,14 +1278,6 @@ class FakeReviewFeedback:
         self.improvements = improvements
 
 
-class CountingDevelopmentProfileService(ManagerEmployeeAnalyticsService):
-    topic_classification_calls = 0
-
-    def get_quiz_topic_classification(self, user_id: int):
-        CountingDevelopmentProfileService.topic_classification_calls += 1
-        return super().get_quiz_topic_classification(user_id)
-
-
 class ManagerEmployeeDevelopmentProfileTests(unittest.TestCase):
     def setUp(self) -> None:
         self.db_path = Path("/tmp/training.db")
@@ -1293,7 +1292,6 @@ class ManagerEmployeeDevelopmentProfileTests(unittest.TestCase):
             self.db_path,
             self.practical_repository,
         )
-        CountingDevelopmentProfileService.topic_classification_calls = 0
 
     def _development_service(
         self,
@@ -1484,24 +1482,29 @@ class ManagerEmployeeDevelopmentProfileTests(unittest.TestCase):
             [(self.db_path, 42)],
         )
 
-    def test_calls_quiz_topic_classification_exactly_once(self) -> None:
-        counting_service = CountingDevelopmentProfileService(
+    def test_development_profile_uses_single_quiz_repository_traversal(self) -> None:
+        repository = TopicAnalyticsFakeQuizRepository(
+            {"alpha": _answers_for_accuracy("q1", correct_count=4, incorrect_count=0)},
+        )
+        service = ManagerEmployeeAnalyticsService(
             TopicAnalyticsFakeRuntime(
                 (_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),)
             ),
-            TopicAnalyticsFakeQuizRepository(
-                {"alpha": _answers_for_accuracy("q1", correct_count=4, incorrect_count=0)},
-            ),
+            repository,
             self.db_path,
-            self.practical_repository,
+            FakePracticalTaskAttemptRepository(),
         )
-        self.practical_repository._reviewed_feedback = []
 
-        result = counting_service.get_development_profile(42)
+        result = service.get_development_profile(42)
 
-        self.assertEqual(CountingDevelopmentProfileService.topic_classification_calls, 1)
+        self.assertEqual(
+            repository.finished_answer_calls,
+            [(self.db_path, 42, "alpha")],
+        )
         self.assertEqual(len(result.quiz_strengths), 1)
         self.assertEqual(result.quiz_strengths[0].tag, "Returns")
+        self.assertEqual(len(result.quiz_strength_evidence), 1)
+        self.assertEqual(result.quiz_strength_evidence[0].tag, "Returns")
 
     def test_includes_quiz_classification_without_duplicating_repository_logic(self) -> None:
         service = self._development_service([])
@@ -1638,6 +1641,280 @@ class ManagerEmployeePracticalSignalEvidenceTests(unittest.TestCase):
         self.assertEqual(
             profile.practical_strengths[0].evidence_count,
             evidence.strengths[0].evidence_count,
+        )
+
+
+class ManagerEmployeeQuizTopicEvidenceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.db_path = Path("/tmp/training.db")
+
+    def test_one_topic_from_one_course_in_development_profile(self) -> None:
+        service, _repository = _topic_service(
+            self.db_path,
+            answers_by_course={
+                "alpha": _answers_for_accuracy("q1", correct_count=4, incorrect_count=0),
+            },
+            courses=(
+                _course(
+                    "alpha",
+                    title="Alpha Course",
+                    quiz=_quiz(_question("q1", ["Returns"])),
+                ),
+            ),
+        )
+
+        profile = service.get_development_profile(42)
+
+        self.assertEqual(len(profile.quiz_strength_evidence), 1)
+        evidence = profile.quiz_strength_evidence[0]
+        self.assertEqual(evidence.tag, "Returns")
+        self.assertEqual(len(evidence.courses), 1)
+        course = evidence.courses[0]
+        self.assertEqual(course.course_slug, "alpha")
+        self.assertEqual(course.course_title, "Alpha Course")
+        self.assertEqual(course.answers_count, 4)
+        self.assertEqual(course.correct_answers_count, 4)
+        self.assertEqual(course.accuracy_percent, 100.0)
+
+    def test_same_topic_aggregated_from_two_courses(self) -> None:
+        service, _repository = _topic_service(
+            self.db_path,
+            answers_by_course={
+                "alpha": _answers_for_accuracy("q1", correct_count=3, incorrect_count=0),
+                "beta": _answers_for_accuracy("q2", correct_count=3, incorrect_count=0),
+            },
+            courses=(
+                _course(
+                    "alpha",
+                    title="Alpha Course",
+                    quiz=_quiz(_question("q1", ["Returns"])),
+                ),
+                _course(
+                    "beta",
+                    title="Beta Course",
+                    quiz=_quiz(_question("q2", ["Returns"])),
+                ),
+            ),
+        )
+
+        profile = service.get_development_profile(42)
+
+        self.assertEqual(len(profile.quiz_strength_evidence), 1)
+        self.assertEqual(profile.quiz_development_evidence, ())
+        evidence = profile.quiz_strength_evidence[0]
+        self.assertEqual(evidence.tag, "Returns")
+        self.assertEqual(len(evidence.courses), 2)
+        courses_by_slug = {course.course_slug: course for course in evidence.courses}
+        self.assertEqual(courses_by_slug["alpha"].course_title, "Alpha Course")
+        self.assertEqual(courses_by_slug["beta"].course_title, "Beta Course")
+        self.assertEqual(courses_by_slug["alpha"].answers_count, 3)
+        self.assertEqual(courses_by_slug["alpha"].accuracy_percent, 100.0)
+        self.assertEqual(courses_by_slug["beta"].answers_count, 3)
+        self.assertEqual(courses_by_slug["beta"].accuracy_percent, 100.0)
+
+    def test_course_rows_have_correct_counts_and_accuracy(self) -> None:
+        service, _repository = _topic_service(
+            self.db_path,
+            answers_by_course={
+                "alpha": [
+                    _answer_row("q1", is_correct=True),
+                    _answer_row("q1", is_correct=True),
+                    _answer_row("q1", is_correct=False),
+                ],
+            },
+            courses=(
+                _course("alpha", title="Alpha Course", quiz=_quiz(_question("q1", ["Returns"]))),
+            ),
+        )
+
+        profile = service.get_development_profile(42)
+
+        course = profile.quiz_development_evidence[0].courses[0]
+        self.assertEqual(course.answers_count, 3)
+        self.assertEqual(course.correct_answers_count, 2)
+        self.assertEqual(course.accuracy_percent, 66.67)
+
+    def test_course_evidence_ordering_is_deterministic(self) -> None:
+        service, _repository = _topic_service(
+            self.db_path,
+            answers_by_course={
+                "alpha": _answers_for_accuracy("q1", correct_count=3, incorrect_count=0),
+                "beta": _answers_for_accuracy("q2", correct_count=4, incorrect_count=0),
+                "gamma": _answers_for_accuracy("q3", correct_count=4, incorrect_count=0),
+            },
+            courses=(
+                _course("alpha", title="Zulu Course", quiz=_quiz(_question("q1", ["Returns"]))),
+                _course("beta", title="Alpha Course", quiz=_quiz(_question("q2", ["Returns"]))),
+                _course("gamma", title="Beta Course", quiz=_quiz(_question("q3", ["Returns"]))),
+            ),
+        )
+
+        profile = service.get_development_profile(42)
+
+        course_titles = [course.course_title for course in profile.quiz_strength_evidence[0].courses]
+        self.assertEqual(course_titles, ["Alpha Course", "Beta Course", "Zulu Course"])
+
+    def test_stale_question_ids_are_ignored_in_evidence(self) -> None:
+        service, _repository = _topic_service(
+            self.db_path,
+            answers_by_course={
+                "alpha": [
+                    _answer_row("missing", is_correct=True),
+                    *_answers_for_accuracy("q1", correct_count=3, incorrect_count=0),
+                ],
+            },
+            courses=(
+                _course("alpha", title="Alpha Course", quiz=_quiz(_question("q1", ["Returns"]))),
+            ),
+        )
+
+        profile = service.get_development_profile(42)
+
+        self.assertEqual(len(profile.quiz_strength_evidence), 1)
+        self.assertEqual(profile.quiz_strength_evidence[0].courses[0].answers_count, 3)
+
+    def test_unclassified_topic_excluded_from_development_profile_evidence(self) -> None:
+        service, _repository = _topic_service(
+            self.db_path,
+            answers_by_course={
+                "alpha": _answers_for_accuracy("q1", correct_count=1, incorrect_count=1),
+            },
+            courses=(
+                _course("alpha", title="Alpha Course", quiz=_quiz(_question("q1", ["Returns"]))),
+            ),
+        )
+
+        profile = service.get_development_profile(42)
+
+        self.assertEqual(profile.quiz_strength_evidence, ())
+        self.assertEqual(profile.quiz_development_evidence, ())
+        self.assertEqual(profile.quiz_strengths, ())
+        self.assertEqual(profile.quiz_development_areas, ())
+
+    def test_strength_and_development_evidence_are_separated(self) -> None:
+        service, _repository = _topic_service(
+            self.db_path,
+            answers_by_course={
+                "alpha": _answers_for_accuracy("q1", correct_count=4, incorrect_count=0),
+                "beta": _answers_for_accuracy("q2", correct_count=0, incorrect_count=4),
+            },
+            courses=(
+                _course(
+                    "alpha",
+                    title="Strength Course",
+                    quiz=_quiz(_question("q1", ["Strong Topic"])),
+                ),
+                _course(
+                    "beta",
+                    title="Development Course",
+                    quiz=_quiz(_question("q2", ["Weak Topic"])),
+                ),
+            ),
+        )
+
+        profile = service.get_development_profile(42)
+
+        self.assertEqual([item.tag for item in profile.quiz_strength_evidence], ["Strong Topic"])
+        self.assertEqual(
+            [item.tag for item in profile.quiz_development_evidence],
+            ["Weak Topic"],
+        )
+        self.assertEqual(
+            profile.quiz_strength_evidence[0].courses[0].course_title,
+            "Strength Course",
+        )
+        self.assertEqual(
+            profile.quiz_development_evidence[0].courses[0].course_title,
+            "Development Course",
+        )
+
+    def test_development_profile_reuses_single_repository_traversal(self) -> None:
+        repository = TopicAnalyticsFakeQuizRepository(
+            {"alpha": _answers_for_accuracy("q1", correct_count=4, incorrect_count=0)},
+        )
+        service = ManagerEmployeeAnalyticsService(
+            TopicAnalyticsFakeRuntime(
+                (_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),)
+            ),
+            repository,
+            self.db_path,
+            FakePracticalTaskAttemptRepository(),
+        )
+
+        service.get_development_profile(42)
+
+        self.assertEqual(
+            repository.finished_answer_calls,
+            [(self.db_path, 42, "alpha")],
+        )
+
+    def test_sequential_development_profiles_for_different_users_do_not_reuse_data(
+        self,
+    ) -> None:
+        class UserScopedQuizRepository:
+            def __init__(self) -> None:
+                self.finished_answer_calls: list[tuple[Path, int, str]] = []
+
+            def get_finished_answers_for_user(
+                self,
+                db_path: Path,
+                user_id: int,
+                course_slug: str,
+            ):
+                self.finished_answer_calls.append((db_path, user_id, course_slug))
+                if user_id == 42:
+                    return _answers_for_accuracy("q1", correct_count=4, incorrect_count=0)
+                if user_id == 99:
+                    return _answers_for_accuracy("q1", correct_count=0, incorrect_count=4)
+                return []
+
+        repository = UserScopedQuizRepository()
+        runtime = TopicAnalyticsFakeRuntime(
+            (_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),)
+        )
+        service = ManagerEmployeeAnalyticsService(
+            runtime,
+            repository,
+            self.db_path,
+            FakePracticalTaskAttemptRepository(),
+        )
+
+        profile_42 = service.get_development_profile(42)
+        profile_99 = service.get_development_profile(99)
+
+        self.assertEqual(len(profile_42.quiz_strengths), 1)
+        self.assertEqual(profile_42.quiz_strengths[0].tag, "Returns")
+        self.assertEqual(len(profile_99.quiz_development_areas), 1)
+        self.assertEqual(profile_99.quiz_development_areas[0].tag, "Returns")
+        self.assertEqual(
+            repository.finished_answer_calls,
+            [
+                (self.db_path, 42, "alpha"),
+                (self.db_path, 99, "alpha"),
+            ],
+        )
+
+    def test_topic_analytics_public_behavior_unchanged(self) -> None:
+        service, repository = _topic_service(
+            self.db_path,
+            answers_by_course={
+                "alpha": _answers_for_accuracy("q1", correct_count=4, incorrect_count=0),
+            },
+            courses=(
+                _course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),
+            ),
+        )
+
+        topics = service.get_quiz_topics_analytics(42)
+        classification = service.get_quiz_topic_classification(42)
+        profile = service.get_development_profile(42)
+
+        self.assertEqual(profile.quiz_strengths, classification.strengths)
+        self.assertEqual(profile.quiz_development_areas, classification.development_areas)
+        self.assertEqual(profile.quiz_strengths[0], topics.topics[0])
+        self.assertEqual(
+            repository.finished_answer_calls.count((self.db_path, 42, "alpha")),
+            3,
         )
 
 

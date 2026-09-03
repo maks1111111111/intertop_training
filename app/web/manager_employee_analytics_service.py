@@ -55,6 +55,21 @@ class EmployeeQuizTopicClassification:
 
 
 @dataclass(frozen=True)
+class EmployeeQuizTopicCourseEvidence:
+    course_slug: str
+    course_title: str
+    answers_count: int
+    correct_answers_count: int
+    accuracy_percent: float
+
+
+@dataclass(frozen=True)
+class EmployeeQuizTopicEvidence:
+    tag: str
+    courses: tuple[EmployeeQuizTopicCourseEvidence, ...]
+
+
+@dataclass(frozen=True)
 class EmployeePracticalTaskAttemptAnalytics:
     attempt_id: int
     course_slug: str
@@ -101,6 +116,8 @@ class EmployeeDevelopmentProfile:
     practical_development_areas: tuple[EmployeePracticalSignal, ...]
     reviewed_practical_attempts_count: int
     has_sufficient_practical_evidence: bool
+    quiz_strength_evidence: tuple[EmployeeQuizTopicEvidence, ...] = ()
+    quiz_development_evidence: tuple[EmployeeQuizTopicEvidence, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -120,6 +137,14 @@ MIN_TOPIC_ANSWERS = 3
 STRONG_TOPIC_ACCURACY_PERCENT = 80.0
 DEVELOPMENT_TOPIC_ACCURACY_PERCENT = 70.0
 MIN_PRACTICAL_SIGNAL_OCCURRENCES = 2
+
+
+@dataclass
+class _QuizTopicAggregation:
+    tag_stats: dict[str, dict[str, int]]
+    course_tag_stats: dict[str, dict[str, dict[str, int]]]
+    course_titles: dict[str, str]
+    total_tagged_answers_count: int
 
 
 class ManagerEmployeeAnalyticsService:
@@ -197,59 +222,8 @@ class ManagerEmployeeAnalyticsService:
 
     def get_quiz_topics_analytics(self, user_id: int) -> EmployeeQuizTopicsAnalytics:
         normalized_user_id = _validate_user_id(user_id)
-
-        tag_stats: dict[str, dict[str, int]] = {}
-        total_tagged_answers_count = 0
-
-        for course in self._runtime.get_courses():
-            quiz = course.quiz
-            if quiz is None:
-                continue
-
-            questions_by_id = {question.id: question for question in quiz.questions}
-            answers = self._quiz_repository.get_finished_answers_for_user(
-                self._db_path,
-                normalized_user_id,
-                course.slug,
-            )
-
-            for answer in answers:
-                question = questions_by_id.get(answer["question_id"])
-                if question is None:
-                    continue
-
-                normalized_tags = _normalize_question_tags(question.tags)
-                if not normalized_tags:
-                    continue
-
-                is_correct = bool(int(answer["is_correct"]))
-                for tag in normalized_tags:
-                    stats = tag_stats.setdefault(
-                        tag,
-                        {"answers_count": 0, "correct_answers_count": 0},
-                    )
-                    stats["answers_count"] += 1
-                    if is_correct:
-                        stats["correct_answers_count"] += 1
-                    total_tagged_answers_count += 1
-
-        topics = tuple(
-            _build_topic_analytics(tag, stats)
-            for tag, stats in sorted(
-                tag_stats.items(),
-                key=lambda item: (
-                    -_topic_accuracy_percent(item[1]),
-                    -item[1]["answers_count"],
-                    item[0].casefold(),
-                    item[0],
-                ),
-            )
-        )
-
-        return EmployeeQuizTopicsAnalytics(
-            total_tagged_answers_count=total_tagged_answers_count,
-            topics=topics,
-        )
+        aggregation = self._aggregate_quiz_topic_data(normalized_user_id)
+        return _build_quiz_topics_analytics(aggregation)
 
     def get_quiz_topic_classification(
         self,
@@ -257,48 +231,7 @@ class ManagerEmployeeAnalyticsService:
     ) -> EmployeeQuizTopicClassification:
         _validate_user_id(user_id)
         topic_analytics = self.get_quiz_topics_analytics(user_id)
-
-        strengths: list[EmployeeQuizTopicAnalytics] = []
-        development_areas: list[EmployeeQuizTopicAnalytics] = []
-        unclassified_topics_count = 0
-
-        for topic in topic_analytics.topics:
-            if topic.answers_count < MIN_TOPIC_ANSWERS:
-                unclassified_topics_count += 1
-                continue
-
-            if topic.accuracy_percent >= STRONG_TOPIC_ACCURACY_PERCENT:
-                strengths.append(topic)
-            elif topic.accuracy_percent < DEVELOPMENT_TOPIC_ACCURACY_PERCENT:
-                development_areas.append(topic)
-            else:
-                unclassified_topics_count += 1
-
-        return EmployeeQuizTopicClassification(
-            strengths=tuple(
-                sorted(
-                    strengths,
-                    key=lambda topic: (
-                        -topic.accuracy_percent,
-                        -topic.answers_count,
-                        topic.tag.casefold(),
-                        topic.tag,
-                    ),
-                )
-            ),
-            development_areas=tuple(
-                sorted(
-                    development_areas,
-                    key=lambda topic: (
-                        topic.accuracy_percent,
-                        -topic.answers_count,
-                        topic.tag.casefold(),
-                        topic.tag,
-                    ),
-                )
-            ),
-            unclassified_topics_count=unclassified_topics_count,
-        )
+        return _build_quiz_topic_classification(topic_analytics)
 
     def get_practical_task_analytics(
         self,
@@ -365,7 +298,9 @@ class ManagerEmployeeAnalyticsService:
 
     def get_development_profile(self, user_id: int) -> EmployeeDevelopmentProfile:
         normalized_user_id = _validate_user_id(user_id)
-        topic_classification = self.get_quiz_topic_classification(normalized_user_id)
+        aggregation = self._aggregate_quiz_topic_data(normalized_user_id)
+        topic_analytics = _build_quiz_topics_analytics(aggregation)
+        topic_classification = _build_quiz_topic_classification(topic_analytics)
         signal_evidence = self.get_practical_signal_evidence(normalized_user_id)
 
         return EmployeeDevelopmentProfile(
@@ -384,6 +319,69 @@ class ManagerEmployeeAnalyticsService:
                 signal_evidence.reviewed_attempts_count
                 >= MIN_PRACTICAL_SIGNAL_OCCURRENCES
             ),
+            quiz_strength_evidence=_build_quiz_topic_evidence(
+                aggregation,
+                topic_classification.strengths,
+            ),
+            quiz_development_evidence=_build_quiz_topic_evidence(
+                aggregation,
+                topic_classification.development_areas,
+            ),
+        )
+
+    def _aggregate_quiz_topic_data(self, normalized_user_id: int) -> _QuizTopicAggregation:
+        tag_stats: dict[str, dict[str, int]] = {}
+        course_tag_stats: dict[str, dict[str, dict[str, int]]] = {}
+        course_titles: dict[str, str] = {}
+        total_tagged_answers_count = 0
+
+        for course in self._runtime.get_courses():
+            course_titles[course.slug] = getattr(course, "title", course.slug)
+            quiz = course.quiz
+            if quiz is None:
+                continue
+
+            questions_by_id = {question.id: question for question in quiz.questions}
+            answers = self._quiz_repository.get_finished_answers_for_user(
+                self._db_path,
+                normalized_user_id,
+                course.slug,
+            )
+
+            for answer in answers:
+                question = questions_by_id.get(answer["question_id"])
+                if question is None:
+                    continue
+
+                normalized_tags = _normalize_question_tags(question.tags)
+                if not normalized_tags:
+                    continue
+
+                is_correct = bool(int(answer["is_correct"]))
+                course_stats = course_tag_stats.setdefault(course.slug, {})
+                for tag in normalized_tags:
+                    stats = tag_stats.setdefault(
+                        tag,
+                        {"answers_count": 0, "correct_answers_count": 0},
+                    )
+                    stats["answers_count"] += 1
+                    if is_correct:
+                        stats["correct_answers_count"] += 1
+                    total_tagged_answers_count += 1
+
+                    course_tag = course_stats.setdefault(
+                        tag,
+                        {"answers_count": 0, "correct_answers_count": 0},
+                    )
+                    course_tag["answers_count"] += 1
+                    if is_correct:
+                        course_tag["correct_answers_count"] += 1
+
+        return _QuizTopicAggregation(
+            tag_stats=tag_stats,
+            course_tag_stats=course_tag_stats,
+            course_titles=course_titles,
+            total_tagged_answers_count=total_tagged_answers_count,
         )
 
 
@@ -537,6 +535,119 @@ def _build_topic_analytics(
         correct_answers_count=correct_answers_count,
         accuracy_percent=_topic_accuracy_percent(stats),
     )
+
+
+def _build_quiz_topic_classification(
+    topic_analytics: EmployeeQuizTopicsAnalytics,
+) -> EmployeeQuizTopicClassification:
+    strengths: list[EmployeeQuizTopicAnalytics] = []
+    development_areas: list[EmployeeQuizTopicAnalytics] = []
+    unclassified_topics_count = 0
+
+    for topic in topic_analytics.topics:
+        if topic.answers_count < MIN_TOPIC_ANSWERS:
+            unclassified_topics_count += 1
+            continue
+
+        if topic.accuracy_percent >= STRONG_TOPIC_ACCURACY_PERCENT:
+            strengths.append(topic)
+        elif topic.accuracy_percent < DEVELOPMENT_TOPIC_ACCURACY_PERCENT:
+            development_areas.append(topic)
+        else:
+            unclassified_topics_count += 1
+
+    return EmployeeQuizTopicClassification(
+        strengths=tuple(
+            sorted(
+                strengths,
+                key=lambda topic: (
+                    -topic.accuracy_percent,
+                    -topic.answers_count,
+                    topic.tag.casefold(),
+                    topic.tag,
+                ),
+            )
+        ),
+        development_areas=tuple(
+            sorted(
+                development_areas,
+                key=lambda topic: (
+                    topic.accuracy_percent,
+                    -topic.answers_count,
+                    topic.tag.casefold(),
+                    topic.tag,
+                ),
+            )
+        ),
+        unclassified_topics_count=unclassified_topics_count,
+    )
+
+
+def _build_quiz_topics_analytics(
+    aggregation: _QuizTopicAggregation,
+) -> EmployeeQuizTopicsAnalytics:
+    topics = tuple(
+        _build_topic_analytics(tag, stats)
+        for tag, stats in sorted(
+            aggregation.tag_stats.items(),
+            key=lambda item: (
+                -_topic_accuracy_percent(item[1]),
+                -item[1]["answers_count"],
+                item[0].casefold(),
+                item[0],
+            ),
+        )
+    )
+
+    return EmployeeQuizTopicsAnalytics(
+        total_tagged_answers_count=aggregation.total_tagged_answers_count,
+        topics=topics,
+    )
+
+
+def _build_quiz_topic_evidence(
+    aggregation: _QuizTopicAggregation,
+    topics: tuple[EmployeeQuizTopicAnalytics, ...],
+) -> tuple[EmployeeQuizTopicEvidence, ...]:
+    evidence_items: list[EmployeeQuizTopicEvidence] = []
+
+    for topic in topics:
+        course_evidences: list[EmployeeQuizTopicCourseEvidence] = []
+        for course_slug, tag_stats in aggregation.course_tag_stats.items():
+            stats = tag_stats.get(topic.tag)
+            if stats is None or stats["answers_count"] == 0:
+                continue
+
+            course_evidences.append(
+                EmployeeQuizTopicCourseEvidence(
+                    course_slug=course_slug,
+                    course_title=aggregation.course_titles.get(
+                        course_slug,
+                        course_slug,
+                    ),
+                    answers_count=stats["answers_count"],
+                    correct_answers_count=stats["correct_answers_count"],
+                    accuracy_percent=_topic_accuracy_percent(stats),
+                )
+            )
+
+        evidence_items.append(
+            EmployeeQuizTopicEvidence(
+                tag=topic.tag,
+                courses=tuple(
+                    sorted(
+                        course_evidences,
+                        key=lambda course: (
+                            -course.answers_count,
+                            course.course_title.casefold(),
+                            course.course_slug,
+                        ),
+                    )
+                ),
+            )
+        )
+
+    return tuple(evidence_items)
 
 
 def _validate_user_id(user_id: int) -> int:

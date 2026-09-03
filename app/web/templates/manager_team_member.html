@@ -364,6 +364,21 @@
                         <span class="dashboard-metric-value">{{ topic.answers_count }}</span>
                     </div>
                 </div>
+                {% for evidence in development_profile.quiz_strength_evidence %}
+                {% if evidence.tag == topic.tag and evidence.courses %}
+                <div class="dashboard-metrics">
+                    <p class="page-meta">Источники данных</p>
+                    {% for course in evidence.courses %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">{{ course.course_title }}</span>
+                        <span class="dashboard-metric-value">
+                            {{ course.answers_count }} ответов · {{ course.accuracy_percent }}%
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endfor %}
             </div>
         </li>
         {% endfor %}
@@ -388,6 +403,21 @@
                         <span class="dashboard-metric-value">{{ topic.answers_count }}</span>
                     </div>
                 </div>
+                {% for evidence in development_profile.quiz_development_evidence %}
+                {% if evidence.tag == topic.tag and evidence.courses %}
+                <div class="dashboard-metrics">
+                    <p class="page-meta">Источники данных</p>
+                    {% for course in evidence.courses %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">{{ course.course_title }}</span>
+                        <span class="dashboard-metric-value">
+                            {{ course.answers_count }} ответов · {{ course.accuracy_percent }}%
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endfor %}
             </div>
         </li>
         {% endfor %}

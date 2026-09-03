@@ -27,6 +27,8 @@ from app.web.manager_employee_analytics_service import (
     EmployeePracticalTaskAnalytics,
     EmployeeQuizAnalytics,
     EmployeeQuizTopicAnalytics,
+    EmployeeQuizTopicCourseEvidence,
+    EmployeeQuizTopicEvidence,
     EmployeeQuizTopicsAnalytics,
     EmployeeQuizTopicClassification,
 )
@@ -300,6 +302,41 @@ class FakeAnalyticsService:
             ),
             reviewed_practical_attempts_count=3,
             has_sufficient_practical_evidence=True,
+            quiz_strength_evidence=(
+                EmployeeQuizTopicEvidence(
+                    tag="Работа с клиентом",
+                    courses=(
+                        EmployeeQuizTopicCourseEvidence(
+                            course_slug="alpha",
+                            course_title="Alpha Quiz Course",
+                            answers_count=3,
+                            correct_answers_count=3,
+                            accuracy_percent=100.0,
+                        ),
+                        EmployeeQuizTopicCourseEvidence(
+                            course_slug="beta",
+                            course_title="Beta Quiz Course",
+                            answers_count=2,
+                            correct_answers_count=2,
+                            accuracy_percent=100.0,
+                        ),
+                    ),
+                ),
+            ),
+            quiz_development_evidence=(
+                EmployeeQuizTopicEvidence(
+                    tag="Возвраты",
+                    courses=(
+                        EmployeeQuizTopicCourseEvidence(
+                            course_slug="gamma",
+                            course_title="Gamma Returns Course",
+                            answers_count=4,
+                            correct_answers_count=2,
+                            accuracy_percent=50.0,
+                        ),
+                    ),
+                ),
+            ),
         )
 
     def get_practical_task_analytics(
@@ -1582,6 +1619,12 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Возвраты", response.text)
         self.assertIn("100.0%", response.text)
         self.assertIn("50.0%", response.text)
+        self.assertIn("Источники данных", response.text)
+        self.assertIn("Alpha Quiz Course", response.text)
+        self.assertIn("Beta Quiz Course", response.text)
+        self.assertIn("Gamma Returns Course", response.text)
+        self.assertIn("3 ответов · 100.0%", response.text)
+        self.assertIn("4 ответов · 50.0%", response.text)
         self.assertEqual(self.analytics_service.development_profile_calls, [2])
         self.assertEqual(self.analytics_service.practical_task_calls, [2])
         self.assertIn("Практические задания", response.text)
