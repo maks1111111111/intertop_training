@@ -157,6 +157,10 @@ from app.web.manager_team_analytics_service import (
     filter_team_member_rows,
     normalize_team_member_filter,
 )
+from app.web.manager_team_development_actions import (
+    build_team_practical_development_actions,
+    build_team_topic_development_actions,
+)
 from app.web.manager_team_service import ManagerTeamService
 from app.web.password_hashing_service import PasswordHashingService
 from app.web.progress_service import WebProgressService
@@ -949,6 +953,14 @@ def manager_team_page(
             "team_filter": team_filter,
             "team_analytics": overview.analytics,
             "recommendations": overview.recommendations,
+            "quiz_topic_development_actions": build_team_topic_development_actions(
+                overview.analytics,
+                overview.recommendations,
+            ),
+            "practical_development_actions": build_team_practical_development_actions(
+                overview.analytics,
+                overview.recommendations,
+            ),
         },
     )
 

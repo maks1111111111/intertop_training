@@ -1977,6 +1977,7 @@ class ManagerTeamRecommendationDetailTests(unittest.TestCase):
         self.assertNotIn("плохо знает", reasons[1].casefold())
         for member in detail.members:
             self.assertEqual(member.development_actions, ())
+            self.assertTrue(member.profile_url.endswith("#development-profile"))
 
     def test_practical_signal_reason_does_not_claim_stable_weakness(self) -> None:
         members = (_member(1), _member(2))
@@ -2009,6 +2010,7 @@ class ManagerTeamRecommendationDetailTests(unittest.TestCase):
             )
             self.assertNotIn("устойчив", member.reason.casefold())
             self.assertEqual(member.development_actions, ())
+            self.assertTrue(member.profile_url.endswith("#development-profile"))
 
     def test_quiz_attention_development_action_for_failed_course_only(self) -> None:
         members = (_member(10),)

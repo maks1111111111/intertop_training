@@ -625,6 +625,28 @@ def _safe_recommendation_code_fragment(text: str, *, fallback: str) -> str:
     return slug or fallback
 
 
+def recommendation_code_for_development_topic(
+    topic: ManagerTeamTopicAnalytics,
+    index: int,
+) -> str:
+    topic_slug = _safe_recommendation_code_fragment(
+        topic.tag,
+        fallback=f"topic-{index + 1}",
+    )
+    return f"quiz_topic:{topic_slug}"
+
+
+def recommendation_code_for_practical_signal(
+    signal: ManagerTeamPracticalSignal,
+    index: int,
+) -> str:
+    signal_slug = _safe_recommendation_code_fragment(
+        signal.text,
+        fallback=f"signal-{index + 1}",
+    )
+    return f"practical_signal:{signal_slug}"
+
+
 def _recommendation_target_url(code: str) -> str:
     return f"/manager/team/recommendation?code={quote(code, safe='')}"
 
@@ -658,15 +680,8 @@ def _topic_tag_for_recommendation_code(
 ) -> Optional[str]:
     if not code.startswith("quiz_topic:"):
         return None
-    topic_slug = code[len("quiz_topic:") :]
     for index, topic in enumerate(analytics.development_topics):
-        if (
-            _safe_recommendation_code_fragment(
-                topic.tag,
-                fallback=f"topic-{index + 1}",
-            )
-            == topic_slug
-        ):
+        if recommendation_code_for_development_topic(topic, index) == code:
             return topic.tag
     return None
 
@@ -677,15 +692,8 @@ def _practical_signal_text_for_recommendation_code(
 ) -> Optional[str]:
     if not code.startswith("practical_signal:"):
         return None
-    signal_slug = code[len("practical_signal:") :]
     for index, signal in enumerate(analytics.practical_development_areas):
-        if (
-            _safe_recommendation_code_fragment(
-                signal.text,
-                fallback=f"signal-{index + 1}",
-            )
-            == signal_slug
-        ):
+        if recommendation_code_for_practical_signal(signal, index) == code:
             return signal.text
     return None
 
@@ -718,6 +726,10 @@ def _recommendation_profile_anchor(recommendation_code: str) -> str:
         return "#quiz-analytics"
     if recommendation_code in {"practical_attention", "practical_pending"}:
         return "#practical-tasks"
+    if recommendation_code.startswith("quiz_topic:") or recommendation_code.startswith(
+        "practical_signal:"
+    ):
+        return "#development-profile"
     return ""
 
 
@@ -987,11 +999,7 @@ def _build_team_recommendations(
         )
 
     for index, topic in enumerate(analytics.development_topics):
-        topic_slug = _safe_recommendation_code_fragment(
-            topic.tag,
-            fallback=f"topic-{index + 1}",
-        )
-        topic_code = f"quiz_topic:{topic_slug}"
+        topic_code = recommendation_code_for_development_topic(topic, index)
         topic_user_ids = _sorted_user_ids(
             row.member.user_id
             for row in members
@@ -1013,11 +1021,7 @@ def _build_team_recommendations(
             )
 
     for index, signal in enumerate(analytics.practical_development_areas):
-        signal_slug = _safe_recommendation_code_fragment(
-            signal.text,
-            fallback=f"signal-{index + 1}",
-        )
-        signal_code = f"practical_signal:{signal_slug}"
+        signal_code = recommendation_code_for_practical_signal(signal, index)
         signal_key = signal.text.casefold()
         signal_user_ids = _sorted_user_ids(
             row.member.user_id

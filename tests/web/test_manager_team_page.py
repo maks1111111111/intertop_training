@@ -560,6 +560,9 @@ class FakeTeamAnalyticsService:
         self._practical_analytics_override: EmployeePracticalTaskAnalytics | None = None
         self._assignment_history_override: ManagerCourseAssignmentHistory | None = None
         self._members_override: tuple[ManagerTeamMemberAnalytics, ...] | None = None
+        self._recommendations_override: (
+            tuple[ManagerActionRecommendation, ...] | None
+        ) = None
 
     @staticmethod
     def _default_member() -> ManagerTeamMember:
@@ -772,6 +775,21 @@ class FakeTeamAnalyticsService:
                 affected_user_ids=(2,),
                 target_url="/manager/team/recommendation?code=learning_not_started",
             ),
+            ManagerActionRecommendation(
+                code="practical_signal:dobavit-bolshe-detaley",
+                priority="medium",
+                title="Усилить практический навык: Добавить больше деталей",
+                description=(
+                    "Сигнал повторяется у 2 сотрудников "
+                    "и встречается в 5 проверенных заданиях."
+                ),
+                affected_employees_count=2,
+                affected_user_ids=(2,),
+                target_url=(
+                    "/manager/team/recommendation"
+                    "?code=practical_signal%3Adobavit-bolshe-detaley"
+                ),
+            ),
         )
 
     @staticmethod
@@ -787,6 +805,13 @@ class FakeTeamAnalyticsService:
             best_score_percent=90.0,
             recent_attempts=(),
         )
+
+    def _resolve_recommendations(self) -> tuple[ManagerActionRecommendation, ...]:
+        if self._recommendations_override is not None:
+            if isinstance(self._recommendations_override, ManagerActionRecommendation):
+                return (self._recommendations_override,)
+            return self._recommendations_override
+        return self._populated_recommendations()
 
     def get_team_overview(self, company_id: str) -> ManagerTeamOverview:
         self.calls.append(company_id)
@@ -828,7 +853,7 @@ class FakeTeamAnalyticsService:
             return ManagerTeamOverview(
                 analytics=self._populated_analytics(),
                 members=self._members_override,
-                recommendations=self._populated_recommendations(),
+                recommendations=self._resolve_recommendations(),
             )
         member = self._default_member()
         quiz_analytics = self._resolve_member_quiz_analytics()
@@ -853,7 +878,7 @@ class FakeTeamAnalyticsService:
                     assignment_history=assignment_history,
                 ),
             ),
-            recommendations=self._populated_recommendations(),
+            recommendations=self._resolve_recommendations(),
         )
 
     def get_team_analytics(self, company_id: str) -> ManagerTeamAnalytics:
@@ -927,6 +952,10 @@ def _fake_recommendation_profile_anchor(recommendation_code: str) -> str:
         return "#quiz-analytics"
     if recommendation_code in {"practical_attention", "practical_pending"}:
         return "#practical-tasks"
+    if recommendation_code.startswith("quiz_topic:") or recommendation_code.startswith(
+        "practical_signal:"
+    ):
+        return "#development-profile"
     return ""
 
 
@@ -2720,6 +2749,120 @@ class ManagerTeamPageTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("/manager/team/2#practical-tasks", response.text)
+
+    def test_quiz_development_topic_renders_recommendation_drill_down_link(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Зоны развития по тестам", response.text)
+        self.assertIn("Возвраты", response.text)
+        returns_section = response.text.split("Возвраты", 1)[1].split("</li>", 1)[0]
+        self.assertIn("Посмотреть сотрудников", returns_section)
+        self.assertIn(
+            "/manager/team/recommendation?code=quiz_topic%3Avozvraty",
+            returns_section,
+        )
+
+    def test_practical_development_signal_renders_recommendation_drill_down_link(
+        self,
+    ) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Повторяющиеся зоны развития команды", response.text)
+        self.assertIn("Добавить больше деталей", response.text)
+        signal_section = response.text.split("Добавить больше деталей", 1)[1].split(
+            "</li>", 1
+        )[0]
+        self.assertIn("Посмотреть сотрудников", signal_section)
+        self.assertIn(
+            "/manager/team/recommendation?code=practical_signal%3Adobavit-bolshe-detaley",
+            signal_section,
+        )
+
+    def test_quiz_strength_topic_has_no_development_drill_down_link(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Сильные стороны по тестам", response.text)
+        strength_section = response.text.split("Работа с клиентом", 1)[1].split(
+            "</li>", 1
+        )[0]
+        self.assertNotIn("Посмотреть сотрудников", strength_section)
+
+    def test_practical_strength_signal_has_no_development_drill_down_link(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        strength_section = response.text.split("Чёткая структура ответа", 1)[1].split(
+            "</li>", 1
+        )[0]
+        self.assertNotIn("Посмотреть сотрудников", strength_section)
+
+    def test_development_topic_without_matching_recommendation_has_no_invented_url(
+        self,
+    ) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._recommendations_override = (
+            ManagerActionRecommendation(
+                code="quiz_attention",
+                priority="high",
+                title="Повторить обучение по непройденным тестам",
+                description="Test",
+                affected_employees_count=1,
+                affected_user_ids=(2,),
+                target_url="/manager/team/recommendation?code=quiz_attention",
+            ),
+        )
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        returns_section = response.text.split("Возвраты", 1)[1].split("</li>", 1)[0]
+        self.assertNotIn("quiz_topic", returns_section)
+        self.assertNotIn("Посмотреть сотрудников", returns_section)
+
+    def test_quiz_topic_recommendation_detail_links_to_development_profile(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get(
+            "/manager/team/recommendation",
+            params={"code": "quiz_topic:vozvraty"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("/manager/team/2#development-profile", response.text)
+
+    def test_practical_signal_recommendation_detail_links_to_development_profile(
+        self,
+    ) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get(
+            "/manager/team/recommendation",
+            params={
+                "code": "practical_signal:dobavit-bolshe-detaley",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("/manager/team/2#development-profile", response.text)
+
+    def test_manager_team_page_uses_single_team_overview_call(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.team_analytics_service.calls, ["intertop"])
 
 
 if __name__ == "__main__":

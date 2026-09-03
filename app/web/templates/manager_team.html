@@ -191,26 +191,31 @@
     <h4 class="section-subtitle">Зоны развития по тестам</h4>
     {% if team_analytics.development_topics %}
     <ul class="course-list admin-course-list">
-        {% for topic in team_analytics.development_topics %}
+        {% for topic_action in quiz_topic_development_actions %}
         <li class="course-card admin-course-card">
             <div class="admin-course-body">
                 <header class="admin-course-header">
-                    <h4 class="course-card-title">{{ topic.tag }}</h4>
+                    <h4 class="course-card-title">{{ topic_action.topic.tag }}</h4>
                 </header>
                 <div class="dashboard-metrics">
                     <div class="dashboard-metric">
                         <span class="dashboard-metric-label">Точность</span>
-                        <span class="dashboard-metric-value">{{ topic.accuracy_percent }}%</span>
+                        <span class="dashboard-metric-value">{{ topic_action.topic.accuracy_percent }}%</span>
                     </div>
                     <div class="dashboard-metric">
                         <span class="dashboard-metric-label">Ответов</span>
-                        <span class="dashboard-metric-value">{{ topic.answers_count }}</span>
+                        <span class="dashboard-metric-value">{{ topic_action.topic.answers_count }}</span>
                     </div>
                     <div class="dashboard-metric">
                         <span class="dashboard-metric-label">Сотрудников</span>
-                        <span class="dashboard-metric-value">{{ topic.employees_count }}</span>
+                        <span class="dashboard-metric-value">{{ topic_action.topic.employees_count }}</span>
                     </div>
                 </div>
+                {% if topic_action.action %}
+                <div class="dashboard-metric-actions">
+                    <a href="{{ topic_action.action.target_url }}">{{ topic_action.action.label }}</a>
+                </div>
+                {% endif %}
             </div>
         </li>
         {% endfor %}
@@ -248,22 +253,27 @@
     {% if team_analytics.practical_development_areas %}
     <h5 class="section-subtitle">Повторяющиеся зоны развития команды</h5>
     <ul class="course-list admin-course-list">
-        {% for signal in team_analytics.practical_development_areas %}
+        {% for signal_action in practical_development_actions %}
         <li class="course-card admin-course-card">
             <div class="admin-course-body">
                 <header class="admin-course-header">
-                    <h4 class="course-card-title">{{ signal.text }}</h4>
+                    <h4 class="course-card-title">{{ signal_action.signal.text }}</h4>
                 </header>
                 <div class="dashboard-metrics">
                     <div class="dashboard-metric">
                         <span class="dashboard-metric-label">Наблюдений</span>
-                        <span class="dashboard-metric-value">{{ signal.evidence_count }}</span>
+                        <span class="dashboard-metric-value">{{ signal_action.signal.evidence_count }}</span>
                     </div>
                     <div class="dashboard-metric">
                         <span class="dashboard-metric-label">Сотрудников</span>
-                        <span class="dashboard-metric-value">{{ signal.employees_count }}</span>
+                        <span class="dashboard-metric-value">{{ signal_action.signal.employees_count }}</span>
                     </div>
                 </div>
+                {% if signal_action.action %}
+                <div class="dashboard-metric-actions">
+                    <a href="{{ signal_action.action.target_url }}">{{ signal_action.action.label }}</a>
+                </div>
+                {% endif %}
             </div>
         </li>
         {% endfor %}
