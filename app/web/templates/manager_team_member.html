@@ -34,7 +34,7 @@
     </div>
 </section>
 
-<section class="section">
+<section class="section profile-section-anchor" id="assign-course">
     <h2>Назначить курс</h2>
 
     {% if assignment_message %}
@@ -61,7 +61,10 @@
                 required
             >
                 {% for course in assignable_courses %}
-                <option value="{{ course.slug }}">{{ course.title }}</option>
+                <option
+                    value="{{ course.slug }}"
+                    {% if selected_assign_course_slug == course.slug %}selected{% endif %}
+                >{{ course.title }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -403,7 +406,7 @@
                         <span class="dashboard-metric-value">{{ topic.answers_count }}</span>
                     </div>
                 </div>
-                {% for evidence in development_profile.quiz_development_evidence %}
+                {% for evidence in quiz_development_actionable_evidence %}
                 {% if evidence.tag == topic.tag and evidence.courses %}
                 <div class="dashboard-metrics">
                     <p class="page-meta">Источники данных</p>
@@ -413,6 +416,22 @@
                         <span class="dashboard-metric-value">
                             {{ course.answers_count }} ответов · {{ course.accuracy_percent }}%
                         </span>
+                        {% if course.course_url or course.can_assign %}
+                        <div class="dashboard-metric-actions">
+                            {% if course.course_url %}
+                            <a
+                                class="button button-secondary button-small"
+                                href="{{ course.course_url }}"
+                            >Открыть курс</a>
+                            {% endif %}
+                            {% if course.can_assign %}
+                            <a
+                                class="button button-primary button-small"
+                                href="/manager/team/{{ member.user_id }}?assign_course={{ course.course_slug | urlencode }}#assign-course"
+                            >Назначить курс</a>
+                            {% endif %}
+                        </div>
+                        {% endif %}
                     </div>
                     {% endfor %}
                 </div>

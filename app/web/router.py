@@ -144,6 +144,9 @@ from app.web.dashboard_service import DashboardService
 from app.web.manager_course_assignment_history_service import (
     ManagerCourseAssignmentHistoryService,
 )
+from app.web.manager_quiz_development_actions import (
+    build_quiz_development_actionable_evidence,
+)
 from app.web.manager_course_assignment_service import ManagerCourseAssignmentService
 from app.web.manager_employee_analytics_service import ManagerEmployeeAnalyticsService
 from app.web.manager_team_analytics_service import (
@@ -505,6 +508,25 @@ def _assignable_courses(
         assignable.append(course)
 
     return tuple(assignable)
+
+
+def _selected_assign_course_slug(
+    requested_slug: Optional[str],
+    assignable_courses: tuple,
+) -> Optional[str]:
+    """Return a preselected assignable course slug from the query string."""
+    if requested_slug is None:
+        return None
+
+    normalized_slug = requested_slug.strip()
+    if not normalized_slug:
+        return None
+
+    assignable_slugs = {course.slug for course in assignable_courses}
+    if normalized_slug in assignable_slugs:
+        return normalized_slug
+
+    return None
 
 
 def get_admin_service(
@@ -999,6 +1021,11 @@ def manager_team_member_page(
     assignment_message, assignment_is_error = _assignment_feedback(
         request.query_params.get("assignment"),
     )
+    assignable_courses = _assignable_courses(courses, runtime)
+    selected_assign_course_slug = _selected_assign_course_slug(
+        request.query_params.get("assign_course"),
+        assignable_courses,
+    )
     return templates.TemplateResponse(
         request,
         "manager_team_member.html",
@@ -1007,12 +1034,18 @@ def manager_team_member_page(
             "member": member,
             "courses": courses,
             "courses_count": len(courses),
-            "assignable_courses": _assignable_courses(courses, runtime),
+            "assignable_courses": assignable_courses,
+            "selected_assign_course_slug": selected_assign_course_slug,
             "assignment_message": assignment_message,
             "assignment_is_error": assignment_is_error,
             "assignment_history": assignment_history,
             "quiz_analytics": quiz_analytics,
             "development_profile": development_profile,
+            "quiz_development_actionable_evidence": build_quiz_development_actionable_evidence(
+                development_profile,
+                assignable_courses,
+                runtime,
+            ),
             "practical_task_analytics": practical_task_analytics,
         },
     )

@@ -205,6 +205,7 @@ class FakeAnalyticsService:
         self._pending_practical_task = False
         self._unknown_practical_task_status = False
         self._empty_development_profile = False
+        self._development_profile_override: Optional[EmployeeDevelopmentProfile] = None
 
     def get_quiz_analytics(self, user_id: int) -> EmployeeQuizAnalytics:
         self.calls.append(user_id)
@@ -269,6 +270,8 @@ class FakeAnalyticsService:
         user_id: int,
     ) -> EmployeeDevelopmentProfile:
         self.development_profile_calls.append(user_id)
+        if self._development_profile_override is not None:
+            return self._development_profile_override
         if self._empty_development_profile:
             return FakeAnalyticsService.empty_development_profile()
         return EmployeeDevelopmentProfile(
@@ -332,6 +335,13 @@ class FakeAnalyticsService:
                             course_title="Gamma Returns Course",
                             answers_count=4,
                             correct_answers_count=2,
+                            accuracy_percent=50.0,
+                        ),
+                        EmployeeQuizTopicCourseEvidence(
+                            course_slug="beta",
+                            course_title="Beta Course",
+                            answers_count=2,
+                            correct_answers_count=1,
                             accuracy_percent=50.0,
                         ),
                     ),
@@ -1651,6 +1661,127 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertNotIn('value="delta"', response.text)
         self.assertNotIn('value="empty-course"', response.text)
         self.assertIn('value="beta"', response.text)
+
+    def test_development_source_course_renders_open_course_link(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('href="/courses/gamma"', response.text)
+        self.assertIn('href="/courses/beta"', response.text)
+        self.assertIn("Открыть курс", response.text)
+
+    def test_assignable_development_source_renders_prefill_assign_link(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            'href="/manager/team/2?assign_course=beta#assign-course"',
+            response.text,
+        )
+        self.assertNotIn(
+            '<input type="hidden" name="course_slug" value="beta">',
+            response.text,
+        )
+
+    def test_assign_course_query_prefills_assignment_dropdown(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2?assign_course=beta")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            '<option\n                    value="beta"\n                    selected',
+            response.text,
+        )
+        self.assertIn('id="assign-course-due-at"', response.text)
+
+    def test_invalid_assign_course_query_does_not_prefill_dropdown(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2?assign_course=gamma")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(
+            '<option\n                    value="gamma"\n                    selected',
+            response.text,
+        )
+        self.assertNotIn(
+            '<option\n                    value="gamma"',
+            response.text,
+        )
+
+    def test_stale_assign_course_query_does_not_prefill_dropdown(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2?assign_course=missing-runtime")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('selected', response.text.split('id="assign-course-slug"')[1].split("</select>")[0])
+
+    def test_non_assignable_development_source_has_no_inline_assign(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('href="/courses/gamma"', response.text)
+        self.assertNotIn(
+            '<input type="hidden" name="course_slug" value="gamma">',
+            response.text,
+        )
+
+    def test_strength_evidence_does_not_render_course_actions(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('href="/courses/alpha"', response.text)
+
+    def test_development_source_missing_runtime_has_no_open_or_assign(self) -> None:
+        self._set_identity("manager")
+        self.analytics_service._development_profile_override = EmployeeDevelopmentProfile(
+            quiz_strengths=(),
+            quiz_development_areas=(
+                EmployeeQuizTopicAnalytics(
+                    tag="Missing course",
+                    answers_count=3,
+                    correct_answers_count=1,
+                    accuracy_percent=33.33,
+                ),
+            ),
+            practical_strengths=(),
+            practical_development_areas=(),
+            reviewed_practical_attempts_count=0,
+            has_sufficient_practical_evidence=False,
+            quiz_development_evidence=(
+                EmployeeQuizTopicEvidence(
+                    tag="Missing course",
+                    courses=(
+                        EmployeeQuizTopicCourseEvidence(
+                            course_slug="missing-runtime",
+                            course_title="Missing Runtime Course",
+                            answers_count=3,
+                            correct_answers_count=1,
+                            accuracy_percent=33.33,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('href="/courses/missing-runtime"', response.text)
+        self.assertNotIn(
+            '<input type="hidden" name="course_slug" value="missing-runtime">',
+            response.text,
+        )
 
     def test_team_member_page_renders_assignment_history(self) -> None:
         self._set_identity("manager")
