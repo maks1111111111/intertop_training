@@ -568,6 +568,30 @@ def _assignment_development_context(
     }
 
 
+def _assignment_development_impact_by_course(
+    user_id: int,
+    assignment_history,
+    analytics_service: ManagerEmployeeAnalyticsService,
+) -> dict[str, object]:
+    """Build development-impact evidence for assignments carrying development context."""
+    impact_by_course: dict[str, object] = {}
+
+    for assignment in assignment_history.assignments:
+        if not assignment.development_source or not assignment.development_reason:
+            continue
+
+        impact_by_course[assignment.course_slug] = (
+            analytics_service.get_development_impact_evidence(
+                user_id,
+                assignment.assigned_at,
+                assignment.development_source,
+                assignment.development_reason,
+            )
+        )
+
+    return impact_by_course
+
+
 def _normalize_assignment_development_context(
     source: Optional[str],
     reason: Optional[str],
@@ -1088,6 +1112,13 @@ def manager_team_member_page(
         identity.company_id,
         member.user_id,
     )
+    assignment_development_impact_by_course = (
+        _assignment_development_impact_by_course(
+            member.user_id,
+            assignment_history,
+            analytics_service,
+        )
+    )
     assignment_message, assignment_is_error = _assignment_feedback(
         request.query_params.get("assignment"),
     )
@@ -1115,6 +1146,9 @@ def manager_team_member_page(
             "assignment_message": assignment_message,
             "assignment_is_error": assignment_is_error,
             "assignment_history": assignment_history,
+            "assignment_development_impact_by_course": (
+                assignment_development_impact_by_course
+            ),
             "quiz_analytics": quiz_analytics,
             "development_profile": development_profile,
             "quiz_development_actionable_evidence": build_quiz_development_actionable_evidence(

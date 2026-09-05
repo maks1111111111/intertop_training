@@ -208,6 +208,58 @@
                         <span class="dashboard-metric-label">Причина назначения</span>
                         <span class="dashboard-metric-value">{{ assignment.development_source_label }}: {{ assignment.development_reason }}</span>
                     </div>
+
+                    {% set development_impact = assignment_development_impact_by_course.get(assignment.course_slug) %}
+                    {% if development_impact %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Результат развития</span>
+                        <span class="dashboard-metric-value">{{ development_impact.classification_label }}</span>
+                    </div>
+
+                    {% if development_impact.quiz %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">До назначения</span>
+                        <span class="dashboard-metric-value">
+                            {% if development_impact.quiz.before_accuracy_percent is not none %}
+                            {{ development_impact.quiz.before_accuracy_percent }}%
+                            · ответов: {{ development_impact.quiz.before_answers_count }}
+                            {% else %}
+                            Недостаточно данных
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">После назначения</span>
+                        <span class="dashboard-metric-value">
+                            {% if development_impact.quiz.after_accuracy_percent is not none %}
+                            {{ development_impact.quiz.after_accuracy_percent }}%
+                            · ответов: {{ development_impact.quiz.after_answers_count }}
+                            {% else %}
+                            Недостаточно данных
+                            {% endif %}
+                        </span>
+                    </div>
+                    {% elif development_impact.practical %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">До назначения</span>
+                        <span class="dashboard-metric-value">
+                            {{ development_impact.practical.before_evidence_count }}
+                            из
+                            {{ development_impact.practical.before_reviewed_attempts_count }}
+                            проверок содержали эту зону развития
+                        </span>
+                    </div>
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">После назначения</span>
+                        <span class="dashboard-metric-value">
+                            {{ development_impact.practical.after_evidence_count }}
+                            из
+                            {{ development_impact.practical.after_reviewed_attempts_count }}
+                            проверок содержали эту зону развития
+                        </span>
+                    </div>
+                    {% endif %}
+                    {% endif %}
                     {% endif %}
                 </div>
             </div>

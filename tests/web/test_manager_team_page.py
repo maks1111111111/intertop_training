@@ -19,8 +19,10 @@ from app.web.manager_course_assignment_history_service import (
 from app.web.manager_course_assignment_service import ManagerCourseAssignmentResult
 from app.web.manager_employee_analytics_service import (
     EmployeeCourseQuizAnalytics,
+    EmployeeDevelopmentImpactEvidence,
     EmployeeDevelopmentProfile,
     EmployeePracticalSignal,
+    EmployeePracticalSignalTemporalEvidence,
     EmployeePracticalSignalEvidence,
     EmployeePracticalSignalEvidenceSet,
     EmployeePracticalSignalSourceEvidence,
@@ -28,6 +30,7 @@ from app.web.manager_employee_analytics_service import (
     EmployeePracticalTaskAnalytics,
     EmployeeQuizAnalytics,
     EmployeeQuizTopicAnalytics,
+    EmployeeQuizTopicTemporalEvidence,
     EmployeeQuizTopicCourseEvidence,
     EmployeeQuizTopicEvidence,
     EmployeeQuizTopicsAnalytics,
@@ -210,6 +213,8 @@ class FakeAnalyticsService:
         self._unknown_practical_task_status = False
         self._empty_development_profile = False
         self._development_profile_override: Optional[EmployeeDevelopmentProfile] = None
+        self.development_impact_calls: list[tuple[int, str, str, str]] = []
+        self._development_impact_override: Optional[EmployeeDevelopmentImpactEvidence] = None
 
     def get_quiz_analytics(self, user_id: int) -> EmployeeQuizAnalytics:
         self.calls.append(user_id)
@@ -388,6 +393,60 @@ class FakeAnalyticsService:
                     ),
                 ),
             ),
+        )
+
+    def get_development_impact_evidence(
+        self,
+        user_id: int,
+        assigned_at: str,
+        development_source: str,
+        development_reason: str,
+    ) -> EmployeeDevelopmentImpactEvidence:
+        self.development_impact_calls.append(
+            (
+                user_id,
+                assigned_at,
+                development_source,
+                development_reason,
+            )
+        )
+
+        if self._development_impact_override is not None:
+            return self._development_impact_override
+
+        if development_source == "quiz":
+            return EmployeeDevelopmentImpactEvidence(
+                assigned_at=assigned_at,
+                development_source=development_source,
+                development_reason=development_reason,
+                quiz=EmployeeQuizTopicTemporalEvidence(
+                    tag=development_reason,
+                    before_answers_count=4,
+                    before_correct_answers_count=2,
+                    after_answers_count=4,
+                    after_correct_answers_count=3,
+                    before_accuracy_percent=50.0,
+                    after_accuracy_percent=75.0,
+                ),
+                practical=None,
+                classification="improved",
+                classification_label="Есть улучшение",
+            )
+
+        return EmployeeDactEvidence(
+            assigned_at=assigned_at,
+            development_source=development_source,
+            development_reason=development_reason,
+            quiz=None,
+            practical=EmployeePracticalSignalTemporalEvidence(
+                text=development_reason,
+                before_evidence_count=3,
+                after_evidence_count=1,
+                before_reviewed_attempts_count=4,
+                after_reviewed_attempts_count=4,
+            ),
+            classification="improved",
+            classification_label="Есть улучшение",
         )
 
     def get_practical_task_analytics(
