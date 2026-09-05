@@ -251,6 +251,8 @@ class ProgressRepository:
         *,
         assigned_by_user_id: Optional[int] = None,
         due_at: Optional[str] = None,
+        development_source: Optional[str] = None,
+        development_reason: Optional[str] = None,
     ) -> bool:
         """Assign a course to a canonical user without starting it."""
         normalized_user_id = _validate_user_id(user_id)
@@ -260,6 +262,12 @@ class ProgressRepository:
             else _validate_user_id(assigned_by_user_id)
         )
         normalized_due_at = _validate_due_at(due_at)
+        normalized_development_source, normalized_development_reason = (
+            _validate_development_context(
+                development_source,
+                development_reason,
+            )
+        )
 
         with get_connection(db_path) as connection:
             if normalized_assigned_by_user_id is not None:
@@ -283,6 +291,8 @@ class ProgressRepository:
                     progress_percent,
                     assigned_by_user_id,
                     due_at,
+                    development_source,
+                    development_reason,
                     started_at,
                     completed_at
                 )
@@ -291,6 +301,8 @@ class ProgressRepository:
                     courses.id,
                     'assigned',
                     0,
+                    ?,
+                    ?,
                     ?,
                     ?,
                     NULL,
@@ -308,6 +320,8 @@ class ProgressRepository:
                     normalized_user_id,
                     normalized_assigned_by_user_id,
                     normalized_due_at,
+                    normalized_development_source,
+                    normalized_development_reason,
                     course_slug,
                     normalized_user_id,
                 ),
@@ -751,3 +765,38 @@ def _validate_due_at(due_at: Optional[str]) -> Optional[str]:
         raise ValueError("due_at must not be empty")
 
     return normalized
+
+
+_ALLOWED_DEVELOPMENT_SOURCES = frozenset({"quiz", "practical"})
+_MAX_DEVELOPMENT_REASON_LENGTH = 200
+
+
+def _validate_development_context(
+    development_source: Optional[str],
+    development_reason: Optional[str],
+) -> tuple[Optional[str], Optional[str]]:
+    """Validate optional development-zone assignment context."""
+    if development_source is None and development_reason is None:
+        return None, None
+
+    if development_source is None or development_reason is None:
+        raise ValueError(
+            "development_source and development_reason must both be provided"
+        )
+
+    if not isinstance(development_source, str):
+        raise ValueError("development_source must be a string or None")
+    if not isinstance(development_reason, str):
+        raise ValueError("development_reason must be a string or None")
+
+    normalized_source = development_source.strip()
+    if normalized_source not in _ALLOWED_DEVELOPMENT_SOURCES:
+        raise ValueError("development_source must be quiz or practical")
+
+    normalized_reason = development_reason.strip()
+    if not normalized_reason:
+        raise ValueError("development_reason must not be empty")
+    if len(normalized_reason) > _MAX_DEVELOPMENT_REASON_LENGTH:
+        raise ValueError("development_reason is too long")
+
+    return normalized_source, normalized_reason

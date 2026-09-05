@@ -56,6 +56,8 @@ def create_tables(connection: sqlite3.Connection) -> None:
             assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             assigned_by_user_id INTEGER,
             due_at TEXT,
+            development_source TEXT,
+            development_reason TEXT,
             started_at TEXT,
             completed_at TEXT,
             UNIQUE(user_id, course_id),

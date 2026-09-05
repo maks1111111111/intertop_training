@@ -54,7 +54,17 @@ class FakeProgressRepository:
         assign_result: bool = True,
     ) -> None:
         self.assign_result = assign_result
-        self.assign_calls: list[tuple[Path, int, str, int, Optional[str]]] = []
+        self.assign_calls: list[
+            tuple[
+                Path,
+                int,
+                str,
+                int,
+                Optional[str],
+                Optional[str],
+                Optional[str],
+            ]
+        ] = []
 
     def assign_course_to_user(
         self,
@@ -64,6 +74,8 @@ class FakeProgressRepository:
         *,
         assigned_by_user_id: int,
         due_at: Optional[str] = None,
+        development_source: Optional[str] = None,
+        development_reason: Optional[str] = None,
     ) -> bool:
         self.assign_calls.append(
             (
@@ -72,6 +84,8 @@ class FakeProgressRepository:
                 course_slug,
                 assigned_by_user_id,
                 due_at,
+                development_source,
+                development_reason,
             )
         )
         return self.assign_result
@@ -167,7 +181,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
         self.assertEqual(runtime.calls, ["retail-basics"])
         self.assertEqual(
             progress_repository.assign_calls,
-            [(self.db_path, 42, "retail-basics", 10, None)],
+            [(self.db_path, 42, "retail-basics", 10, None, None, None)],
         )
 
     def test_member_not_found_does_not_call_repository_or_runtime(self) -> None:
@@ -234,7 +248,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
         self.assertEqual(result.code, "assigned")
         self.assertEqual(
             progress_repository.assign_calls,
-            [(self.db_path, 42, "with-lessons", 10, None)],
+            [(self.db_path, 42, "with-lessons", 10, None, None, None)],
         )
 
     def test_repository_failure_returns_assignment_failed(self) -> None:
@@ -248,7 +262,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
         self.assertEqual(result.code, "assignment_failed")
         self.assertEqual(
             progress_repository.assign_calls,
-            [(self.db_path, 42, "retail-basics", 10, None)],
+            [(self.db_path, 42, "retail-basics", 10, None, None, None)],
         )
 
     def test_assignment_author_is_forwarded_to_repository(self) -> None:
@@ -264,7 +278,7 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(
             progress_repository.assign_calls,
-            [(self.db_path, 42, "retail-basics", 777, None)],
+            [(self.db_path, 42, "retail-basics", 777, None, None, None)],
         )
 
     def test_invalid_assignment_author_rejected_before_dependencies(self) -> None:
@@ -362,6 +376,8 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
                     "retail-basics",
                     10,
                     "2026-09-15 18:00:00",
+                    None,
+                    None,
                 )
             ],
         )
@@ -381,6 +397,52 @@ class ManagerCourseAssignmentServiceTests(unittest.TestCase):
         self.assertEqual(
             progress_repository.assign_calls[0][4],
             None,
+        )
+
+    def test_forwards_development_context_to_repository(self) -> None:
+        service, _, progress_repository, _ = self._service()
+
+        result = service.assign_course(
+            "intertop",
+            42,
+            "retail-basics",
+            assigned_by_user_id=10,
+            development_source="quiz",
+            development_reason="Возвраты",
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(
+            progress_repository.assign_calls,
+            [
+                (
+                    self.db_path,
+                    42,
+                    "retail-basics",
+                    10,
+                    None,
+                    "quiz",
+                    "Возвраты",
+                )
+            ],
+        )
+
+    def test_none_development_context_remains_supported(self) -> None:
+        service, _, progress_repository, _ = self._service()
+
+        result = service.assign_course(
+            "intertop",
+            42,
+            "retail-basics",
+            assigned_by_user_id=10,
+            development_source=None,
+            development_reason=None,
+        )
+
+        self.assertTrue(result.success)
+        self.assertEqual(
+            progress_repository.assign_calls[0][5:],
+            (None, None),
         )
 
 

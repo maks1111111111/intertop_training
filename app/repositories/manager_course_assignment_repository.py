@@ -24,6 +24,8 @@ class ManagerCourseAssignmentRecord:
     assigned_by_first_name: Optional[str]
     assigned_by_last_name: Optional[str]
     due_at: Optional[str]
+    development_source: Optional[str]
+    development_reason: Optional[str]
     started_at: Optional[str]
     completed_at: Optional[str]
 
@@ -78,6 +80,8 @@ class ManagerCourseAssignmentRepository:
                     assignment_author_users.first_name AS assigned_by_first_name,
                     assignment_author_users.last_name AS assigned_by_last_name,
                     enrollments.due_at,
+                    enrollments.development_source,
+                    enrollments.development_reason,
                     enrollments.started_at,
                     enrollments.completed_at
                 FROM company_memberships
@@ -131,6 +135,16 @@ class ManagerCourseAssignmentRepository:
                 due_at=(
                     str(row["due_at"])
                     if row["due_at"] is not None
+                    else None
+                ),
+                development_source=(
+                    str(row["development_source"])
+                    if row["development_source"] is not None
+                    else None
+                ),
+                development_reason=(
+                    str(row["development_reason"])
+                    if row["development_reason"] is not None
                     else None
                 ),
                 started_at=(

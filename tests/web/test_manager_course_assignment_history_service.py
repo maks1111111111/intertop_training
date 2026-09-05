@@ -60,6 +60,8 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
         assigned_by_first_name: Optional[str] = "Anna",
         assigned_by_last_name: Optional[str] = "Manager",
         due_at: Optional[str] = None,
+        development_source: Optional[str] = None,
+        development_reason: Optional[str] = None,
         started_at: Optional[str] = None,
         completed_at: Optional[str] = None,
     ) -> ManagerCourseAssignmentRecord:
@@ -75,6 +77,8 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
             assigned_by_first_name=assigned_by_first_name,
             assigned_by_last_name=assigned_by_last_name,
             due_at=due_at,
+            development_source=development_source,
+            development_reason=development_reason,
             started_at=started_at,
             completed_at=completed_at,
         )
@@ -354,6 +358,82 @@ class ManagerCourseAssignmentHistoryServiceTests(unittest.TestCase):
 
         self.assertIsNone(history.assignments[0].due_at)
 
+    def test_maps_development_context_when_present(self) -> None:
+        self.repository.records = (
+            self._record(
+                course_slug="alpha",
+                course_title="Alpha Course",
+                status="assigned",
+                progress_percent=0,
+                assigned_at="2026-08-31 10:00:00",
+                development_source="quiz",
+                development_reason="Возвраты",
+            ),
+            self._record(
+                course_slug="beta",
+                course_title="Beta Course",
+                status="assigned",
+                progress_percent=0,
+                assigned_at="2026-08-31 11:00:00",
+                development_source="practical",
+                development_reason="Добавить больше деталей",
+            ),
+        )
+
+        history = self.service.get_for_member("intertop", 2)
+
+        self.assertEqual(history.assignments[0].development_source, "quiz")
+        self.assertEqual(
+            history.assignments[0].development_source_label,
+            "Зона развития по тестам",
+        )
+        self.assertEqual(history.assignments[0].development_reason, "Возвраты")
+        self.assertEqual(history.assignments[1].development_source, "practical")
+        self.assertEqual(
+            history.assignments[1].development_source_label,
+            "Зона развития по практическим заданиям",
+        )
+        self.assertEqual(
+            history.assignments[1].development_reason,
+            "Добавить больше деталей",
+        )
+
+    def test_development_context_is_none_when_absent(self) -> None:
+        self.repository.records = (
+            self._record(
+                course_slug="alpha",
+                course_title="Alpha Course",
+                status="assigned",
+                progress_percent=0,
+                assigned_at="2026-08-31 10:00:00",
+            ),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertIsNone(item.development_source)
+        self.assertIsNone(item.development_source_label)
+        self.assertIsNone(item.development_reason)
+
+    def test_unknown_development_source_has_no_label(self) -> None:
+        self.repository.records = (
+            self._record(
+                course_slug="alpha",
+                course_title="Alpha Course",
+                status="assigned",
+                progress_percent=0,
+                assigned_at="2026-08-31 10:00:00",
+                development_source="legacy-source",
+                development_reason="Старая причина",
+            ),
+        )
+
+        item = self.service.get_for_member("intertop", 2).assignments[0]
+
+        self.assertEqual(item.development_source, "legacy-source")
+        self.assertIsNone(item.development_source_label)
+        self.assertEqual(item.development_reason, "Старая причина")
+
 
 class ManagerCourseAssignmentComplianceTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -384,6 +464,8 @@ class ManagerCourseAssignmentComplianceTests(unittest.TestCase):
             assigned_by_first_name="Anna",
             assigned_by_last_name="Manager",
             due_at=due_at,
+            development_source=None,
+            development_reason=None,
             started_at=None,
             completed_at=completed_at,
         )

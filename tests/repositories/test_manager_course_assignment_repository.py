@@ -53,6 +53,8 @@ class ManagerCourseAssignmentRepositoryTests(unittest.TestCase):
                     assigned_at TEXT NOT NULL,
                     assigned_by_user_id INTEGER,
                     due_at TEXT,
+                    development_source TEXT,
+                    development_reason TEXT,
                     started_at TEXT,
                     completed_at TEXT
                 );
@@ -127,6 +129,8 @@ class ManagerCourseAssignmentRepositoryTests(unittest.TestCase):
         assigned_at: str,
         assigned_by_user_id: int | None,
         due_at: str | None = None,
+        development_source: str | None = None,
+        development_reason: str | None = None,
         started_at: str | None = None,
         completed_at: str | None = None,
     ) -> None:
@@ -142,10 +146,12 @@ class ManagerCourseAssignmentRepositoryTests(unittest.TestCase):
                     assigned_at,
                     assigned_by_user_id,
                     due_at,
+                    development_source,
+                    development_reason,
                     started_at,
                     completed_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     enrollment_id,
@@ -156,6 +162,8 @@ class ManagerCourseAssignmentRepositoryTests(unittest.TestCase):
                     assigned_at,
                     assigned_by_user_id,
                     due_at,
+                    development_source,
+                    development_reason,
                     started_at,
                     completed_at,
                 ),
@@ -214,6 +222,8 @@ class ManagerCourseAssignmentRepositoryTests(unittest.TestCase):
                     assigned_by_first_name="Anna",
                     assigned_by_last_name="Manager",
                     due_at=None,
+                    development_source=None,
+                    development_reason=None,
                     started_at="2026-08-31 14:00:00",
                     completed_at="2026-08-31 15:00:00",
                 ),
@@ -229,6 +239,8 @@ class ManagerCourseAssignmentRepositoryTests(unittest.TestCase):
                     assigned_by_first_name="Anna",
                     assigned_by_last_name="Manager",
                     due_at=None,
+                    development_source=None,
+                    development_reason=None,
                     started_at="2026-08-31 12:00:00",
                     completed_at=None,
                 ),
@@ -244,6 +256,8 @@ class ManagerCourseAssignmentRepositoryTests(unittest.TestCase):
                     assigned_by_first_name="Anna",
                     assigned_by_last_name="Manager",
                     due_at=None,
+                    development_source=None,
+                    development_reason=None,
                     started_at=None,
                     completed_at=None,
                 ),
@@ -461,6 +475,50 @@ class ManagerCourseAssignmentRepositoryTests(unittest.TestCase):
 
         self.assertEqual(len(records), 1)
         self.assertIsNone(records[0].due_at)
+
+    def test_exposes_development_context_when_present(self) -> None:
+        self._insert_enrollment(
+            enrollment_id=100,
+            user_id=2,
+            course_id=10,
+            status="assigned",
+            progress_percent=0,
+            assigned_at="2026-08-31 10:00:00",
+            assigned_by_user_id=1,
+            development_source="quiz",
+            development_reason="Возвраты",
+        )
+
+        records = self.repository.list_for_member(
+            self.db_path,
+            "company-a",
+            2,
+        )
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].development_source, "quiz")
+        self.assertEqual(records[0].development_reason, "Возвраты")
+
+    def test_development_context_is_none_when_absent(self) -> None:
+        self._insert_enrollment(
+            enrollment_id=100,
+            user_id=2,
+            course_id=10,
+            status="assigned",
+            progress_percent=0,
+            assigned_at="2026-08-31 10:00:00",
+            assigned_by_user_id=1,
+        )
+
+        records = self.repository.list_for_member(
+            self.db_path,
+            "company-a",
+            2,
+        )
+
+        self.assertEqual(len(records), 1)
+        self.assertIsNone(records[0].development_source)
+        self.assertIsNone(records[0].development_reason)
 
 
 if __name__ == "__main__":

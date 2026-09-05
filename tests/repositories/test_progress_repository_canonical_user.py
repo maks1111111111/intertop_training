@@ -78,6 +78,8 @@ class CanonicalUserProgressRepositoryTests(unittest.TestCase):
                     enrollments.assigned_at,
                     enrollments.assigned_by_user_id,
                     enrollments.due_at,
+                    enrollments.development_source,
+                    enrollments.development_reason,
                     enrollments.started_at,
                     enrollments.completed_at
                 FROM enrollments
@@ -834,6 +836,127 @@ class CanonicalUserProgressRepositoryTests(unittest.TestCase):
 
         after = self._enrollment_row("alpha")
         self.assertIsNone(after["due_at"])
+
+    def test_manual_assignment_has_null_development_context(self) -> None:
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+            )
+        )
+
+        enrollment = self._enrollment_row("alpha")
+        self.assertIsNone(enrollment["development_source"])
+        self.assertIsNone(enrollment["development_reason"])
+
+    def test_quiz_development_context_is_persisted(self) -> None:
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                development_source="quiz",
+                development_reason="  Возвраты  ",
+            )
+        )
+
+        enrollment = self._enrollment_row("alpha")
+        self.assertEqual(enrollment["development_source"], "quiz")
+        self.assertEqual(enrollment["development_reason"], "Возвраты")
+
+    def test_practical_development_context_is_persisted(self) -> None:
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                development_source="practical",
+                development_reason="Добавить больше деталей",
+            )
+        )
+
+        enrollment = self._enrollment_row("alpha")
+        self.assertEqual(enrollment["development_source"], "practical")
+        self.assertEqual(
+            enrollment["development_reason"],
+            "Добавить больше деталей",
+        )
+
+    def test_invalid_development_source_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                development_source="unknown",
+                development_reason="Возвраты",
+            )
+
+    def test_blank_development_reason_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                development_source="quiz",
+                development_reason="   ",
+            )
+
+    def test_development_reason_over_200_chars_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                development_source="quiz",
+                development_reason="x" * 201,
+            )
+
+    def test_repeated_assignment_does_not_replace_development_context(self) -> None:
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                development_source="quiz",
+                development_reason="Возвраты",
+            )
+        )
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                development_source="practical",
+                development_reason="Другая причина",
+            )
+        )
+
+        enrollment = self._enrollment_row("alpha")
+        self.assertEqual(enrollment["development_source"], "quiz")
+        self.assertEqual(enrollment["development_reason"], "Возвраты")
+
+    def test_self_started_course_does_not_receive_development_context(self) -> None:
+        self.repository.start_course_for_user(
+            self.db_path,
+            self.user_id,
+            "alpha",
+        )
+
+        self.assertTrue(
+            self.repository.assign_course_to_user(
+                self.db_path,
+                self.user_id,
+                "alpha",
+                development_source="quiz",
+                development_reason="Возвраты",
+            )
+        )
+
+        enrollment = self._enrollment_row("alpha")
+        self.assertIsNone(enrollment["development_source"])
+        self.assertIsNone(enrollment["development_reason"])
 
 
 if __name__ == "__main__":

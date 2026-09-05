@@ -99,6 +99,9 @@ class FakeManagerCourseAssignmentHistoryService:
                     completed_at=None,
                     compliance_status="due_soon",
                     compliance_status_label="Срок скоро",
+                    development_source="quiz",
+                    development_source_label="Зона развития по тестам",
+                    development_reason="Возвраты",
                 ),
                 ManagerCourseAssignmentHistoryItem(
                     course_slug="beta",
@@ -1051,7 +1054,9 @@ class FakeDashboardService:
 
 class FakeManagerCourseAssignmentService:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, int, str, int, Optional[str]]] = []
+        self.calls: list[
+            tuple[str, int, str, int, Optional[str], Optional[str], Optional[str]]
+        ] = []
         self._result_code = "assigned"
 
     def assign_course(
@@ -1062,6 +1067,8 @@ class FakeManagerCourseAssignmentService:
         assigned_by_user_id: int,
         *,
         due_at: Optional[str] = None,
+        development_source: Optional[str] = None,
+        development_reason: Optional[str] = None,
     ) -> ManagerCourseAssignmentResult:
         self.calls.append(
             (
@@ -1070,6 +1077,8 @@ class FakeManagerCourseAssignmentService:
                 course_slug,
                 assigned_by_user_id,
                 due_at,
+                development_source,
+                development_reason,
             )
         )
         if user_id != 2:
@@ -1112,6 +1121,11 @@ class FakeManagerCourseAssignmentService:
             user_id=user_id,
             course_slug=normalized_slug,
         )
+
+
+
+def _assign_course_section(html: str) -> str:
+    return html.split('id="assign-course"', 1)[1].split("</section>", 1)[0]
 
 
 
@@ -2017,7 +2031,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        assign_section = response.text.split('id="assign-course"', 1)[1]
+        assign_section = _assign_course_section(response.text)
         self.assertIn("Зона развития по тестам:", assign_section)
         self.assertIn("Возвраты", assign_section)
 
@@ -2032,7 +2046,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        assign_section = response.text.split('id="assign-course"', 1)[1]
+        assign_section = _assign_course_section(response.text)
         self.assertIn("Зона развития по практическим заданиям:", assign_section)
         self.assertIn("Добавить больше деталей", assign_section)
 
@@ -2047,7 +2061,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        assign_section = response.text.split('id="assign-course"', 1)[1]
+        assign_section = _assign_course_section(response.text)
         self.assertNotIn("Зона развития по тестам:", assign_section)
 
     def test_unknown_development_source_does_not_show_context(self) -> None:
@@ -2061,9 +2075,36 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        assign_section = response.text.split('id="assign-course"', 1)[1]
+        assign_section = _assign_course_section(response.text)
         self.assertNotIn("Зона развития по тестам:", assign_section)
         self.assertNotIn("Зона развития по практическим заданиям:", assign_section)
+
+    def test_development_prefill_includes_hidden_form_fields(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get(
+            "/manager/team/2"
+            "?assign_course=beta"
+            "&development_source=quiz"
+            "&development_reason=Возвраты"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        assign_section = _assign_course_section(response.text)
+        self.assertIn('name="development_source"', assign_section)
+        self.assertIn('value="quiz"', assign_section)
+        self.assertIn('name="development_reason"', assign_section)
+        self.assertIn("Возвраты", assign_section)
+
+    def test_ordinary_assignment_form_has_no_development_hidden_fields(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        assign_section = _assign_course_section(response.text)
+        self.assertNotIn('name="development_source"', assign_section)
+        self.assertNotIn('name="development_reason"', assign_section)
 
     def test_team_member_page_renders_assignment_history(self) -> None:
         self._set_identity("manager")
@@ -2087,6 +2128,15 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("100%", response.text)
         self.assertIn("Срок прохождения", response.text)
         self.assertIn("2026-09-15 18:00:00", response.text)
+
+    def test_team_member_page_renders_assignment_development_reason(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Причина назначения", response.text)
+        self.assertIn("Зона развития по тестам: Возвраты", response.text)
 
     def test_team_member_page_renders_assignment_compliance_summary(self) -> None:
         self._set_identity("manager")
@@ -2233,7 +2283,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(response.headers["location"], "/manager/team/2?assignment=assigned")
         self.assertEqual(
             self.assignment_service.calls,
-            [("intertop", 2, "alpha", 10, None)],
+            [("intertop", 2, "alpha", 10, None, None, None)],
         )
 
     def test_admin_can_assign_course(self) -> None:
@@ -2246,7 +2296,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 303)
-        self.assertEqual(self.assignment_service.calls, [("intertop", 2, "beta", 10, None)])
+        self.assertEqual(self.assignment_service.calls, [("intertop", 2, "beta", 10, None, None, None)])
 
     def test_student_cannot_assign_course(self) -> None:
         self._set_identity("student")
@@ -2292,7 +2342,7 @@ class ManagerTeamPageTests(unittest.TestCase):
 
         self.assertEqual(
             self.assignment_service.calls,
-            [("intertop", 2, "alpha", 10, None)],
+            [("intertop", 2, "alpha", 10, None, None, None)],
         )
 
     def test_assign_course_course_not_found_redirects(self) -> None:
@@ -2351,7 +2401,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(self.assignment_service.calls, [("intertop", 99, "beta", 10, None)])
+        self.assertEqual(self.assignment_service.calls, [("intertop", 99, "beta", 10, None, None, None)])
 
     def test_assign_course_with_valid_due_at_passes_canonical_value(self) -> None:
         self._set_identity("manager")
@@ -2369,7 +2419,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(response.headers["location"], "/manager/team/2?assignment=assigned")
         self.assertEqual(
             self.assignment_service.calls,
-            [("intertop", 2, "alpha", 10, "2026-09-15 18:00:00")],
+            [("intertop", 2, "alpha", 10, "2026-09-15 18:00:00", None, None)],
         )
 
     def test_assign_course_with_blank_due_at_passes_none(self) -> None:
@@ -2387,7 +2437,7 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(response.status_code, 303)
         self.assertEqual(
             self.assignment_service.calls,
-            [("intertop", 2, "alpha", 10, None)],
+            [("intertop", 2, "alpha", 10, None, None, None)],
         )
 
     def test_assign_course_with_malformed_due_at_redirects_with_error(self) -> None:
@@ -2444,6 +2494,94 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(
             response.headers["location"],
             "/manager/team/2?assignment=invalid_due_at",
+        )
+        self.assertEqual(self.assignment_service.calls, [])
+
+    def test_post_quiz_development_assignment_forwards_context(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={
+                "course_slug": "beta",
+                "development_source": "quiz",
+                "development_reason": "Возвраты",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            self.assignment_service.calls,
+            [("intertop", 2, "beta", 10, None, "quiz", "Возвраты")],
+        )
+
+    def test_post_practical_development_assignment_forwards_context(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={
+                "course_slug": "beta",
+                "development_source": "practical",
+                "development_reason": "Добавить больше деталей",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            self.assignment_service.calls,
+            [
+                (
+                    "intertop",
+                    2,
+                    "beta",
+                    10,
+                    None,
+                    "practical",
+                    "Добавить больше деталей",
+                )
+            ],
+        )
+
+    def test_post_tampered_development_source_is_rejected(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={
+                "course_slug": "beta",
+                "development_source": "unknown",
+                "development_reason": "Возвраты",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            response.headers["location"],
+            "/manager/team/2?assignment=assignment_failed",
+        )
+        self.assertEqual(self.assignment_service.calls, [])
+
+    def test_post_blank_development_reason_is_rejected(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.post(
+            "/manager/team/2/assign-course",
+            data={
+                "course_slug": "beta",
+                "development_source": "quiz",
+                "development_reason": "   ",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            response.headers["location"],
+            "/manager/team/2?assignment=assignment_failed",
         )
         self.assertEqual(self.assignment_service.calls, [])
 

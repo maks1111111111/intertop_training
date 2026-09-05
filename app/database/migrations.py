@@ -184,6 +184,29 @@ def migrate_enrollments_due_at(connection: sqlite3.Connection) -> None:
         )
 
 
+def migrate_enrollments_development_context(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add optional development-zone context for explicit course assignments."""
+    columns = _get_table_columns(connection, "enrollments")
+
+    if "development_source" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE enrollments
+            ADD COLUMN development_source TEXT
+            """
+        )
+
+    if "development_reason" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE enrollments
+            ADD COLUMN development_reason TEXT
+            """
+        )
+
+
 def migrate_lessons_table(connection: sqlite3.Connection) -> None:
     columns = _get_table_columns(connection, "lessons")
 
@@ -426,6 +449,7 @@ def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_users_table(connection)
     migrate_enrollments_assignment_author(connection)
     migrate_enrollments_due_at(connection)
+    migrate_enrollments_development_context(connection)
     migrate_lessons_table(connection)
     migrate_quiz_answers_unique_question(connection)
     migrate_knowledge_documents_table(connection)

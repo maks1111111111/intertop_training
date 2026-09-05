@@ -45,6 +45,8 @@ class ManagerCourseAssignmentService:
         assigned_by_user_id: int,
         *,
         due_at: Optional[str] = None,
+        development_source: Optional[str] = None,
+        development_reason: Optional[str] = None,
     ) -> ManagerCourseAssignmentResult:
         """Assign one published course to one tenant member."""
         normalized_company_id = _validate_company_id(company_id)
@@ -92,6 +94,8 @@ class ManagerCourseAssignmentService:
             course.slug,
             assigned_by_user_id=normalized_assigned_by_user_id,
             due_at=due_at,
+            development_source=development_source,
+            development_reason=development_reason,
         )
         if assigned:
             return ManagerCourseAssignmentResult(

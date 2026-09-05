@@ -85,6 +85,10 @@
             >
             <p class="page-meta">Необязательно</p>
         </div>
+        {% if assignment_development_context %}
+        <input type="hidden" name="development_source" value="{{ assignment_development_context.source }}">
+        <input type="hidden" name="development_reason" value="{{ assignment_development_context.reason }}">
+        {% endif %}
         <div class="admin-form-actions">
             <button class="button button-primary" type="submit">Назначить курс</button>
         </div>
@@ -197,6 +201,12 @@
                     <div class="dashboard-metric">
                         <span class="dashboard-metric-label">Завершён</span>
                         <span class="dashboard-metric-value">{{ assignment.completed_at }}</span>
+                    </div>
+                    {% endif %}
+                    {% if assignment.development_source_label and assignment.development_reason %}
+                    <div class="dashboard-metric">
+                        <span class="dashboard-metric-label">Причина назначения</span>
+                        <span class="dashboard-metric-value">{{ assignment.development_source_label }}: {{ assignment.development_reason }}</span>
                     </div>
                     {% endif %}
                 </div>

@@ -562,9 +562,33 @@ def _assignment_development_context(
         normalized_reason = normalized_reason[:200]
 
     return {
+        "source": source,
         "label": _ASSIGNMENT_DEVELOPMENT_SOURCE_LABELS[source],
         "reason": normalized_reason,
     }
+
+
+def _normalize_assignment_development_context(
+    source: Optional[str],
+    reason: Optional[str],
+) -> tuple[Optional[str], Optional[str]]:
+    """Validate optional development-zone context from assignment form input."""
+    normalized_source = (source or "").strip()
+    normalized_reason = (reason or "").strip()
+
+    if not normalized_source and not normalized_reason:
+        return None, None
+
+    if normalized_source not in _ASSIGNMENT_DEVELOPMENT_SOURCE_LABELS:
+        raise ValueError("invalid development context")
+
+    if not normalized_reason:
+        raise ValueError("invalid development context")
+
+    if len(normalized_reason) > 200:
+        raise ValueError("invalid development context")
+
+    return normalized_source, normalized_reason
 
 
 def get_admin_service(
@@ -1135,12 +1159,27 @@ async def manager_team_member_assign_course(
         )
 
     try:
+        development_source, development_reason = (
+            _normalize_assignment_development_context(
+                str(form.get("development_source") or ""),
+                str(form.get("development_reason") or ""),
+            )
+        )
+    except ValueError:
+        return RedirectResponse(
+            url=f"/manager/team/{user_id}?assignment=assignment_failed",
+            status_code=303,
+        )
+
+    try:
         result = assignment_service.assign_course(
             identity.company_id,
             user_id,
             course_slug,
             identity.user_id,
             due_at=due_at,
+            development_source=development_source,
+            development_reason=development_reason,
         )
     except ValueError:
         return RedirectResponse(

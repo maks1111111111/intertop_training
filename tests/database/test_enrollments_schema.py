@@ -10,6 +10,7 @@ from pathlib import Path
 from app.database.db import get_connection, initialize_database
 from app.database.migrations import (
     migrate_enrollments_assignment_author,
+    migrate_enrollments_development_context,
     migrate_enrollments_due_at,
 )
 
@@ -67,6 +68,24 @@ class EnrollmentAssignmentAuthorSchemaTests(unittest.TestCase):
         self.assertIn("due_at", columns)
         self.assertFalse(bool(columns["due_at"]["notnull"]))
         self.assertIsNone(columns["due_at"]["dflt_value"])
+
+    def test_initialize_database_creates_development_context_columns(self) -> None:
+        initialize_database(self.db_path)
+
+        with get_connection(self.db_path) as connection:
+            columns = {
+                row["name"]: row
+                for row in connection.execute(
+                    "PRAGMA table_info(enrollments)"
+                ).fetchall()
+            }
+
+        self.assertIn("development_source", columns)
+        self.assertIn("development_reason", columns)
+        self.assertFalse(bool(columns["development_source"]["notnull"]))
+        self.assertFalse(bool(columns["development_reason"]["notnull"]))
+        self.assertIsNone(columns["development_source"]["dflt_value"])
+        self.assertIsNone(columns["development_reason"]["dflt_value"])
 
     def test_assignment_author_foreign_key_uses_set_null(self) -> None:
         initialize_database(self.db_path)
@@ -245,6 +264,97 @@ class EnrollmentAssignmentAuthorSchemaTests(unittest.TestCase):
 
         self.assertIsNotNone(row)
         self.assertIsNone(row["due_at"])
+
+    def test_development_context_migration_preserves_existing_enrollment(self) -> None:
+        with sqlite3.connect(self.db_path) as connection:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.executescript(
+                """
+                CREATE TABLE users (
+                    id INTEGER PRIMARY KEY
+                );
+
+                CREATE TABLE courses (
+                    id INTEGER PRIMARY KEY,
+                    slug TEXT NOT NULL UNIQUE
+                );
+
+                CREATE TABLE enrollments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    course_id INTEGER NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'assigned',
+                    progress_percent INTEGER NOT NULL DEFAULT 0,
+                    assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    assigned_by_user_id INTEGER,
+                    due_at TEXT,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    UNIQUE(user_id, course_id),
+                    FOREIGN KEY (user_id)
+                        REFERENCES users(id)
+                        ON DELETE CASCADE,
+                    FOREIGN KEY (course_id)
+                        REFERENCES courses(id)
+                        ON DELETE CASCADE
+                );
+
+                INSERT INTO users (id) VALUES (1);
+                INSERT INTO courses (id, slug) VALUES (10, 'alpha');
+
+                INSERT INTO enrollments (
+                    id,
+                    user_id,
+                    course_id,
+                    status,
+                    progress_percent,
+                    assigned_at,
+                    started_at
+                )
+                VALUES (
+                    7,
+                    1,
+                    10,
+                    'assigned',
+                    0,
+                    '2026-08-01 10:00:00',
+                    NULL
+                );
+                """
+            )
+
+            migrate_enrollments_development_context(connection)
+            connection.commit()
+
+            row = connection.execute(
+                """
+                SELECT development_source, development_reason
+                FROM enrollments
+                WHERE id = 7
+                """
+            ).fetchone()
+
+        self.assertIsNotNone(row)
+        self.assertIsNone(row["development_source"])
+        self.assertIsNone(row["development_reason"])
+
+    def test_development_context_migration_is_idempotent(self) -> None:
+        initialize_database(self.db_path)
+
+        with get_connection(self.db_path) as connection:
+            migrate_enrollments_development_context(connection)
+            migrate_enrollments_development_context(connection)
+
+            columns = [
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(enrollments)"
+                ).fetchall()
+            ]
+
+        self.assertEqual(columns.count("development_source"), 1)
+        self.assertEqual(columns.count("development_reason"), 1)
 
     def test_due_at_migration_is_idempotent(self) -> None:
         initialize_database(self.db_path)

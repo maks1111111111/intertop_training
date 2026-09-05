@@ -18,6 +18,11 @@ _STATUS_LABELS = {
     "completed": "Завершён",
 }
 
+_DEVELOPMENT_SOURCE_LABELS = {
+    "quiz": "Зона развития по тестам",
+    "practical": "Зона развития по практическим заданиям",
+}
+
 _COMPLIANCE_STATUS_LABELS = {
     "no_deadline": "Без срока",
     "on_track": "В сроке",
@@ -47,6 +52,9 @@ class ManagerCourseAssignmentHistoryItem:
     completed_at: Optional[str]
     compliance_status: str
     compliance_status_label: str
+    development_source: Optional[str] = None
+    development_source_label: Optional[str] = None
+    development_reason: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -166,6 +174,9 @@ def _to_history_item(
         completed_at=record.completed_at,
         compliance_status=compliance_status,
         compliance_status_label=compliance_status_label,
+        development_source=record.development_source,
+        development_source_label=_development_source_label(record.development_source),
+        development_reason=record.development_reason,
     )
 
 
@@ -221,6 +232,13 @@ def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
         return datetime.strptime(normalized, _TIMESTAMP_FORMAT)
     except ValueError:
         return None
+
+
+def _development_source_label(development_source: Optional[str]) -> Optional[str]:
+    if development_source is None:
+        return None
+
+    return _DEVELOPMENT_SOURCE_LABELS.get(development_source)
 
 
 def _assigned_by_display_name(record: ManagerCourseAssignmentRecord) -> str:
