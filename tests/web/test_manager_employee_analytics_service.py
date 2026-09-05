@@ -5,6 +5,10 @@ from typing import Optional
 
 from app.web.manager_employee_analytics_service import (
     DEVELOPMENT_TOPIC_ACCURACY_PERCENT,
+    IMPACT_CLASSIFICATION_DECLINED,
+    IMPACT_CLASSIFICATION_IMPROVED,
+    IMPACT_CLASSIFICATION_INSUFFICIENT_DATA,
+    IMPACT_CLASSIFICATION_UNCHANGED,
     MIN_PRACTICAL_SIGNAL_OCCURRENCES,
     MIN_TOPIC_ANSWERS,
     STRONG_TOPIC_ACCURACY_PERCENT,
@@ -2798,6 +2802,543 @@ class ManagerEmployeeDevelopmentImpactEvidenceTests(unittest.TestCase):
         self.assertEqual(profile.quiz_development_areas[0].tag, "Returns")
         self.assertEqual(len(profile.practical_development_areas), 1)
         self.assertEqual(topics.topics[0].answers_count, 3)
+
+
+class _RowLikeAnswer:
+    """Supports __getitem__ but not .get(), like sqlite3.Row."""
+
+    def __init__(self, data: dict[str, object]) -> None:
+        self._data = data
+
+    def __getitem__(self, key: str) -> object:
+        return self._data[key]
+
+
+class ManagerEmployeeDevelopmentImpactClassificationTests(unittest.TestCase):
+    ASSIGNED_AT = "2026-09-15 12:00:00"
+
+    def setUp(self) -> None:
+        self.db_path = Path("/tmp/training.db")
+        self.practical_repository = FakePracticalTaskAttemptRepository()
+
+    def _quiz_service(
+        self,
+        answers_by_course: dict[str, list],
+    ) -> ManagerEmployeeAnalyticsService:
+        runtime = TopicAnalyticsFakeRuntime(
+            (_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),)
+        )
+        repository = TopicAnalyticsFakeQuizRepository(answers_by_course)
+        return ManagerEmployeeAnalyticsService(
+            runtime,
+            repository,
+            self.db_path,
+            self.practical_repository,
+        )
+
+    def _practical_service(
+        self,
+        feedback_rows: list[FakeReviewFeedback],
+    ) -> ManagerEmployeeAnalyticsService:
+        self.practical_repository._reviewed_feedback = feedback_rows
+        return ManagerEmployeeAnalyticsService(
+            TopicAnalyticsFakeRuntime(()),
+            TopicAnalyticsFakeQuizRepository({}),
+            self.db_path,
+            self.practical_repository,
+        )
+
+    def test_quiz_classification_improved(self) -> None:
+        service = self._quiz_service(
+            {
+                "alpha": [
+                    _answer_row("q1", is_correct=False, finished_at="2026-09-10 10:00:00"),
+                    _answer_row("q1", is_correct=True, finished_at="2026-09-16 10:00:00"),
+                ],
+            }
+        )
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "quiz", "Returns",
+        )
+
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_IMPROVED)
+        self.assertEqual(result.classification_label, "Есть улучшение")
+
+    def test_quiz_classification_declined(self) -> None:
+        service = self._quiz_service(
+            {
+                "alpha": [
+                    _answer_row("q1", is_correct=True, finished_at="2026-09-10 10:00:00"),
+                    _answer_row("q1", is_correct=False, finished_at="2026-09-16 10:00:00"),
+                ],
+            }
+        )
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "quiz", "Returns",
+        )
+
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_DECLINED)
+        self.assertEqual(result.classification_label, "Есть ухудшение")
+
+    def test_quiz_classification_unchanged(self) -> None:
+        service = self._quiz_service(
+            {
+                "alpha": [
+                    _answer_row("q1", is_correct=True, finished_at="2026-09-10 10:00:00"),
+                    _answer_row("q1", is_correct=False, finished_at="2026-09-10 11:00:00"),
+                    _answer_row("q1", is_correct=True, finished_at="2026-09-16 10:00:00"),
+                    _answer_row("q1", is_correct=False, finished_at="2026-09-16 11:00:00"),
+                ],
+            }
+        )
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "quiz", "Returns",
+        )
+
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_UNCHANGED)
+        self.assertEqual(result.classification_label, "Без заметного изменения")
+
+    def test_quiz_classification_insufficient_data_only_before(self) -> None:
+        service = self._quiz_service(
+            {
+                "alpha": [
+                    _answer_row("q1", is_correct=True, finished_at="2026-09-10 10:00:00"),
+                ],
+            }
+        )
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "quiz", "Returns",
+        )
+
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_INSUFFICIENT_DATA)
+        self.assertEqual(result.classification_label, "Недостаточно данных")
+
+    def test_quiz_classification_insufficient_data_only_after(self) -> None:
+        service = self._quiz_service(
+            {
+                "alpha": [
+                    _answer_row("q1", is_correct=True, finished_at="2026-09-16 10:00:00"),
+                ],
+            }
+        )
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "quiz", "Returns",
+        )
+
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_INSUFFICIENT_DATA)
+
+    def test_quiz_evidence_works_with_row_like_objects_without_get(self) -> None:
+        runtime = TopicAnalyticsFakeRuntime(
+            (_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),)
+        )
+        repository = TopicAnalyticsFakeQuizRepository(
+            {
+                "alpha": [
+                    _RowLikeAnswer(
+                        {
+                            "attempt_id": 1,
+                            "question_id": "q1",
+                            "is_correct": 0,
+                            "finished_at": "2026-09-10 10:00:00",
+                        }
+                    ),
+                    _RowLikeAnswer(
+                        {
+                            "attempt_id": 2,
+                            "question_id": "q1",
+                            "is_correct": 1,
+                            "finished_at": "2026-09-16 10:00:00",
+                        }
+                    ),
+                ],
+            }
+        )
+        service = ManagerEmployeeAnalyticsService(
+            runtime,
+            repository,
+            self.db_path,
+            self.practical_repository,
+        )
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "quiz", "Returns",
+        )
+
+        quiz = result.quiz
+        assert quiz is not None
+        self.assertEqual(quiz.before_answers_count, 1)
+        self.assertEqual(quiz.after_answers_count, 1)
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_IMPROVED)
+
+    def test_quiz_malformed_timestamp_remains_ignored_for_classification(self) -> None:
+        service = self._quiz_service(
+            {
+                "alpha": [
+                    {
+                        "attempt_id": 1,
+                        "question_id": "q1",
+                        "is_correct": 1,
+                        "finished_at": "not-a-timestamp",
+                    },
+                ],
+            }
+        )
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "quiz", "Returns",
+        )
+
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_INSUFFICIENT_DATA)
+
+    def test_practical_classification_improved_when_issue_decreases(self) -> None:
+        service = self._practical_service(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    improvements=("Add detail",),
+                    reviewed_at="2026-09-10 10:00:00",
+                ),
+                FakeReviewFeedback(
+                    id=2,
+                    improvements=("Add detail",),
+                    reviewed_at="2026-09-14 11:00:00",
+                ),
+                FakeReviewFeedback(
+                    id=3,
+                    improvements=("Other issue",),
+                    reviewed_at="2026-09-16 10:00:00",
+                ),
+            ]
+        )
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "practical", "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.before_evidence_count, 2)
+        self.assertEqual(practical.after_evidence_count, 0)
+        self.assertEqual(practical.before_reviewed_attempts_count, 2)
+        self.assertEqual(practical.after_reviewed_attempts_count, 1)
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_IMPROVED)
+
+    def test_practical_classification_improved_when_issue_disappears(self) -> None:
+        service = self._practical_service(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    improvements=("Add detail",),
+                    reviewed_at="2026-09-10 10:00:00",
+                ),
+                FakeReviewFeedback(
+                    id=2,
+                    improvements=("Other issue",),
+                    reviewed_at="2026-09-16 10:00:00",
+                ),
+            ]
+        )
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "practical", "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.after_evidence_count, 0)
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_IMPROVED)
+
+    def test_practical_classification_declined(self) -> None:
+        feedback_rows = [
+            FakeReviewFeedback(
+                id=index,
+                improvements=("Add detail",) if index <= 2 else ("Other issue",),
+                reviewed_at=f"2026-09-{index:02d} 10:00:00",
+            )
+            for index in range(1, 11)
+        ]
+        feedback_rows.append(
+            FakeReviewFeedback(
+                id=11,
+                improvements=("Add detail",),
+                reviewed_at="2026-09-16 10:00:00",
+            )
+        )
+
+        service = self._practical_service(feedback_rows)
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "practical", "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.before_evidence_count, 2)
+        self.assertEqual(practical.before_reviewed_attempts_count, 10)
+        self.assertEqual(practical.after_evidence_count, 1)
+        self.assertEqual(practical.after_reviewed_attempts_count, 1)
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_DECLINED)
+
+    def test_practical_classification_improved_when_rate_falls_despite_raw_count_rising(
+        self,
+    ) -> None:
+        before_rows = [
+            FakeReviewFeedback(
+                id=index,
+                improvements=("Add detail",),
+                reviewed_at=f"2026-09-0{index} 10:00:00",
+            )
+            for index in (1, 2)
+        ]
+        after_rows = [
+            FakeReviewFeedback(
+                id=index,
+                improvements=(
+                    ("Add detail",)
+                    if index in (11, 12, 13)
+                    else ("Other issue",)
+                ),
+                reviewed_at=f"2026-09-{index - 10 + 15} 10:00:00",
+            )
+            for index in range(11, 21)
+        ]
+
+        service = self._practical_service(before_rows + after_rows)
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "practical", "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.before_evidence_count, 2)
+        self.assertEqual(practical.before_reviewed_attempts_count, 2)
+        self.assertEqual(practical.after_evidence_count, 3)
+        self.assertEqual(practical.after_reviewed_attempts_count, 10)
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_IMPROVED)
+
+    def test_practical_classification_declined_when_rate_rises_despite_raw_count_falling(
+        self,
+    ) -> None:
+        before_rows = [
+            FakeReviewFeedback(
+                id=index,
+                improvements=(
+                    ("Add detail",)
+                    if index in (1, 2)
+                    else ("Other issue",)
+                ),
+                reviewed_at=f"2026-09-{index:02d} 10:00:00",
+            )
+            for index in range(1, 11)
+        ]
+        after_rows = [
+            FakeReviewFeedback(
+                id=11,
+                improvements=("Add detail",),
+                reviewed_at="2026-09-16 10:00:00",
+            ),
+        ]
+
+        service = self._practical_service(before_rows + after_rows)
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "practical", "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.before_evidence_count, 2)
+        self.assertEqual(practical.before_reviewed_attempts_count, 10)
+        self.assertEqual(practical.after_evidence_count, 1)
+        self.assertEqual(practical.after_reviewed_attempts_count, 1)
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_DECLINED)
+
+    def test_practical_classification_unchanged_when_rates_equal_despite_different_raw_counts(
+        self,
+    ) -> None:
+        before_rows = [
+            FakeReviewFeedback(
+                id=1,
+                improvements=("Add detail",),
+                reviewed_at="2026-09-10 10:00:00",
+            ),
+            FakeReviewFeedback(
+                id=2,
+                improvements=("Other issue",),
+                reviewed_at="2026-09-11 10:00:00",
+            ),
+        ]
+        after_rows = [
+            FakeReviewFeedback(
+                id=index,
+                improvements=(
+                    ("Add detail",)
+                    if index in (3, 4)
+                    else ("Other issue",)
+                ),
+                reviewed_at=f"2026-09-{index + 13} 10:00:00",
+            )
+            for index in range(3, 7)
+        ]
+
+        service = self._practical_service(before_rows + after_rows)
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "practical", "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.before_evidence_count, 1)
+        self.assertEqual(practical.before_reviewed_attempts_count, 2)
+        self.assertEqual(practical.after_evidence_count, 2)
+        self.assertEqual(practical.after_reviewed_attempts_count, 4)
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_UNCHANGED)
+
+    def test_practical_classification_unchanged(self) -> None:
+        service = self._practical_service(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    improvements=("Add detail",),
+                    reviewed_at="2026-09-10 10:00:00",
+                ),
+                FakeReviewFeedback(
+                    id=2,
+                    improvements=("Add detail",),
+                    reviewed_at="2026-09-16 10:00:00",
+                ),
+            ]
+        )
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "practical", "Add detail",
+        )
+
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_UNCHANGED)
+
+    def test_practical_classification_insufficient_data_no_before_target(self) -> None:
+        service = self._practical_service(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    improvements=("Other issue",),
+                    reviewed_at="2026-09-16 10:00:00",
+                ),
+            ]
+        )
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "practical", "Add detail",
+        )
+
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_INSUFFICIENT_DATA)
+
+    def test_practical_classification_insufficient_data_no_after_reviewed_attempts(
+        self,
+    ) -> None:
+        service = self._practical_service(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    improvements=("Add detail",),
+                    reviewed_at="2026-09-10 10:00:00",
+                ),
+            ]
+        )
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "practical", "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.before_evidence_count, 1)
+        self.assertEqual(practical.after_reviewed_attempts_count, 0)
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_INSUFFICIENT_DATA)
+
+    def test_practical_unrelated_improvements_count_toward_reviewed_attempts(self) -> None:
+        service = self._practical_service(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    improvements=("Add detail",),
+                    reviewed_at="2026-09-10 10:00:00",
+                ),
+                FakeReviewFeedback(
+                    id=2,
+                    improvements=("Other issue",),
+                    reviewed_at="2026-09-16 10:00:00",
+                ),
+            ]
+        )
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "practical", "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.before_reviewed_attempts_count, 1)
+        self.assertEqual(practical.after_reviewed_attempts_count, 1)
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_IMPROVED)
+
+    def test_practical_malformed_reviewed_at_not_counted_as_reviewed(self) -> None:
+        service = self._practical_service(
+            [
+                FakeReviewFeedback(
+                    id=1,
+                    improvements=("Add detail",),
+                    reviewed_at="2026-09-10 10:00:00",
+                ),
+                FakeReviewFeedback(
+                    id=2,
+                    improvements=("Add detail",),
+                    reviewed_at="not-a-timestamp",
+                ),
+                FakeReviewFeedback(
+                    id=3,
+                    improvements=("Other issue",),
+                    reviewed_at=None,
+                ),
+            ]
+        )
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "practical", "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.before_reviewed_attempts_count, 1)
+        self.assertEqual(practical.after_reviewed_attempts_count, 0)
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_INSUFFICIENT_DATA)
+
+    def test_exact_at_deadline_remains_in_after_window_for_classification(self) -> None:
+        service = self._quiz_service(
+            {
+                "alpha": [
+                    _answer_row("q1", is_correct=False, finished_at="2026-09-10 10:00:00"),
+                    _answer_row("q1", is_correct=True, finished_at=self.ASSIGNED_AT),
+                ],
+            }
+        )
+
+        result = service.get_development_impact_evidence(
+            42, self.ASSIGNED_AT, "quiz", "Returns",
+        )
+
+        quiz = result.quiz
+        assert quiz is not None
+        self.assertEqual(quiz.before_answers_count, 1)
+        self.assertEqual(quiz.after_answers_count, 1)
+        self.assertEqual(result.classification, IMPACT_CLASSIFICATION_IMPROVED)
 
 
 if __name__ == "__main__":

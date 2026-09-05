@@ -135,6 +135,8 @@ class EmployeePracticalSignalTemporalEvidence:
     text: str
     before_evidence_count: int
     after_evidence_count: int
+    before_reviewed_attempts_count: int
+    after_reviewed_attempts_count: int
 
 
 @dataclass(frozen=True)
@@ -144,6 +146,8 @@ class EmployeeDevelopmentImpactEvidence:
     development_reason: str
     quiz: Optional[EmployeeQuizTopicTemporalEvidence]
     practical: Optional[EmployeePracticalSignalTemporalEvidence]
+    classification: str
+    classification_label: str
 
 
 @dataclass(frozen=True)
@@ -177,6 +181,18 @@ MIN_TOPIC_ANSWERS = 3
 STRONG_TOPIC_ACCURACY_PERCENT = 80.0
 DEVELOPMENT_TOPIC_ACCURACY_PERCENT = 70.0
 MIN_PRACTICAL_SIGNAL_OCCURRENCES = 2
+
+IMPACT_CLASSIFICATION_IMPROVED = "improved"
+IMPACT_CLASSIFICATION_UNCHANGED = "unchanged"
+IMPACT_CLASSIFICATION_DECLINED = "declined"
+IMPACT_CLASSIFICATION_INSUFFICIENT_DATA = "insufficient_data"
+
+IMPACT_CLASSIFICATION_LABELS = {
+    IMPACT_CLASSIFICATION_IMPROVED: "Есть улучшение",
+    IMPACT_CLASSIFICATION_UNCHANGED: "Без заметного изменения",
+    IMPACT_CLASSIFICATION_DECLINED: "Есть ухудшение",
+    IMPACT_CLASSIFICATION_INSUFFICIENT_DATA: "Недостаточно данных",
+}
 
 
 @dataclass
@@ -373,6 +389,7 @@ class ManagerEmployeeAnalyticsService:
                 assigned_at_dt,
                 normalized_reason,
             )
+            classification = _classify_quiz_impact(quiz_evidence)
         elif normalized_source == "practical":
             feedback_rows = (
                 self._practical_task_attempt_repository.get_reviewed_feedback_for_user(
@@ -385,6 +402,7 @@ class ManagerEmployeeAnalyticsService:
                 assigned_at_dt,
                 normalized_reason,
             )
+            classification = _classify_practical_impact(practical_evidence)
 
         return EmployeeDevelopmentImpactEvidence(
             assigned_at=normalized_assigned_at,
@@ -392,6 +410,8 @@ class ManagerEmployeeAnalyticsService:
             development_reason=normalized_reason,
             quiz=quiz_evidence,
             practical=practical_evidence,
+            classification=classification,
+            classification_label=IMPACT_CLASSIFICATION_LABELS[classification],
         )
 
     def get_development_profile(self, user_id: int) -> EmployeeDevelopmentProfile:
@@ -524,6 +544,15 @@ def _validate_assigned_at(assigned_at: str) -> str:
     return normalized
 
 
+def _mapping_value(mapping: object, key: str) -> object:
+    if hasattr(mapping, "get"):
+        return mapping.get(key)
+    try:
+        return mapping[key]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
 def _parse_evidence_timestamp(value: object) -> Optional[datetime]:
     if value is None or not isinstance(value, str):
         return None
@@ -580,7 +609,9 @@ def _build_quiz_temporal_evidence(
             if not any(tag.casefold() == reason_key for tag in normalized_tags):
                 continue
 
-            finished_at = _parse_evidence_timestamp(answer.get("finished_at"))
+            finished_at = _parse_evidence_timestamp(
+                _mapping_value(answer, "finished_at"),
+            )
             if finished_at is None:
                 continue
 
@@ -619,11 +650,18 @@ def _build_practical_temporal_evidence(
     reason_key = development_reason.casefold()
     before_evidence_count = 0
     after_evidence_count = 0
+    before_reviewed_attempts_count = 0
+    after_reviewed_attempts_count = 0
 
     for row in feedback_rows:
         reviewed_at = _parse_evidence_timestamp(getattr(row, "reviewed_at", None))
         if reviewed_at is None:
             continue
+
+        if reviewed_at < assigned_at:
+            before_reviewed_attempts_count += 1
+        else:
+            after_reviewed_attempts_count += 1
 
         improvements_in_attempt: set[str] = set()
         matched = False
@@ -652,7 +690,51 @@ def _build_practical_temporal_evidence(
         text=development_reason,
         before_evidence_count=before_evidence_count,
         after_evidence_count=after_evidence_count,
+        before_reviewed_attempts_count=before_reviewed_attempts_count,
+        after_reviewed_attempts_count=after_reviewed_attempts_count,
     )
+
+
+def _classify_quiz_impact(
+    evidence: EmployeeQuizTopicTemporalEvidence,
+) -> str:
+    if (
+        evidence.before_answers_count <= 0
+        or evidence.after_answers_count <= 0
+        or evidence.before_accuracy_percent is None
+        or evidence.after_accuracy_percent is None
+    ):
+        return IMPACT_CLASSIFICATION_INSUFFICIENT_DATA
+
+    if evidence.after_accuracy_percent > evidence.before_accuracy_percent:
+        return IMPACT_CLASSIFICATION_IMPROVED
+    if evidence.after_accuracy_percent < evidence.before_accuracy_percent:
+        return IMPACT_CLASSIFICATION_DECLINED
+    return IMPACT_CLASSIFICATION_UNCHANGED
+
+
+def _classify_practical_impact(
+    evidence: EmployeePracticalSignalTemporalEvidence,
+) -> str:
+    if (
+        evidence.before_evidence_count <= 0
+        or evidence.before_reviewed_attempts_count <= 0
+        or evidence.after_reviewed_attempts_count <= 0
+    ):
+        return IMPACT_CLASSIFICATION_INSUFFICIENT_DATA
+
+    before_rate = (
+        evidence.before_evidence_count / evidence.before_reviewed_attempts_count
+    )
+    after_rate = (
+        evidence.after_evidence_count / evidence.after_reviewed_attempts_count
+    )
+
+    if after_rate < before_rate:
+        return IMPACT_CLASSIFICATION_IMPROVED
+    if after_rate > before_rate:
+        return IMPACT_CLASSIFICATION_DECLINED
+    return IMPACT_CLASSIFICATION_UNCHANGED
 
 
 def _normalize_practical_signal(text: object) -> Optional[str]:
