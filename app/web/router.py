@@ -536,6 +536,37 @@ def _selected_assign_course_slug(
     return None
 
 
+_ASSIGNMENT_DEVELOPMENT_SOURCE_LABELS = {
+    "quiz": "Зона развития по тестам",
+    "practical": "Зона развития по практическим заданиям",
+}
+
+
+def _assignment_development_context(
+    source: Optional[str],
+    reason: Optional[str],
+    selected_course_slug: Optional[str],
+) -> Optional[dict[str, str]]:
+    """Return development-zone context for the assignment form when valid."""
+    if selected_course_slug is None:
+        return None
+
+    if source not in _ASSIGNMENT_DEVELOPMENT_SOURCE_LABELS:
+        return None
+
+    normalized_reason = (reason or "").strip()
+    if not normalized_reason:
+        return None
+
+    if len(normalized_reason) > 200:
+        normalized_reason = normalized_reason[:200]
+
+    return {
+        "label": _ASSIGNMENT_DEVELOPMENT_SOURCE_LABELS[source],
+        "reason": normalized_reason,
+    }
+
+
 def get_admin_service(
     runtime: ContentRuntime = Depends(get_content_runtime),
 ) -> AdminService:
@@ -1041,6 +1072,11 @@ def manager_team_member_page(
         request.query_params.get("assign_course"),
         assignable_courses,
     )
+    assignment_development_context = _assignment_development_context(
+        request.query_params.get("development_source"),
+        request.query_params.get("development_reason"),
+        selected_assign_course_slug,
+    )
     return templates.TemplateResponse(
         request,
         "manager_team_member.html",
@@ -1051,6 +1087,7 @@ def manager_team_member_page(
             "courses_count": len(courses),
             "assignable_courses": assignable_courses,
             "selected_assign_course_slug": selected_assign_course_slug,
+            "assignment_development_context": assignment_development_context,
             "assignment_message": assignment_message,
             "assignment_is_error": assignment_is_error,
             "assignment_history": assignment_history,

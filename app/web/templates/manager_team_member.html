@@ -45,6 +45,13 @@
     {% endif %}
     {% endif %}
 
+    {% if assignment_development_context %}
+    <p class="page-meta">
+        {{ assignment_development_context.label }}:
+        {{ assignment_development_context.reason }}
+    </p>
+    {% endif %}
+
     {% if assignable_courses %}
     <form
         class="admin-create-form"
@@ -427,7 +434,7 @@
                             {% if course.can_assign %}
                             <a
                                 class="button button-primary button-small"
-                                href="/manager/team/{{ member.user_id }}?assign_course={{ course.course_slug | urlencode }}#assign-course"
+                                href="/manager/team/{{ member.user_id }}?assign_course={{ course.course_slug | urlencode }}&amp;development_source=quiz&amp;development_reason={{ topic.tag | urlencode }}#assign-course"
                             >Назначить курс</a>
                             {% endif %}
                         </div>
@@ -517,7 +524,7 @@
                             {% if source.can_assign %}
                             <a
                                 class="button button-primary button-small"
-                                href="/manager/team/{{ member.user_id }}?assign_course={{ source.course_slug | urlencode }}#assign-course"
+                                href="/manager/team/{{ member.user_id }}?assign_course={{ source.course_slug | urlencode }}&amp;development_source=practical&amp;development_reason={{ signal.text | urlencode }}#assign-course"
                             >Назначить курс</a>
                             {% endif %}
                         </div>

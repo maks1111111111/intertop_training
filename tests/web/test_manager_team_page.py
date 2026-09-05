@@ -1750,9 +1750,10 @@ class ManagerTeamPageTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(
-            'href="/manager/team/2?assign_course=beta#assign-course"',
+            'href="/manager/team/2?assign_course=beta&amp;development_source=quiz&amp;development_reason=',
             response.text,
         )
+        self.assertIn("development_reason=", response.text)
         self.assertNotIn(
             '<input type="hidden" name="course_slug" value="beta">',
             response.text,
@@ -1884,13 +1885,11 @@ class ManagerTeamPageTests(unittest.TestCase):
         practical_assign_links = [
             link
             for link in response.text.split('href="')
-            if "assign_course=beta" in link and "#assign-course" in link
+            if "assign_course=beta" in link
+            and "development_source=practical" in link
+            and "#assign-course" in link
         ]
         self.assertTrue(practical_assign_links)
-        self.assertIn(
-            '/manager/team/2?assign_course=beta#assign-course"',
-            response.text,
-        )
         self.assertNotIn(
             '<input type="hidden" name="course_slug" value="beta">',
             response.text,
@@ -2003,9 +2002,68 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Beta Course / Removed Lesson", response.text)
         self.assertNotIn('href="/courses/beta/lessons/removed_lesson"', response.text)
         self.assertIn(
-            'href="/manager/team/2?assign_course=beta#assign-course"',
+            'href="/manager/team/2?assign_course=beta&amp;development_source=practical&amp;development_reason=',
             response.text,
         )
+
+    def test_quiz_development_assign_link_preserves_context_on_prefill(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get(
+            "/manager/team/2"
+            "?assign_course=beta"
+            "&development_source=quiz"
+            "&development_reason=Возвраты"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        assign_section = response.text.split('id="assign-course"', 1)[1]
+        self.assertIn("Зона развития по тестам:", assign_section)
+        self.assertIn("Возвраты", assign_section)
+
+    def test_practical_development_assign_link_preserves_context_on_prefill(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get(
+            "/manager/team/2"
+            "?assign_course=beta"
+            "&development_source=practical"
+            "&development_reason=Добавить+больше+деталей"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        assign_section = response.text.split('id="assign-course"', 1)[1]
+        self.assertIn("Зона развития по практическим заданиям:", assign_section)
+        self.assertIn("Добавить больше деталей", assign_section)
+
+    def test_invalid_assign_course_does_not_show_development_context(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get(
+            "/manager/team/2"
+            "?assign_course=gamma"
+            "&development_source=quiz"
+            "&development_reason=Возвраты"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        assign_section = response.text.split('id="assign-course"', 1)[1]
+        self.assertNotIn("Зона развития по тестам:", assign_section)
+
+    def test_unknown_development_source_does_not_show_context(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get(
+            "/manager/team/2"
+            "?assign_course=beta"
+            "&development_source=unknown"
+            "&development_reason=Возвраты"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        assign_section = response.text.split('id="assign-course"', 1)[1]
+        self.assertNotIn("Зона развития по тестам:", assign_section)
+        self.assertNotIn("Зона развития по практическим заданиям:", assign_section)
 
     def test_team_member_page_renders_assignment_history(self) -> None:
         self._set_identity("manager")
