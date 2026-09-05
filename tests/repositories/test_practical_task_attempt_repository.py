@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 from app.ai.review_interfaces import ReviewFeedback, ReviewResult
@@ -854,6 +855,7 @@ class PracticalTaskAttemptRepositoryTests(unittest.TestCase):
         self.assertEqual(feedback_rows[0].lesson_slug, "lesson_01")
         self.assertEqual(feedback_rows[0].strengths, ("Strong empathy",))
         self.assertEqual(feedback_rows[0].improvements, ("Improve closing",))
+        self.assertIsNotNone(feedback_rows[0].reviewed_at)
         self.assertFalse(hasattr(feedback_rows[0], "learner_answer"))
 
     def test_get_reviewed_feedback_for_user_excludes_other_users(self) -> None:
@@ -907,6 +909,108 @@ class PracticalTaskAttemptRepositoryTests(unittest.TestCase):
                         self.db_path,
                         user_id=invalid_user_id,
                     )
+
+    def test_get_reviewed_feedback_for_user_returns_reviewed_at_timestamp(self) -> None:
+        reviewed_id = self._create_reviewed_attempt_for_user(user_id=self.web_user_id)
+
+        feedback_rows = repository.get_reviewed_feedback_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+        )
+
+        self.assertEqual(len(feedback_rows), 1)
+        self.assertEqual(feedback_rows[0].id, reviewed_id)
+        self.assertIsNotNone(feedback_rows[0].reviewed_at)
+        parsed = datetime.strptime(
+            feedback_rows[0].reviewed_at,
+            "%Y-%m-%d %H:%M:%S",
+        )
+        self.assertIsInstance(parsed, datetime)
+
+    def test_get_reviewed_feedback_for_user_ordering_uses_reviewed_at(self) -> None:
+        first_id = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_01",
+            task_title="First task",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Answer one",
+        )
+        second_id = repository.create_attempt_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+            course_slug="web-course",
+            lesson_slug="lesson_02",
+            task_title="Second task",
+            task_description="Description",
+            expected_result="Expected",
+            learner_answer="Answer two",
+        )
+        assert first_id is not None and second_id is not None
+
+        repository.complete_review(
+            self.db_path,
+            first_id,
+            _sample_review_result(improvements=("Earlier",)),
+        )
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                UPDATE practical_task_attempts
+                SET reviewed_at = '2026-08-20 10:00:00'
+                WHERE id = ?
+                """,
+                (first_id,),
+            )
+            connection.commit()
+
+        repository.complete_review(
+            self.db_path,
+            second_id,
+            _sample_review_result(improvements=("Later",)),
+        )
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                UPDATE practical_task_attempts
+                SET reviewed_at = '2026-08-21 10:00:00'
+                WHERE id = ?
+                """,
+                (second_id,),
+            )
+            connection.commit()
+
+        feedback_rows = repository.get_reviewed_feedback_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+        )
+
+        self.assertEqual([row.id for row in feedback_rows], [first_id, second_id])
+        self.assertEqual(feedback_rows[0].reviewed_at, "2026-08-20 10:00:00")
+        self.assertEqual(feedback_rows[1].reviewed_at, "2026-08-21 10:00:00")
+
+    def test_get_reviewed_feedback_for_user_skips_null_reviewed_at_safely(self) -> None:
+        reviewed_id = self._create_reviewed_attempt_for_user(user_id=self.web_user_id)
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                UPDATE practical_task_attempts
+                SET reviewed_at = NULL
+                WHERE id = ?
+                """,
+                (reviewed_id,),
+            )
+            connection.commit()
+
+        feedback_rows = repository.get_reviewed_feedback_for_user(
+            self.db_path,
+            user_id=self.web_user_id,
+        )
+
+        self.assertEqual(len(feedback_rows), 1)
+        self.assertIsNone(feedback_rows[0].reviewed_at)
 
 
 if __name__ == "__main__":

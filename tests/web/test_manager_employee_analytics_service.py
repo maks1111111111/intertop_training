@@ -297,12 +297,13 @@ def _answer_row(
     question_id: str,
     *,
     is_correct: bool,
+    finished_at: str = "2026-08-20 12:00:00",
 ) -> dict[str, object]:
     return {
         "attempt_id": 1,
         "question_id": question_id,
         "is_correct": 1 if is_correct else 0,
-        "finished_at": "2026-08-20 12:00:00",
+        "finished_at": finished_at,
     }
 
 
@@ -1273,6 +1274,7 @@ class FakeReviewFeedback:
         lesson_slug: str = "lesson_01",
         strengths=(),
         improvements=(),
+        reviewed_at: Optional[str] = "2026-08-20 12:00:00",
     ) -> None:
         self.id = id
         self.status = status
@@ -1280,6 +1282,7 @@ class FakeReviewFeedback:
         self.lesson_slug = lesson_slug
         self.strengths = strengths
         self.improvements = improvements
+        self.reviewed_at = reviewed_at
 
 
 class ManagerEmployeeDevelopmentProfileTests(unittest.TestCase):
@@ -2165,6 +2168,636 @@ class ManagerEmployeeQuizTopicEvidenceTests(unittest.TestCase):
             repository.finished_answer_calls.count((self.db_path, 42, "alpha")),
             3,
         )
+
+
+class ManagerEmployeeDevelopmentImpactEvidenceTests(unittest.TestCase):
+    ASSIGNED_AT = "2026-09-15 12:00:00"
+
+    def setUp(self) -> None:
+        self.db_path = Path("/tmp/training.db")
+        self.quiz_repository = TopicAnalyticsFakeQuizRepository({})
+        self.practical_repository = FakePracticalTaskAttemptRepository()
+        self.service = ManagerEmployeeAnalyticsService(
+            TopicAnalyticsFakeRuntime(()),
+            self.quiz_repository,
+            self.db_path,
+            self.practical_repository,
+        )
+
+    def test_quiz_evidence_only_before_assignment(self) -> None:
+        runtime = TopicAnalyticsFakeRuntime(
+            (_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),)
+        )
+        repository = TopicAnalyticsFakeQuizRepository(
+            {
+                "alpha": [
+                    _answer_row(
+                        "q1",
+                        is_correct=True,
+                        finished_at="2026-09-10 10:00:00",
+                    ),
+                    _answer_row(
+                        "q1",
+                        is_correct=False,
+                        finished_at="2026-09-14 11:00:00",
+                    ),
+                ],
+            }
+        )
+        service = ManagerEmployeeAnalyticsService(
+            runtime,
+            repository,
+            self.db_path,
+            self.practical_repository,
+        )
+
+        result = service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "quiz",
+            "Returns",
+        )
+
+        self.assertIsNotNone(result.quiz)
+        self.assertIsNone(result.practical)
+        quiz = result.quiz
+        assert quiz is not None
+        self.assertEqual(quiz.tag, "Returns")
+        self.assertEqual(quiz.before_answers_count, 2)
+        self.assertEqual(quiz.before_correct_answers_count, 1)
+        self.assertEqual(quiz.after_answers_count, 0)
+        self.assertEqual(quiz.after_accuracy_percent, None)
+        self.assertEqual(quiz.before_accuracy_percent, 50.0)
+
+    def test_quiz_evidence_only_after_assignment(self) -> None:
+        runtime = TopicAnalyticsFakeRuntime(
+            (_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),)
+        )
+        repository = TopicAnalyticsFakeQuizRepository(
+            {
+                "alpha": [
+                    _answer_row(
+                        "q1",
+                        is_correct=True,
+                        finished_at="2026-09-16 10:00:00",
+                    ),
+                ],
+            }
+        )
+        service = ManagerEmployeeAnalyticsService(
+            runtime,
+            repository,
+            self.db_path,
+            self.practical_repository,
+        )
+
+        result = service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "quiz",
+            "Returns",
+        )
+
+        quiz = result.quiz
+        assert quiz is not None
+        self.assertEqual(quiz.before_answers_count, 0)
+        self.assertEqual(quiz.after_answers_count, 1)
+        self.assertEqual(quiz.after_correct_answers_count, 1)
+        self.assertEqual(quiz.after_accuracy_percent, 100.0)
+        self.assertIsNone(quiz.before_accuracy_percent)
+
+    def test_quiz_evidence_mixed_before_and_after(self) -> None:
+        runtime = TopicAnalyticsFakeRuntime(
+            (_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),)
+        )
+        repository = TopicAnalyticsFakeQuizRepository(
+            {
+                "alpha": [
+                    _answer_row(
+                        "q1",
+                        is_correct=True,
+                        finished_at="2026-09-10 10:00:00",
+                    ),
+                    _answer_row(
+                        "q1",
+                        is_correct=False,
+                        finished_at="2026-09-16 10:00:00",
+                    ),
+                ],
+            }
+        )
+        service = ManagerEmployeeAnalyticsService(
+            runtime,
+            repository,
+            self.db_path,
+            self.practical_repository,
+        )
+
+        result = service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "quiz",
+            "Returns",
+        )
+
+        quiz = result.quiz
+        assert quiz is not None
+        self.assertEqual(quiz.before_answers_count, 1)
+        self.assertEqual(quiz.after_answers_count, 1)
+        self.assertEqual(quiz.before_accuracy_percent, 100.0)
+        self.assertEqual(quiz.after_accuracy_percent, 0.0)
+
+    def test_quiz_evidence_exactly_at_deadline_counts_as_after(self) -> None:
+        runtime = TopicAnalyticsFakeRuntime(
+            (_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),)
+        )
+        repository = TopicAnalyticsFakeQuizRepository(
+            {
+                "alpha": [
+                    _answer_row(
+                        "q1",
+                        is_correct=True,
+                        finished_at=self.ASSIGNED_AT,
+                    ),
+                ],
+            }
+        )
+        service = ManagerEmployeeAnalyticsService(
+            runtime,
+            repository,
+            self.db_path,
+            self.practical_repository,
+        )
+
+        result = service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "quiz",
+            "Returns",
+        )
+
+        quiz = result.quiz
+        assert quiz is not None
+        self.assertEqual(quiz.before_answers_count, 0)
+        self.assertEqual(quiz.after_answers_count, 1)
+
+    def test_quiz_evidence_ignores_unrelated_tags(self) -> None:
+        runtime = TopicAnalyticsFakeRuntime(
+            (
+                _course(
+                    "alpha",
+                    quiz=_quiz(
+                        _question("q1", ["Returns"]),
+                        _question("q2", ["Customer"]),
+                    ),
+                ),
+            )
+        )
+        repository = TopicAnalyticsFakeQuizRepository(
+            {
+                "alpha": [
+                    _answer_row("q1", is_correct=True, finished_at="2026-09-10 10:00:00"),
+                    _answer_row("q2", is_correct=False, finished_at="2026-09-10 11:00:00"),
+                ],
+            }
+        )
+        service = ManagerEmployeeAnalyticsService(
+            runtime,
+            repository,
+            self.db_path,
+            self.practical_repository,
+        )
+
+        result = service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "quiz",
+            "Returns",
+        )
+
+        quiz = result.quiz
+        assert quiz is not None
+        self.assertEqual(quiz.before_answers_count, 1)
+
+    def test_quiz_evidence_tag_matching_is_case_insensitive(self) -> None:
+        runtime = TopicAnalyticsFakeRuntime(
+            (_course("alpha", quiz=_quiz(_question("q1", [" returns "]))),)
+        )
+        repository = TopicAnalyticsFakeQuizRepository(
+            {
+                "alpha": [
+                    _answer_row("q1", is_correct=True, finished_at="2026-09-10 10:00:00"),
+                ],
+            }
+        )
+        service = ManagerEmployeeAnalyticsService(
+            runtime,
+            repository,
+            self.db_path,
+            self.practical_repository,
+        )
+
+        result = service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "quiz",
+            "RETURNS",
+        )
+
+        quiz = result.quiz
+        assert quiz is not None
+        self.assertEqual(quiz.tag, "RETURNS")
+        self.assertEqual(quiz.before_answers_count, 1)
+
+    def test_quiz_evidence_duplicate_matching_tags_count_once(self) -> None:
+        runtime = TopicAnalyticsFakeRuntime(
+            (_course("alpha", quiz=_quiz(_question("q1", ["Returns", " returns "]))),)
+        )
+        repository = TopicAnalyticsFakeQuizRepository(
+            {
+                "alpha": [
+                    _answer_row("q1", is_correct=True, finished_at="2026-09-10 10:00:00"),
+                ],
+            }
+        )
+        service = ManagerEmployeeAnalyticsService(
+            runtime,
+            repository,
+            self.db_path,
+            self.practical_repository,
+        )
+
+        result = service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "quiz",
+            "Returns",
+        )
+
+        quiz = result.quiz
+        assert quiz is not None
+        self.assertEqual(quiz.before_answers_count, 1)
+
+    def test_quiz_evidence_skips_malformed_finished_at(self) -> None:
+        runtime = TopicAnalyticsFakeRuntime(
+            (_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),)
+        )
+        repository = TopicAnalyticsFakeQuizRepository(
+            {
+                "alpha": [
+                    {
+                        "attempt_id": 1,
+                        "question_id": "q1",
+                        "is_correct": 1,
+                        "finished_at": "not-a-timestamp",
+                    },
+                ],
+            }
+        )
+        service = ManagerEmployeeAnalyticsService(
+            runtime,
+            repository,
+            self.db_path,
+            self.practical_repository,
+        )
+
+        result = service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "quiz",
+            "Returns",
+        )
+
+        quiz = result.quiz
+        assert quiz is not None
+        self.assertEqual(quiz.before_answers_count, 0)
+        self.assertEqual(quiz.after_answers_count, 0)
+
+    def test_quiz_evidence_skips_unknown_question_id(self) -> None:
+        runtime = TopicAnalyticsFakeRuntime(
+            (_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),)
+        )
+        repository = TopicAnalyticsFakeQuizRepository(
+            {
+                "alpha": [
+                    _answer_row("missing", is_correct=True, finished_at="2026-09-10 10:00:00"),
+                ],
+            }
+        )
+        service = ManagerEmployeeAnalyticsService(
+            runtime,
+            repository,
+            self.db_path,
+            self.practical_repository,
+        )
+
+        result = service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "quiz",
+            "Returns",
+        )
+
+        quiz = result.quiz
+        assert quiz is not None
+        self.assertEqual(quiz.before_answers_count, 0)
+
+    def test_practical_evidence_only_before_assignment(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(
+                id=1,
+                improvements=("Add detail",),
+                reviewed_at="2026-09-10 10:00:00",
+            ),
+            FakeReviewFeedback(
+                id=2,
+                improvements=("Add detail",),
+                reviewed_at="2026-09-14 11:00:00",
+            ),
+        ]
+
+        result = self.service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "practical",
+            "Add detail",
+        )
+
+        self.assertIsNone(result.quiz)
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.text, "Add detail")
+        self.assertEqual(practical.before_evidence_count, 2)
+        self.assertEqual(practical.after_evidence_count, 0)
+
+    def test_practical_evidence_only_after_assignment(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(
+                id=1,
+                improvements=("Add detail",),
+                reviewed_at="2026-09-16 10:00:00",
+            ),
+        ]
+
+        result = self.service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "practical",
+            "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.before_evidence_count, 0)
+        self.assertEqual(practical.after_evidence_count, 1)
+
+    def test_practical_evidence_mixed_before_and_after(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(
+                id=1,
+                improvements=("Add detail",),
+                reviewed_at="2026-09-10 10:00:00",
+            ),
+            FakeReviewFeedback(
+                id=2,
+                improvements=("Add detail",),
+                reviewed_at="2026-09-16 10:00:00",
+            ),
+        ]
+
+        result = self.service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "practical",
+            "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.before_evidence_count, 1)
+        self.assertEqual(practical.after_evidence_count, 1)
+
+    def test_practical_evidence_exactly_at_deadline_counts_as_after(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(
+                id=1,
+                improvements=("Add detail",),
+                reviewed_at=self.ASSIGNED_AT,
+            ),
+        ]
+
+        result = self.service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "practical",
+            "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.before_evidence_count, 0)
+        self.assertEqual(practical.after_evidence_count, 1)
+
+    def test_practical_evidence_reason_matching_is_case_insensitive(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(
+                id=1,
+                improvements=("  add   detail ",),
+                reviewed_at="2026-09-10 10:00:00",
+            ),
+        ]
+
+        result = self.service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "practical",
+            "ADD DETAIL",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.text, "ADD DETAIL")
+        self.assertEqual(practical.before_evidence_count, 1)
+
+    def test_practical_evidence_duplicate_improvement_in_one_attempt_counts_once(
+        self,
+    ) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(
+                id=1,
+                improvements=("Add detail", "add detail"),
+                reviewed_at="2026-09-10 10:00:00",
+            ),
+        ]
+
+        result = self.service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "practical",
+            "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.before_evidence_count, 1)
+
+    def test_practical_evidence_ignores_unrelated_improvements(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(
+                id=1,
+                improvements=("Other issue",),
+                reviewed_at="2026-09-10 10:00:00",
+            ),
+        ]
+
+        result = self.service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "practical",
+            "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.before_evidence_count, 0)
+        self.assertEqual(practical.after_evidence_count, 0)
+
+    def test_practical_evidence_ignores_strengths(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(
+                id=1,
+                strengths=("Add detail",),
+                reviewed_at="2026-09-10 10:00:00",
+            ),
+        ]
+
+        result = self.service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "practical",
+            "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.before_evidence_count, 0)
+
+    def test_practical_evidence_skips_malformed_reviewed_at(self) -> None:
+        self.practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(
+                id=1,
+                improvements=("Add detail",),
+                reviewed_at="not-a-timestamp",
+            ),
+            FakeReviewFeedback(
+                id=2,
+                improvements=("Add detail",),
+                reviewed_at=None,
+            ),
+        ]
+
+        result = self.service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "practical",
+            "Add detail",
+        )
+
+        practical = result.practical
+        assert practical is not None
+        self.assertEqual(practical.before_evidence_count, 0)
+        self.assertEqual(practical.after_evidence_count, 0)
+
+    def test_rejects_invalid_development_source(self) -> None:
+        with self.assertRaises(ValueError):
+            self.service.get_development_impact_evidence(
+                42,
+                self.ASSIGNED_AT,
+                "unknown",
+                "Returns",
+            )
+
+    def test_rejects_blank_development_reason(self) -> None:
+        with self.assertRaises(ValueError):
+            self.service.get_development_impact_evidence(
+                42,
+                self.ASSIGNED_AT,
+                "quiz",
+                "   ",
+            )
+
+    def test_rejects_development_reason_over_200_characters(self) -> None:
+        with self.assertRaises(ValueError):
+            self.service.get_development_impact_evidence(
+                42,
+                self.ASSIGNED_AT,
+                "quiz",
+                "x" * 201,
+            )
+
+    def test_rejects_invalid_assigned_at(self) -> None:
+        with self.assertRaises(ValueError):
+            self.service.get_development_impact_evidence(
+                42,
+                "2026-99-99 25:00:00",
+                "quiz",
+                "Returns",
+            )
+
+    def test_rejects_invalid_user_id(self) -> None:
+        with self.assertRaises(ValueError):
+            self.service.get_development_impact_evidence(
+                0,
+                self.ASSIGNED_AT,
+                "quiz",
+                "Returns",
+            )
+
+    def test_practical_repository_called_with_canonical_user_id(self) -> None:
+        self.service.get_development_impact_evidence(
+            42,
+            self.ASSIGNED_AT,
+            "practical",
+            "Add detail",
+        )
+
+        self.assertEqual(
+            self.practical_repository.reviewed_feedback_calls,
+            [(self.db_path, 42)],
+        )
+
+    def test_development_profile_behavior_unchanged(self) -> None:
+        runtime = TopicAnalyticsFakeRuntime(
+            (_course("alpha", quiz=_quiz(_question("q1", ["Returns"]))),)
+        )
+        repository = TopicAnalyticsFakeQuizRepository(
+            {
+                "alpha": [
+                    _answer_row("q1", is_correct=False),
+                    _answer_row("q1", is_correct=False),
+                    _answer_row("q1", is_correct=False),
+                ],
+            }
+        )
+        practical_repository = FakePracticalTaskAttemptRepository()
+        practical_repository._reviewed_feedback = [
+            FakeReviewFeedback(id=1, improvements=("Add detail",)),
+            FakeReviewFeedback(id=2, improvements=("Add detail",)),
+        ]
+        service = ManagerEmployeeAnalyticsService(
+            runtime,
+            repository,
+            self.db_path,
+            practical_repository,
+        )
+
+        profile = service.get_development_profile(42)
+        topics = service.get_quiz_topics_analytics(42)
+
+        self.assertEqual(len(profile.quiz_development_areas), 1)
+        self.assertEqual(profile.quiz_development_areas[0].tag, "Returns")
+        self.assertEqual(len(profile.practical_development_areas), 1)
+        self.assertEqual(topics.topics[0].answers_count, 3)
 
 
 if __name__ == "__main__":

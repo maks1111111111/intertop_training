@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from types import ModuleType
 from typing import Optional
@@ -116,6 +117,33 @@ class EmployeePracticalSignalEvidenceSet:
     strengths: tuple[EmployeePracticalSignalEvidence, ...]
     development_areas: tuple[EmployeePracticalSignalEvidence, ...]
     reviewed_attempts_count: int
+
+
+@dataclass(frozen=True)
+class EmployeeQuizTopicTemporalEvidence:
+    tag: str
+    before_answers_count: int
+    before_correct_answers_count: int
+    after_answers_count: int
+    after_correct_answers_count: int
+    before_accuracy_percent: Optional[float]
+    after_accuracy_percent: Optional[float]
+
+
+@dataclass(frozen=True)
+class EmployeePracticalSignalTemporalEvidence:
+    text: str
+    before_evidence_count: int
+    after_evidence_count: int
+
+
+@dataclass(frozen=True)
+class EmployeeDevelopmentImpactEvidence:
+    assigned_at: str
+    development_source: str
+    development_reason: str
+    quiz: Optional[EmployeeQuizTopicTemporalEvidence]
+    practical: Optional[EmployeePracticalSignalTemporalEvidence]
 
 
 @dataclass(frozen=True)
@@ -317,6 +345,55 @@ class ManagerEmployeeAnalyticsService:
             reviewed_attempts_count=len(feedback_rows),
         )
 
+    def get_development_impact_evidence(
+        self,
+        user_id: int,
+        assigned_at: str,
+        development_source: str,
+        development_reason: str,
+    ) -> EmployeeDevelopmentImpactEvidence:
+        normalized_user_id = _validate_user_id(user_id)
+        normalized_assigned_at = _validate_assigned_at(assigned_at)
+        normalized_source = _validate_development_source(development_source)
+        normalized_reason = _validate_development_reason(development_reason)
+        assigned_at_dt = datetime.strptime(
+            normalized_assigned_at,
+            "%Y-%m-%d %H:%M:%S",
+        )
+
+        quiz_evidence: Optional[EmployeeQuizTopicTemporalEvidence] = None
+        practical_evidence: Optional[EmployeePracticalSignalTemporalEvidence] = None
+
+        if normalized_source == "quiz":
+            quiz_evidence = _build_quiz_temporal_evidence(
+                self._runtime,
+                self._quiz_repository,
+                self._db_path,
+                normalized_user_id,
+                assigned_at_dt,
+                normalized_reason,
+            )
+        elif normalized_source == "practical":
+            feedback_rows = (
+                self._practical_task_attempt_repository.get_reviewed_feedback_for_user(
+                    self._db_path,
+                    normalized_user_id,
+                )
+            )
+            practical_evidence = _build_practical_temporal_evidence(
+                feedback_rows,
+                assigned_at_dt,
+                normalized_reason,
+            )
+
+        return EmployeeDevelopmentImpactEvidence(
+            assigned_at=normalized_assigned_at,
+            development_source=normalized_source,
+            development_reason=normalized_reason,
+            quiz=quiz_evidence,
+            practical=practical_evidence,
+        )
+
     def get_development_profile(self, user_id: int) -> EmployeeDevelopmentProfile:
         normalized_user_id = _validate_user_id(user_id)
         aggregation = self._aggregate_quiz_topic_data(normalized_user_id)
@@ -410,6 +487,172 @@ class ManagerEmployeeAnalyticsService:
             course_titles=course_titles,
             total_tagged_answers_count=total_tagged_answers_count,
         )
+
+
+def _validate_development_source(source: str) -> str:
+    if not isinstance(source, str):
+        raise ValueError("development_source must be a string")
+    normalized = source.strip()
+    if normalized not in ("quiz", "practical"):
+        raise ValueError("development_source must be quiz or practical")
+    return normalized
+
+
+def _validate_development_reason(reason: str) -> str:
+    if not isinstance(reason, str):
+        raise ValueError("development_reason must be a string")
+    normalized = reason.strip()
+    if not normalized:
+        raise ValueError("development_reason must not be empty")
+    if len(normalized) > 200:
+        raise ValueError("development_reason must be at most 200 characters")
+    return normalized
+
+
+def _validate_assigned_at(assigned_at: str) -> str:
+    if not isinstance(assigned_at, str):
+        raise ValueError("assigned_at must be a string")
+    normalized = assigned_at.strip()
+    if not normalized:
+        raise ValueError("assigned_at must not be empty")
+    try:
+        datetime.strptime(normalized, "%Y-%m-%d %H:%M:%S")
+    except ValueError as exc:
+        raise ValueError(
+            "assigned_at must be a valid timestamp in YYYY-MM-DD HH:MM:SS format"
+        ) from exc
+    return normalized
+
+
+def _parse_evidence_timestamp(value: object) -> Optional[datetime]:
+    if value is None or not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    try:
+        return datetime.strptime(normalized, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
+def _temporal_accuracy_percent(
+    answers_count: int,
+    correct_answers_count: int,
+) -> Optional[float]:
+    if answers_count == 0:
+        return None
+    return round(correct_answers_count * 100 / answers_count, 2)
+
+
+def _build_quiz_temporal_evidence(
+    runtime: ContentRuntime,
+    quiz_repository: ModuleType,
+    db_path: Path,
+    user_id: int,
+    assigned_at: datetime,
+    development_reason: str,
+) -> EmployeeQuizTopicTemporalEvidence:
+    reason_key = development_reason.casefold()
+    before_answers_count = 0
+    before_correct_answers_count = 0
+    after_answers_count = 0
+    after_correct_answers_count = 0
+
+    for course in runtime.get_courses():
+        quiz = course.quiz
+        if quiz is None:
+            continue
+
+        questions_by_id = {question.id: question for question in quiz.questions}
+        answers = quiz_repository.get_finished_answers_for_user(
+            db_path,
+            user_id,
+            course.slug,
+        )
+
+        for answer in answers:
+            question = questions_by_id.get(answer["question_id"])
+            if question is None:
+                continue
+
+            normalized_tags = _normalize_question_tags(question.tags)
+            if not any(tag.casefold() == reason_key for tag in normalized_tags):
+                continue
+
+            finished_at = _parse_evidence_timestamp(answer.get("finished_at"))
+            if finished_at is None:
+                continue
+
+            is_correct = bool(int(answer["is_correct"]))
+            if finished_at < assigned_at:
+                before_answers_count += 1
+                if is_correct:
+                    before_correct_answers_count += 1
+            else:
+                after_answers_count += 1
+                if is_correct:
+                    after_correct_answers_count += 1
+
+    return EmployeeQuizTopicTemporalEvidence(
+        tag=development_reason,
+        before_answers_count=before_answers_count,
+        before_correct_answers_count=before_correct_answers_count,
+        after_answers_count=after_answers_count,
+        after_correct_answers_count=after_correct_answers_count,
+        before_accuracy_percent=_temporal_accuracy_percent(
+            before_answers_count,
+            before_correct_answers_count,
+        ),
+        after_accuracy_percent=_temporal_accuracy_percent(
+            after_answers_count,
+            after_correct_answers_count,
+        ),
+    )
+
+
+def _build_practical_temporal_evidence(
+    feedback_rows,
+    assigned_at: datetime,
+    development_reason: str,
+) -> EmployeePracticalSignalTemporalEvidence:
+    reason_key = development_reason.casefold()
+    before_evidence_count = 0
+    after_evidence_count = 0
+
+    for row in feedback_rows:
+        reviewed_at = _parse_evidence_timestamp(getattr(row, "reviewed_at", None))
+        if reviewed_at is None:
+            continue
+
+        improvements_in_attempt: set[str] = set()
+        matched = False
+        for item in getattr(row, "improvements", ()):
+            normalized = _normalize_practical_signal(item)
+            if normalized is None:
+                continue
+
+            signal_key = normalized.casefold()
+            if signal_key in improvements_in_attempt:
+                continue
+
+            improvements_in_attempt.add(signal_key)
+            if signal_key == reason_key:
+                matched = True
+
+        if not matched:
+            continue
+
+        if reviewed_at < assigned_at:
+            before_evidence_count += 1
+        else:
+            after_evidence_count += 1
+
+    return EmployeePracticalSignalTemporalEvidence(
+        text=development_reason,
+        before_evidence_count=before_evidence_count,
+        after_evidence_count=after_evidence_count,
+    )
 
 
 def _normalize_practical_signal(text: object) -> Optional[str]:

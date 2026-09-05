@@ -31,6 +31,7 @@ class PracticalTaskReviewFeedback:
     lesson_slug: str
     strengths: Tuple[str, ...]
     improvements: Tuple[str, ...]
+    reviewed_at: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -483,7 +484,8 @@ def get_reviewed_feedback_for_user(
                 course_slug,
                 lesson_slug,
                 feedback_strengths_json,
-                feedback_improvements_json
+                feedback_improvements_json,
+                reviewed_at
             FROM practical_task_attempts
             WHERE user_id = ?
               AND status = 'reviewed'
@@ -500,6 +502,7 @@ def get_reviewed_feedback_for_user(
             lesson_slug=str(row["lesson_slug"]),
             strengths=_deserialize_string_list(row["feedback_strengths_json"]),
             improvements=_deserialize_string_list(row["feedback_improvements_json"]),
+            reviewed_at=row["reviewed_at"],
         )
         for row in rows
     ]
