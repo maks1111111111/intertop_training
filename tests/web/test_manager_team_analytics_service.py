@@ -11,6 +11,7 @@ from app.web.manager_course_assignment_history_service import (
 )
 from app.web.manager_employee_analytics_service import (
     EmployeeCourseQuizAnalytics,
+    EmployeeDevelopmentImpactEvidence,
     EmployeePracticalSignalEvidence,
     EmployeePracticalSignalEvidenceSet,
     EmployeePracticalTaskAnalytics,
@@ -18,6 +19,11 @@ from app.web.manager_employee_analytics_service import (
     EmployeeQuizAnalytics,
     EmployeeQuizTopicAnalytics,
     EmployeeQuizTopicsAnalytics,
+    IMPACT_CLASSIFICATION_DECLINED,
+    IMPACT_CLASSIFICATION_IMPROVED,
+    IMPACT_CLASSIFICATION_INSUFFICIENT_DATA,
+    IMPACT_CLASSIFICATION_LABELS,
+    IMPACT_CLASSIFICATION_UNCHANGED,
     STRONG_TOPIC_ACCURACY_PERCENT,
 )
 from app.web.manager_team_analytics_service import (
@@ -162,6 +168,9 @@ def _assignment_item(
     compliance_status: str = "overdue",
     progress_percent: int = 25,
     due_at: Optional[str] = "2026-09-10 18:00:00",
+    assigned_at: str = "2026-09-01 10:00:00",
+    development_source: Optional[str] = None,
+    development_reason: Optional[str] = None,
 ) -> ManagerCourseAssignmentHistoryItem:
     compliance_labels = {
         "overdue": "Просрочен",
@@ -177,7 +186,7 @@ def _assignment_item(
         status="in_progress",
         status_label="В процессе",
         progress_percent=progress_percent,
-        assigned_at="2026-09-01 10:00:00",
+        assigned_at=assigned_at,
         assigned_by_display_name="Manager One",
         due_at=due_at,
         started_at="2026-09-02 10:00:00",
@@ -187,6 +196,8 @@ def _assignment_item(
             compliance_status,
             compliance_status,
         ),
+        development_source=development_source,
+        development_reason=development_reason,
     )
 
 
@@ -302,15 +313,18 @@ class FakeEmployeeAnalyticsService:
         practical_evidence_by_user: dict[
             int, EmployeePracticalSignalEvidenceSet
         ] | None = None,
+        impact_evidence_by_key: dict[tuple[int, str, str, str], str] | None = None,
     ) -> None:
         self.quiz_by_user = quiz_by_user or {}
         self.topics_by_user = topics_by_user or {}
         self.practical_by_user = practical_by_user or {}
         self.practical_evidence_by_user = practical_evidence_by_user or {}
+        self.impact_evidence_by_key = impact_evidence_by_key or {}
         self.quiz_calls: list[int] = []
         self.topics_calls: list[int] = []
         self.practical_calls: list[int] = []
         self.practical_evidence_calls: list[int] = []
+        self.impact_evidence_calls: list[tuple[int, str, str, str]] = []
 
     def get_quiz_analytics(self, user_id: int) -> EmployeeQuizAnalytics:
         self.quiz_calls.append(user_id)
@@ -336,6 +350,30 @@ class FakeEmployeeAnalyticsService:
         return self.practical_evidence_by_user.get(
             user_id,
             _practical_evidence(),
+        )
+
+    def get_development_impact_evidence(
+        self,
+        user_id: int,
+        assigned_at: str,
+        development_source: str,
+        development_reason: str,
+    ) -> EmployeeDevelopmentImpactEvidence:
+        self.impact_evidence_calls.append(
+            (user_id, assigned_at, development_source, development_reason)
+        )
+        classification = self.impact_evidence_by_key.get(
+            (user_id, assigned_at, development_source, development_reason),
+            IMPACT_CLASSIFICATION_INSUFFICIENT_DATA,
+        )
+        return EmployeeDevelopmentImpactEvidence(
+            assigned_at=assigned_at,
+            development_source=development_source,
+            development_reason=development_reason,
+            quiz=None,
+            practical=None,
+            classification=classification,
+            classification_label=IMPACT_CLASSIFICATION_LABELS[classification],
         )
 
 
@@ -374,11 +412,22 @@ class ManagerTeamAnalyticsServiceTests(unittest.TestCase):
         self.assertEqual(result.assignment_overdue_count, 0)
         self.assertEqual(result.members_with_due_soon_assignments_count, 0)
         self.assertEqual(result.members_with_overdue_assignments_count, 0)
+        self.assertEqual(result.development_assignment_impact_total_count, 0)
+        self.assertEqual(result.development_assignment_impact_measured_count, 0)
+        self.assertEqual(result.development_assignment_impact_improved_count, 0)
+        self.assertEqual(result.development_assignment_impact_unchanged_count, 0)
+        self.assertEqual(result.development_assignment_impact_declined_count, 0)
+        self.assertEqual(
+            result.development_assignment_impact_insufficient_data_count,
+            0,
+        )
+        self.assertEqual(result.members_with_measured_development_impact_count, 0)
         self.assertEqual(team_service.calls, ["company-a"])
         self.assertEqual(employee_service.quiz_calls, [])
         self.assertEqual(employee_service.topics_calls, [])
         self.assertEqual(employee_service.practical_calls, [])
         self.assertEqual(employee_service.practical_evidence_calls, [])
+        self.assertEqual(employee_service.impact_evidence_calls, [])
 
     def test_empty_team_makes_no_assignment_history_calls(self) -> None:
         team_service = FakeTeamService(())
@@ -1226,6 +1275,211 @@ class ManagerTeamAssignmentComplianceTests(unittest.TestCase):
 
         self.assertEqual(result.assignment_overdue_count, 3)
         self.assertEqual(result.members_with_overdue_assignments_count, 1)
+
+
+class ManagerTeamDevelopmentImpactTests(unittest.TestCase):
+    def test_empty_team_returns_zero_development_impact_counts(self) -> None:
+        team_service = FakeTeamService(())
+        employee_service = FakeEmployeeAnalyticsService()
+        service = _build_team_analytics_service(team_service, employee_service)
+
+        result = service.get_team_analytics("company-a")
+
+        self.assertEqual(result.development_assignment_impact_total_count, 0)
+        self.assertEqual(result.development_assignment_impact_measured_count, 0)
+        self.assertEqual(result.development_assignment_impact_improved_count, 0)
+        self.assertEqual(result.development_assignment_impact_unchanged_count, 0)
+        self.assertEqual(result.development_assignment_impact_declined_count, 0)
+        self.assertEqual(
+            result.development_assignment_impact_insufficient_data_count,
+            0,
+        )
+        self.assertEqual(result.members_with_measured_development_impact_count, 0)
+        self.assertEqual(employee_service.impact_evidence_calls, [])
+
+    def test_assignments_without_development_context_skip_impact_service(self) -> None:
+        members = (_member(1),)
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService()
+        assignment_service = FakeAssignmentHistoryService(
+            history_by_user={
+                1: _assignment_history_with(
+                    _assignment_item(
+                        compliance_status="on_track",
+                        development_source=None,
+                        development_reason=None,
+                    ),
+                ),
+            },
+        )
+        service = _build_team_analytics_service(
+            team_service,
+            employee_service,
+            assignment_service,
+        )
+
+        result = service.get_team_analytics("company-a")
+
+        self.assertEqual(result.development_assignment_impact_total_count, 0)
+        self.assertEqual(employee_service.impact_evidence_calls, [])
+
+    def test_aggregates_mixed_development_impact_classifications(self) -> None:
+        members = (_member(1), _member(2))
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            impact_evidence_by_key={
+                (
+                    1,
+                    "2026-09-01 10:00:00",
+                    "quiz",
+                    "Возвраты",
+                ): IMPACT_CLASSIFICATION_IMPROVED,
+                (
+                    1,
+                    "2026-09-02 11:00:00",
+                    "practical",
+                    "Детали",
+                ): IMPACT_CLASSIFICATION_INSUFFICIENT_DATA,
+                (
+                    2,
+                    "2026-09-03 12:00:00",
+                    "quiz",
+                    "Сервис",
+                ): IMPACT_CLASSIFICATION_UNCHANGED,
+                (
+                    2,
+                    "2026-09-04 13:00:00",
+                    "practical",
+                    "Структура",
+                ): IMPACT_CLASSIFICATION_DECLINED,
+            },
+        )
+        assignment_service = FakeAssignmentHistoryService(
+            history_by_user={
+                1: _assignment_history_with(
+                    _assignment_item(
+                        assigned_at="2026-09-01 10:00:00",
+                        compliance_status="on_track",
+                        development_source="quiz",
+                        development_reason="Возвраты",
+                    ),
+                    _assignment_item(
+                        assigned_at="2026-09-02 11:00:00",
+                        compliance_status="on_track",
+                        development_source="practical",
+                        development_reason="Детали",
+                    ),
+                ),
+                2: _assignment_history_with(
+                    _assignment_item(
+                        assigned_at="2026-09-03 12:00:00",
+                        compliance_status="on_track",
+                        development_source="quiz",
+                        development_reason="Сервис",
+                    ),
+                    _assignment_item(
+                        assigned_at="2026-09-04 13:00:00",
+                        compliance_status="on_track",
+                        development_source="practical",
+                        development_reason="Структура",
+                    ),
+                ),
+            },
+        )
+        service = _build_team_analytics_service(
+            team_service,
+            employee_service,
+            assignment_service,
+        )
+
+        result = service.get_team_analytics("company-a")
+
+        self.assertEqual(result.development_assignment_impact_total_count, 4)
+        self.assertEqual(result.development_assignment_impact_measured_count, 3)
+        self.assertEqual(result.development_assignment_impact_improved_count, 1)
+        self.assertEqual(result.development_assignment_impact_unchanged_count, 1)
+        self.assertEqual(result.development_assignment_impact_declined_count, 1)
+        self.assertEqual(
+            result.development_assignment_impact_insufficient_data_count,
+            1,
+        )
+        self.assertEqual(result.members_with_measured_development_impact_count, 2)
+
+    def test_member_with_only_insufficient_data_has_zero_measured_members(self) -> None:
+        members = (_member(1),)
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService(
+            impact_evidence_by_key={
+                (
+                    1,
+                    "2026-09-01 10:00:00",
+                    "quiz",
+                    "Возвраты",
+                ): IMPACT_CLASSIFICATION_INSUFFICIENT_DATA,
+            },
+        )
+        assignment_service = FakeAssignmentHistoryService(
+            history_by_user={
+                1: _assignment_history_with(
+                    _assignment_item(
+                        compliance_status="on_track",
+                        development_source="quiz",
+                        development_reason="Возвраты",
+                    ),
+                ),
+            },
+        )
+        service = _build_team_analytics_service(
+            team_service,
+            employee_service,
+            assignment_service,
+        )
+
+        result = service.get_team_analytics("company-a")
+
+        self.assertEqual(result.development_assignment_impact_total_count, 1)
+        self.assertEqual(result.development_assignment_impact_measured_count, 0)
+        self.assertEqual(
+            result.development_assignment_impact_insufficient_data_count,
+            1,
+        )
+        self.assertEqual(result.members_with_measured_development_impact_count, 0)
+
+    def test_impact_service_receives_correct_assignment_context(self) -> None:
+        members = (_member(7),)
+        team_service = FakeTeamService(members)
+        employee_service = FakeEmployeeAnalyticsService()
+        assignment_service = FakeAssignmentHistoryService(
+            history_by_user={
+                7: _assignment_history_with(
+                    _assignment_item(
+                        assigned_at="2026-09-15 18:00:00",
+                        compliance_status="on_track",
+                        development_source="practical",
+                        development_reason="  Добавить детали  ",
+                    ),
+                ),
+            },
+        )
+        service = _build_team_analytics_service(
+            team_service,
+            employee_service,
+            assignment_service,
+        )
+
+        service.get_team_analytics("company-a")
+
+        self.assertEqual(
+            employee_service.impact_evidence_calls,
+            [
+                (
+                    7,
+                    "2026-09-15 18:00:00",
+                    "practical",
+                    "  Добавить детали  ",
+                ),
+            ],
+        )
 
 
 class ManagerTeamRecommendationsTests(unittest.TestCase):

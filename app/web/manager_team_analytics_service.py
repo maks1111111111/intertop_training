@@ -16,6 +16,10 @@ from app.web.manager_employee_analytics_service import (
     EmployeePracticalSignalEvidenceSet,
     EmployeeQuizAnalytics,
     EmployeeQuizTopicsAnalytics,
+    IMPACT_CLASSIFICATION_DECLINED,
+    IMPACT_CLASSIFICATION_IMPROVED,
+    IMPACT_CLASSIFICATION_INSUFFICIENT_DATA,
+    IMPACT_CLASSIFICATION_UNCHANGED,
     ManagerEmployeeAnalyticsService,
     STRONG_TOPIC_ACCURACY_PERCENT,
 )
@@ -71,6 +75,13 @@ class ManagerTeamAnalytics:
     assignment_overdue_count: int = 0
     members_with_due_soon_assignments_count: int = 0
     members_with_overdue_assignments_count: int = 0
+    development_assignment_impact_total_count: int = 0
+    development_assignment_impact_measured_count: int = 0
+    development_assignment_impact_improved_count: int = 0
+    development_assignment_impact_unchanged_count: int = 0
+    development_assignment_impact_declined_count: int = 0
+    development_assignment_impact_insufficient_data_count: int = 0
+    members_with_measured_development_impact_count: int = 0
 
 
 def _empty_assignment_history() -> ManagerCourseAssignmentHistory:
@@ -180,6 +191,7 @@ class ManagerTeamAnalyticsService:
         assignment_history_by_member: list[
             tuple[ManagerTeamMember, ManagerCourseAssignmentHistory]
         ] = []
+        development_impact_classifications: list[tuple[int, str]] = []
 
         for member in members:
             quiz_analytics = self._employee_analytics_service.get_quiz_analytics(
@@ -223,6 +235,22 @@ class ManagerTeamAnalyticsService:
                 (member, practical_signal_evidence)
             )
             assignment_history_by_member.append((member, assignment_history))
+            for assignment in assignment_history.assignments:
+                if (
+                    assignment.development_source
+                    and assignment.development_reason
+                ):
+                    impact_evidence = (
+                        self._employee_analytics_service.get_development_impact_evidence(
+                            member.user_id,
+                            assignment.assigned_at,
+                            assignment.development_source,
+                            assignment.development_reason,
+                        )
+                    )
+                    development_impact_classifications.append(
+                        (member.user_id, impact_evidence.classification)
+                    )
 
         analytics = _build_team_analytics(
             members,
@@ -231,6 +259,7 @@ class ManagerTeamAnalyticsService:
             practical_analytics_by_member,
             practical_evidence_by_member,
             assignment_history_by_member,
+            development_impact_classifications,
         )
         member_rows_tuple = tuple(member_rows)
         recommendations = _build_team_recommendations(analytics, member_rows_tuple)
@@ -335,6 +364,7 @@ def _build_team_analytics(
     assignment_history_by_member: list[
         tuple[ManagerTeamMember, ManagerCourseAssignmentHistory]
     ],
+    development_impact_classifications: list[tuple[int, str]],
 ) -> ManagerTeamAnalytics:
     members_count = len(members)
     started_members_count = sum(
@@ -505,6 +535,47 @@ def _build_team_analytics(
         if history.overdue_count > 0
     )
 
+    development_assignment_impact_total_count = len(
+        development_impact_classifications
+    )
+    development_assignment_impact_improved_count = sum(
+        1
+        for _user_id, classification in development_impact_classifications
+        if classification == IMPACT_CLASSIFICATION_IMPROVED
+    )
+    development_assignment_impact_unchanged_count = sum(
+        1
+        for _user_id, classification in development_impact_classifications
+        if classification == IMPACT_CLASSIFICATION_UNCHANGED
+    )
+    development_assignment_impact_declined_count = sum(
+        1
+        for _user_id, classification in development_impact_classifications
+        if classification == IMPACT_CLASSIFICATION_DECLINED
+    )
+    development_assignment_impact_insufficient_data_count = sum(
+        1
+        for _user_id, classification in development_impact_classifications
+        if classification == IMPACT_CLASSIFICATION_INSUFFICIENT_DATA
+    )
+    development_assignment_impact_measured_count = (
+        development_assignment_impact_improved_count
+        + development_assignment_impact_unchanged_count
+        + development_assignment_impact_declined_count
+    )
+    members_with_measured_development_impact_count = len(
+        {
+            user_id
+            for user_id, classification in development_impact_classifications
+            if classification
+            in (
+                IMPACT_CLASSIFICATION_IMPROVED,
+                IMPACT_CLASSIFICATION_UNCHANGED,
+                IMPACT_CLASSIFICATION_DECLINED,
+            )
+        }
+    )
+
     return ManagerTeamAnalytics(
         members_count=members_count,
         started_members_count=started_members_count,
@@ -540,6 +611,27 @@ def _build_team_analytics(
         ),
         members_with_overdue_assignments_count=(
             members_with_overdue_assignments_count
+        ),
+        development_assignment_impact_total_count=(
+            development_assignment_impact_total_count
+        ),
+        development_assignment_impact_measured_count=(
+            development_assignment_impact_measured_count
+        ),
+        development_assignment_impact_improved_count=(
+            development_assignment_impact_improved_count
+        ),
+        development_assignment_impact_unchanged_count=(
+            development_assignment_impact_unchanged_count
+        ),
+        development_assignment_impact_declined_count=(
+            development_assignment_impact_declined_count
+        ),
+        development_assignment_impact_insufficient_data_count=(
+            development_assignment_impact_insufficient_data_count
+        ),
+        members_with_measured_development_impact_count=(
+            members_with_measured_development_impact_count
         ),
     )
 
