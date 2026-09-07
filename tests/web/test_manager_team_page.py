@@ -776,6 +776,13 @@ class FakeTeamAnalyticsService:
             assignment_overdue_count=1,
             members_with_due_soon_assignments_count=1,
             members_with_overdue_assignments_count=1,
+            development_assignment_impact_total_count=6,
+            development_assignment_impact_measured_count=4,
+            development_assignment_impact_improved_count=2,
+            development_assignment_impact_unchanged_count=1,
+            development_assignment_impact_declined_count=1,
+            development_assignment_impact_insufficient_data_count=2,
+            members_with_measured_development_impact_count=3,
         )
 
     def _populated_recommendations(self) -> tuple[ManagerActionRecommendation, ...]:
@@ -1377,6 +1384,63 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Сотрудников с просрочкой", response.text)
         self.assertIn("dashboard-compliance-badge--overdue", response.text)
         self.assertIn("Просрочено: 1", response.text)
+
+    def test_manager_team_page_renders_development_assignment_impact_metrics(
+        self,
+    ) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        expected_metrics = (
+            ("Назначений развития", 6),
+            ("Результат уже измерен", 4),
+            ("Есть улучшение", 2),
+            ("Без заметного изменения", 1),
+            ("Есть ухудшение", 1),
+            ("Недостаточно данных", 2),
+            ("Сотрудников с измеренным результатом", 3),
+        )
+        for label, value in expected_metrics:
+            with self.subTest(label=label):
+                self.assertRegex(
+                    response.text,
+                    rf"{label}</span>\s*<span class=\"dashboard-metric-value\">{value}</span>",
+                )
+
+    def test_manager_team_page_renders_insufficient_impact_data_separately(
+        self,
+    ) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertRegex(
+            response.text,
+            r"Недостаточно данных</span>\s*<span class=\"dashboard-metric-value\">2</span>",
+        )
+        self.assertRegex(
+            response.text,
+            r"Результат уже измерен</span>\s*<span class=\"dashboard-metric-value\">4</span>",
+        )
+
+    def test_manager_team_page_renders_empty_development_assignment_impact(
+        self,
+    ) -> None:
+        self._set_identity("manager")
+        self.team_analytics_service._empty = True
+
+        response = self.client.get("/manager/team")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Результат назначенного развития", response.text)
+        self.assertIn(
+            "Пока нет назначений, связанных с выявленными зонами развития.",
+            response.text,
+        )
+        self.assertNotIn("Результат уже измерен", response.text)
 
     def test_manager_team_page_renders_due_soon_member_status(self) -> None:
         self._set_identity("manager")

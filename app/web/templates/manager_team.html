@@ -119,6 +119,42 @@
         </div>
     </div>
 
+    <h3 class="section-subtitle">Результат назначенного развития</h3>
+    {% if team_analytics.development_assignment_impact_total_count > 0 %}
+    <div class="dashboard-metrics">
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Назначений развития</span>
+            <span class="dashboard-metric-value">{{ team_analytics.development_assignment_impact_total_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Результат уже измерен</span>
+            <span class="dashboard-metric-value">{{ team_analytics.development_assignment_impact_measured_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Есть улучшение</span>
+            <span class="dashboard-metric-value">{{ team_analytics.development_assignment_impact_improved_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Без заметного изменения</span>
+            <span class="dashboard-metric-value">{{ team_analytics.development_assignment_impact_unchanged_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Есть ухудшение</span>
+            <span class="dashboard-metric-value">{{ team_analytics.development_assignment_impact_declined_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Недостаточно данных</span>
+            <span class="dashboard-metric-value">{{ team_analytics.development_assignment_impact_insufficient_data_count }}</span>
+        </div>
+        <div class="dashboard-metric">
+            <span class="dashboard-metric-label">Сотрудников с измеренным результатом</span>
+            <span class="dashboard-metric-value">{{ team_analytics.members_with_measured_development_impact_count }}</span>
+        </div>
+    </div>
+    {% else %}
+    <p class="page-meta">Пока нет назначений, связанных с выявленными зонами развития.</p>
+    {% endif %}
+
     <h3 class="section-subtitle">Рекомендуемые действия</h3>
     {% if recommendations %}
     <ul class="course-list admin-course-list">
