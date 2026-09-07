@@ -12,6 +12,7 @@ from app.content.runtime import ContentRuntime
 from app.database.db import initialize_database
 from app.env import load_project_env
 from app.services.course_sync import sync_courses
+from app.web.csrf import SameOriginCSRFMiddleware
 from app.web.router import router as web_router
 
 
@@ -19,6 +20,7 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     load_project_env()
     application = FastAPI(title="Intertop Training API")
+    application.add_middleware(SameOriginCSRFMiddleware)
     project_root = Path(__file__).resolve().parents[2]
     db_path = project_root / "data" / "training.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)

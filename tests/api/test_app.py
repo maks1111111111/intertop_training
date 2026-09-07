@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, call, patch
 from fastapi import FastAPI
 
 from app.api.app import create_app
+from app.web.csrf import SameOriginCSRFMiddleware
 
 
 class CreateAppTests(unittest.TestCase):
@@ -17,6 +18,16 @@ class CreateAppTests(unittest.TestCase):
     def test_create_app_returns_fastapi_application(self) -> None:
         application = create_app()
         self.assertIsInstance(application, FastAPI)
+
+    def test_create_app_enables_web_csrf_protection(self) -> None:
+        application = create_app()
+
+        self.assertTrue(
+            any(
+                middleware.cls is SameOriginCSRFMiddleware
+                for middleware in application.user_middleware
+            )
+        )
 
     @patch("app.api.app.load_project_env")
     def test_create_app_loads_project_env(self, mock_load_project_env) -> None:
