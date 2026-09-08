@@ -121,6 +121,20 @@ python -m app.database.backup \
 Каталог резервных копий должен находиться вне репозитория и сохраняться на
 отдельном диске или в объектном хранилище.
 
+Для восстановления сначала полностью остановите Web- и Telegram-процессы. Затем
+запустите команду ниже. Перед заменой базы она проверит выбранный снимок и
+автоматически сохранит текущее состояние в отдельный страховочный backup:
+
+```bash
+python -m app.database.restore \
+  --backup /var/backups/intertop-training/training-backup-TIMESTAMP.sqlite3 \
+  --db data/training.db \
+  --safety-backup-dir /var/backups/intertop-training/pre-restore
+```
+
+Перед заменой выполняется SQLite checkpoint с нулевым ожиданием. Если база
+занята активной записью, восстановление будет остановлено.
+
 ## Добавление контента
 
 1. Создайте папку курса в `courses/`, например `courses/mission/`

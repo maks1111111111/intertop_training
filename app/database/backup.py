@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Sequence
@@ -65,8 +66,12 @@ def create_database_backup(
 def _copy_and_verify_database(source_path: Path, destination_path: Path) -> None:
     source_uri = f"{source_path.as_uri()}?mode=ro"
     try:
-        with sqlite3.connect(source_uri, uri=True) as source_connection:
-            with sqlite3.connect(destination_path) as destination_connection:
+        with closing(
+            sqlite3.connect(source_uri, uri=True)
+        ) as source_connection:
+            with closing(
+                sqlite3.connect(destination_path)
+            ) as destination_connection:
                 source_connection.backup(destination_connection)
                 integrity_result = destination_connection.execute(
                     "PRAGMA quick_check"
