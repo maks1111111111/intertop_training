@@ -897,6 +897,14 @@ def _render_login_page(
     )
 
 
+def _secure_session_cookie(request: Request) -> bool:
+    deployment_config = getattr(request.app.state, "deployment_config", None)
+    return bool(
+        getattr(deployment_config, "force_secure_session_cookie", False)
+        or request.url.scheme == "https"
+    )
+
+
 @router.get("/login", response_class=HTMLResponse, include_in_schema=False)
 def login_page(
     request: Request,
@@ -956,7 +964,7 @@ async def login_submit(
         key=WEB_SESSION_COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=request.url.scheme == "https",
+        secure=_secure_session_cookie(request),
         samesite="lax",
         path="/",
     )

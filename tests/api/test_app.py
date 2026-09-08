@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
 from fastapi import FastAPI
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.app import create_app
 from app.runtime_paths_config import RuntimePathsConfig
@@ -27,6 +28,16 @@ class CreateAppTests(unittest.TestCase):
         self.assertTrue(
             any(
                 middleware.cls is SameOriginCSRFMiddleware
+                for middleware in application.user_middleware
+            )
+        )
+
+    def test_create_app_enables_trusted_host_protection(self) -> None:
+        application = create_app()
+
+        self.assertTrue(
+            any(
+                middleware.cls is TrustedHostMiddleware
                 for middleware in application.user_middleware
             )
         )

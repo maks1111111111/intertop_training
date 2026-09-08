@@ -119,6 +119,19 @@ export INTERTOP_UPLOAD_DIR=/srv/intertop-training/uploads
 локальный запуск продолжает использовать `data/training.db`, `courses/` и
 `data/uploads/`.
 
+Для удалённого окружения также включите deployment-профиль и перечислите
+допустимые домены без схемы и пути:
+
+```bash
+export INTERTOP_ENV=staging
+export INTERTOP_ALLOWED_HOSTS=training-staging.example.com
+export WEB_SESSION_SECRET='уникальный случайный секрет длиной не менее 32 байт'
+```
+
+В `staging` и `production` приложение не стартует без допустимого session secret
+и списка trusted hosts, запрещает wildcard `*` и всегда устанавливает session
+cookie с флагом `Secure`.
+
 ## Резервная копия SQLite
 
 Для консистентной копии работающей базы используйте встроенную команду. Она

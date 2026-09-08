@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.database.db import get_connection
+from app.deployment_config import DeploymentConfig
 from app.repositories.company_membership_repository import (
     CompanyMembershipRepository,
 )
@@ -188,6 +189,22 @@ class WebLoginRouteTests(unittest.TestCase):
         cookie = response.headers.get("set-cookie", "").lower()
 
         self.assertNotIn("; secure", cookie)
+
+    def test_remote_deployment_forces_secure_session_cookie(self) -> None:
+        self.app.state.deployment_config = DeploymentConfig(
+            environment="production",
+            allowed_hosts=("testserver",),
+            force_secure_session_cookie=True,
+        )
+
+        response = self.client.post(
+            "/login",
+            data=self._valid_login_data(),
+            follow_redirects=False,
+        )
+
+        cookie = response.headers.get("set-cookie", "").lower()
+        self.assertIn("; secure", cookie)
 
     def test_wrong_password_returns_generic_error_without_cookie(
         self,
