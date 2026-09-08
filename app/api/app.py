@@ -17,6 +17,7 @@ from app.runtime_paths_config import RuntimePathsConfig
 from app.services.course_sync import sync_courses
 from app.web.csrf import SameOriginCSRFMiddleware
 from app.web.router import router as web_router
+from app.web.security_headers import SecurityHeadersMiddleware
 
 
 def create_app() -> FastAPI:
@@ -29,6 +30,10 @@ def create_app() -> FastAPI:
     application.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts=list(deployment_config.allowed_hosts),
+    )
+    application.add_middleware(
+        SecurityHeadersMiddleware,
+        enable_hsts=deployment_config.force_secure_session_cookie,
     )
     db_path = runtime_paths.db_path
     db_path.parent.mkdir(parents=True, exist_ok=True)

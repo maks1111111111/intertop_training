@@ -13,6 +13,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from app.api.app import create_app
 from app.runtime_paths_config import RuntimePathsConfig
 from app.web.csrf import SameOriginCSRFMiddleware
+from app.web.security_headers import SecurityHeadersMiddleware
 
 
 class CreateAppTests(unittest.TestCase):
@@ -38,6 +39,16 @@ class CreateAppTests(unittest.TestCase):
         self.assertTrue(
             any(
                 middleware.cls is TrustedHostMiddleware
+                for middleware in application.user_middleware
+            )
+        )
+
+    def test_create_app_enables_security_headers(self) -> None:
+        application = create_app()
+
+        self.assertTrue(
+            any(
+                middleware.cls is SecurityHeadersMiddleware
                 for middleware in application.user_middleware
             )
         )

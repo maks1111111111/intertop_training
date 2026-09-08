@@ -101,9 +101,35 @@ BOT_TOKEN=123456789:ABC...
 
 ## Запуск
 
+Telegram-бот:
+
 ```bash
 python -m app.main
 ```
+
+Web-приложение за reverse proxy:
+
+```bash
+python -m app.web_server
+```
+
+По умолчанию Web-сервер слушает только `127.0.0.1:8000`, доверяет proxy-заголовкам
+только от `127.0.0.1`, скрывает заголовок версии сервера и работает одним
+процессом. Один процесс обязателен, пока предпросмотры генерации хранятся в памяти.
+Перезапуск процесса должен выполнять systemd, Docker или другой process manager.
+
+Если reverse proxy находится на другом адресе, перечислите только его IP-адреса:
+
+```bash
+export INTERTOP_WEB_HOST=127.0.0.1
+export INTERTOP_WEB_PORT=8000
+export INTERTOP_FORWARDED_ALLOW_IPS=127.0.0.1,10.0.0.10
+python -m app.web_server
+```
+
+Значение `*` для `INTERTOP_FORWARDED_ALLOW_IPS` запрещено. Reverse proxy должен
+завершать TLS и передавать `X-Forwarded-Proto`, чтобы приложение корректно
+определяло исходную HTTPS-схему.
 
 Web и Telegram используют одни и те же пути. Для staging и production задайте
 разные постоянные каталоги, чтобы окружения не могли открыть одну базу или общий
@@ -131,6 +157,9 @@ export WEB_SESSION_SECRET='уникальный случайный секрет 
 В `staging` и `production` приложение не стартует без допустимого session secret
 и списка trusted hosts, запрещает wildcard `*` и всегда устанавливает session
 cookie с флагом `Secure`.
+
+Все ответы получают базовые browser security headers. В `staging` и `production`
+дополнительно включается HSTS; эти окружения должны быть доступны только по HTTPS.
 
 ## Резервная копия SQLite
 
