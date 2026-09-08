@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -13,10 +12,8 @@ from app.content.runtime import ContentRuntime
 from app.env import load_project_env
 from app.database import initialize_database
 from app.handlers import courses, practical_tasks, quiz, start
+from app.runtime_paths_config import RuntimePathsConfig
 from app.services.course_sync import sync_courses
-
-def _get_base_dir() -> Path:
-    return Path(__file__).resolve().parent.parent
 
 
 async def main() -> None:
@@ -34,9 +31,9 @@ async def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
-    project_dir = _get_base_dir()
-    base_dir = project_dir / "courses"
-    db_path = project_dir / "data" / "training.db"
+    runtime_paths = RuntimePathsConfig.from_environment()
+    base_dir = runtime_paths.courses_dir
+    db_path = runtime_paths.db_path
 
     initialize_database(db_path)
     sync_courses(

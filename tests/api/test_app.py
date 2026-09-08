@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
@@ -9,6 +10,7 @@ from unittest.mock import MagicMock, call, patch
 from fastapi import FastAPI
 
 from app.api.app import create_app
+from app.runtime_paths_config import RuntimePathsConfig
 from app.web.csrf import SameOriginCSRFMiddleware
 
 
@@ -28,6 +30,38 @@ class CreateAppTests(unittest.TestCase):
                 for middleware in application.user_middleware
             )
         )
+
+    @patch("app.api.app.ContentRuntime")
+    @patch("app.api.app.sync_courses")
+    @patch("app.api.app.initialize_database")
+    @patch("app.api.app.RuntimePathsConfig.from_environment")
+    def test_create_app_uses_configured_runtime_paths(
+        self,
+        mock_from_environment,
+        mock_initialize_database,
+        mock_sync_courses,
+        mock_content_runtime,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            staging_root = Path(tmp) / "staging"
+            runtime_paths = RuntimePathsConfig(
+                db_path=staging_root / "data" / "training.db",
+                courses_dir=staging_root / "courses",
+                upload_dir=staging_root / "uploads",
+            )
+            mock_from_environment.return_value = runtime_paths
+
+            application = create_app()
+
+            mock_initialize_database.assert_called_once_with(runtime_paths.db_path)
+            mock_sync_courses.assert_called_once_with(
+                base_dir=runtime_paths.courses_dir,
+                db_path=runtime_paths.db_path,
+            )
+            mock_content_runtime.assert_called_once_with(runtime_paths.courses_dir)
+            self.assertEqual(application.state.db_path, runtime_paths.db_path)
+            self.assertEqual(application.state.upload_dir, runtime_paths.upload_dir)
+            self.assertIs(application.state.runtime_paths, runtime_paths)
 
     @patch("app.api.app.load_project_env")
     def test_create_app_loads_project_env(self, mock_load_project_env) -> None:

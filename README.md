@@ -105,6 +105,20 @@ BOT_TOKEN=123456789:ABC...
 python -m app.main
 ```
 
+Web и Telegram используют одни и те же пути. Для staging и production задайте
+разные постоянные каталоги, чтобы окружения не могли открыть одну базу или общий
+каталог загрузок:
+
+```bash
+export INTERTOP_DB_PATH=/srv/intertop-training/data/training.db
+export INTERTOP_COURSES_DIR=/srv/intertop-training/courses
+export INTERTOP_UPLOAD_DIR=/srv/intertop-training/uploads
+```
+
+Относительные значения разрешаются от корня проекта; если переменные не заданы,
+локальный запуск продолжает использовать `data/training.db`, `courses/` и
+`data/uploads/`.
+
 ## Резервная копия SQLite
 
 Для консистентной копии работающей базы используйте встроенную команду. Она
