@@ -212,10 +212,12 @@ class ManagerEmployeeAnalyticsService:
         quiz_repository: ModuleType,
         db_path: Path,
         practical_task_attempt_repository: Optional[ModuleType] = None,
+        company_id: str = "intertop",
     ) -> None:
         self._runtime = runtime
         self._quiz_repository = quiz_repository
         self._db_path = db_path
+        self._company_id = _validate_company_id(company_id)
         if practical_task_attempt_repository is None:
             from app.repositories import practical_task_attempt_repository as default_repo
 
@@ -229,7 +231,9 @@ class ManagerEmployeeAnalyticsService:
         total_attempts = 0
         weighted_score_total = 0.0
         for course in self._runtime.get_courses():
-            stats = self._quiz_repository.get_course_quiz_stats_for_user(
+            stats = _call_for_company(
+                self._quiz_repository.get_course_quiz_stats_for_user,
+                self._company_id,
                 self._db_path,
                 normalized_user_id,
                 course.slug,
@@ -298,12 +302,16 @@ class ManagerEmployeeAnalyticsService:
         normalized_limit = _validate_recent_attempts_limit(limit)
 
         aggregate = (
-            self._practical_task_attempt_repository.get_attempts_aggregate_for_user(
+            _call_for_company(
+                self._practical_task_attempt_repository.get_attempts_aggregate_for_user,
+                self._company_id,
                 self._db_path,
                 normalized_user_id,
             )
         )
-        recent_rows = self._practical_task_attempt_repository.get_attempts_for_user(
+        recent_rows = _call_for_company(
+            self._practical_task_attempt_repository.get_attempts_for_user,
+            self._company_id,
             self._db_path,
             normalized_user_id,
             limit=normalized_limit,
@@ -337,7 +345,9 @@ class ManagerEmployeeAnalyticsService:
     ) -> EmployeePracticalSignalEvidenceSet:
         normalized_user_id = _validate_user_id(user_id)
         feedback_rows = (
-            self._practical_task_attempt_repository.get_reviewed_feedback_for_user(
+            _call_for_company(
+                self._practical_task_attempt_repository.get_reviewed_feedback_for_user,
+                self._company_id,
                 self._db_path,
                 normalized_user_id,
             )
@@ -388,11 +398,14 @@ class ManagerEmployeeAnalyticsService:
                 normalized_user_id,
                 assigned_at_dt,
                 normalized_reason,
+                self._company_id,
             )
             classification = _classify_quiz_impact(quiz_evidence)
         elif normalized_source == "practical":
             feedback_rows = (
-                self._practical_task_attempt_repository.get_reviewed_feedback_for_user(
+                _call_for_company(
+                    self._practical_task_attempt_repository.get_reviewed_feedback_for_user,
+                    self._company_id,
                     self._db_path,
                     normalized_user_id,
                 )
@@ -466,7 +479,9 @@ class ManagerEmployeeAnalyticsService:
                 continue
 
             questions_by_id = {question.id: question for question in quiz.questions}
-            answers = self._quiz_repository.get_finished_answers_for_user(
+            answers = _call_for_company(
+                self._quiz_repository.get_finished_answers_for_user,
+                self._company_id,
                 self._db_path,
                 normalized_user_id,
                 course.slug,
@@ -581,6 +596,7 @@ def _build_quiz_temporal_evidence(
     user_id: int,
     assigned_at: datetime,
     development_reason: str,
+    company_id: str = "intertop",
 ) -> EmployeeQuizTopicTemporalEvidence:
     reason_key = development_reason.casefold()
     before_answers_count = 0
@@ -594,7 +610,9 @@ def _build_quiz_temporal_evidence(
             continue
 
         questions_by_id = {question.id: question for question in quiz.questions}
-        answers = quiz_repository.get_finished_answers_for_user(
+        answers = _call_for_company(
+            quiz_repository.get_finished_answers_for_user,
+            company_id,
             db_path,
             user_id,
             course.slug,
@@ -1068,3 +1086,19 @@ def _validate_user_id(user_id: int) -> int:
     if user_id <= 0:
         raise ValueError("user_id must be a positive integer")
     return user_id
+
+
+def _validate_company_id(company_id: str) -> str:
+    if not isinstance(company_id, str) or not company_id.strip():
+        raise ValueError("company_id must be a non-empty string")
+    return company_id.strip()
+
+
+def _call_for_company(method, company_id: str, *args, **kwargs):
+    """Call production tenant-aware repositories and legacy test doubles."""
+    try:
+        return method(*args, company_id=company_id, **kwargs)
+    except TypeError as exc:
+        if "company_id" not in str(exc):
+            raise
+        return method(*args, **kwargs)

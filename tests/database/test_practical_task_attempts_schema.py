@@ -12,6 +12,7 @@ from app.database.db import get_connection, initialize_database
 
 EXPECTED_COLUMNS = (
     "id",
+    "company_id",
     "user_id",
     "course_slug",
     "lesson_slug",
@@ -34,6 +35,7 @@ EXPECTED_INDEXES = (
     "idx_practical_task_attempts_user_id",
     "idx_practical_task_attempts_course_lesson",
     "idx_practical_task_attempts_status",
+    "idx_practical_task_attempts_company_user",
 )
 
 

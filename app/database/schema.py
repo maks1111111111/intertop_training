@@ -49,6 +49,7 @@ def create_tables(connection: sqlite3.Connection) -> None:
 
         CREATE TABLE IF NOT EXISTS enrollments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id TEXT NOT NULL DEFAULT 'intertop',
             user_id INTEGER NOT NULL,
             course_id INTEGER NOT NULL,
             status TEXT NOT NULL DEFAULT 'assigned',
@@ -60,7 +61,10 @@ def create_tables(connection: sqlite3.Connection) -> None:
             development_reason TEXT,
             started_at TEXT,
             completed_at TEXT,
-            UNIQUE(user_id, course_id),
+            UNIQUE(company_id, user_id, course_id),
+            FOREIGN KEY (company_id)
+                REFERENCES companies(id)
+                ON DELETE CASCADE,
             FOREIGN KEY (user_id)
                 REFERENCES users(id)
                 ON DELETE CASCADE,
@@ -74,12 +78,16 @@ def create_tables(connection: sqlite3.Connection) -> None:
 
         CREATE TABLE IF NOT EXISTS lesson_progress (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id TEXT NOT NULL DEFAULT 'intertop',
             user_id INTEGER NOT NULL,
             lesson_id INTEGER NOT NULL,
             status TEXT NOT NULL DEFAULT 'not_started',
             started_at TEXT,
             completed_at TEXT,
-            UNIQUE(user_id, lesson_id),
+            UNIQUE(company_id, user_id, lesson_id),
+            FOREIGN KEY (company_id)
+                REFERENCES companies(id)
+                ON DELETE CASCADE,
             FOREIGN KEY (user_id)
                 REFERENCES users(id)
                 ON DELETE CASCADE,
@@ -102,6 +110,7 @@ def create_tables(connection: sqlite3.Connection) -> None:
 
         CREATE TABLE IF NOT EXISTS quiz_attempts (
             id INTEGER PRIMARY KEY,
+            company_id TEXT NOT NULL DEFAULT 'intertop',
             user_id INTEGER NOT NULL,
             course_slug TEXT NOT NULL,
             quiz_version INTEGER NOT NULL,
@@ -138,6 +147,7 @@ def create_tables(connection: sqlite3.Connection) -> None:
 
         CREATE TABLE IF NOT EXISTS practical_task_attempts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id TEXT NOT NULL DEFAULT 'intertop',
             user_id INTEGER NOT NULL,
             course_slug TEXT NOT NULL,
             lesson_slug TEXT NOT NULL,
@@ -174,6 +184,7 @@ def create_tables(connection: sqlite3.Connection) -> None:
 
         CREATE TABLE IF NOT EXISTS web_lesson_progress (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id TEXT NOT NULL DEFAULT 'intertop',
             user_id TEXT NOT NULL,
             course_slug TEXT NOT NULL,
             lesson_id TEXT NOT NULL,

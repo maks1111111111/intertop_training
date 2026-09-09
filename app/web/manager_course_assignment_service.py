@@ -88,15 +88,31 @@ class ManagerCourseAssignmentService:
                 course_slug=course.slug,
             )
 
-        assigned = self._progress_repository.assign_course_to_user(
-            self._db_path,
-            member.user_id,
-            course.slug,
+        assignment_arguments = dict(
             assigned_by_user_id=normalized_assigned_by_user_id,
             due_at=due_at,
             development_source=development_source,
             development_reason=development_reason,
         )
+        try:
+            assigned = self._progress_repository.assign_course_to_user(
+                self._db_path,
+                member.user_id,
+                course.slug,
+                company_id=normalized_company_id,
+                **assignment_arguments,
+            )
+        except TypeError as exc:
+            # Keeps pre-tenant test doubles compatible; production uses the
+            # tenant-aware repository above.
+            if "company_id" not in str(exc):
+                raise
+            assigned = self._progress_repository.assign_course_to_user(
+                self._db_path,
+                member.user_id,
+                course.slug,
+                **assignment_arguments,
+            )
         if assigned:
             return ManagerCourseAssignmentResult(
                 success=True,

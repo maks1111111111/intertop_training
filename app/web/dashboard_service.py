@@ -43,11 +43,13 @@ class DashboardService:
         progress_repository: ProgressRepository,
         quiz_repository: ModuleType,
         db_path: Path,
+        company_id: str = "intertop",
     ) -> None:
         self._runtime = runtime
         self._progress_repository = progress_repository
         self._quiz_repository = quiz_repository
         self._db_path = db_path
+        self._company_id = _validate_company_id(company_id)
 
     def get_courses_for_user(self, user_id: int) -> tuple[CourseDashboardItem, ...]:
         """Return dashboard rows for one canonical user id."""
@@ -60,18 +62,21 @@ class DashboardService:
                     self._db_path,
                     normalized_user_id,
                     course.slug,
+                    self._company_id,
                 )
             )
             quiz_stats = self._quiz_repository.get_course_quiz_stats_for_user(
                 self._db_path,
                 normalized_user_id,
                 course.slug,
+                self._company_id,
             )
             resume_lesson_index = (
                 self._progress_repository.get_resume_lesson_index_for_user(
                     self._db_path,
                     normalized_user_id,
                     course.slug,
+                    self._company_id,
                 )
             )
 
@@ -104,6 +109,12 @@ def _validate_user_id(user_id: int) -> int:
     if user_id <= 0:
         raise ValueError("user_id must be a positive integer")
     return user_id
+
+
+def _validate_company_id(company_id: str) -> str:
+    if not isinstance(company_id, str) or not company_id.strip():
+        raise ValueError("company_id must be a non-empty string")
+    return company_id.strip()
 
 def _last_lesson_title(course: Course, resume_lesson_index: int) -> str:
     """Return the title of the last completed lesson, if any."""

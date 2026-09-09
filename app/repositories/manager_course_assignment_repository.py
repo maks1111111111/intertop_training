@@ -66,8 +66,17 @@ class ManagerCourseAssignmentRepository:
         normalized_user_id = _validate_user_id(user_id)
 
         with get_connection(db_path) as connection:
+            enrollment_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(enrollments)")
+            }
+            enrollment_company_join = (
+                "AND enrollments.company_id = company_memberships.company_id"
+                if "company_id" in enrollment_columns
+                else ""
+            )
             rows = connection.execute(
-                """
+                f"""
                 SELECT
                     enrollments.user_id AS employee_user_id,
                     courses.slug AS course_slug,
@@ -89,6 +98,7 @@ class ManagerCourseAssignmentRepository:
                     ON employee_users.id = company_memberships.user_id
                 JOIN enrollments
                     ON enrollments.user_id = employee_users.id
+                   {enrollment_company_join}
                 JOIN courses
                     ON courses.id = enrollments.course_id
                 LEFT JOIN users AS assignment_author_users

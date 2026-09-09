@@ -49,11 +49,13 @@ class WebPracticalTaskService:
         review_service: Optional[PracticalTaskReviewService],
         db_path: Path,
         repository: ModuleType = practical_task_attempt_repository,
+        company_id: str = "intertop",
     ) -> None:
         self._runtime = runtime
         self._review_service = review_service
         self._db_path = db_path
         self._repository = repository
+        self._company_id = _validate_company_id(company_id)
 
     def submit_and_review(
         self,
@@ -116,6 +118,7 @@ class WebPracticalTaskService:
             task_description=task.description,
             expected_result=task.expected_result,
             learner_answer=normalized_answer,
+            company_id=self._company_id,
         )
         if attempt_id is None:
             raise WebPracticalTaskAttemptCreationError(
@@ -128,6 +131,7 @@ class WebPracticalTaskService:
             self._db_path,
             attempt_id,
             review_result,
+            company_id=self._company_id,
         ):
             raise WebPracticalTaskReviewCompletionError(
                 f"Cannot persist review for attempt_id={attempt_id}."
@@ -152,6 +156,7 @@ class WebPracticalTaskService:
             course_slug=course_slug,
             lesson_slug=lesson_id,
             limit=limit,
+            company_id=self._company_id,
         )
 
     def get_attempt_for_user(
@@ -167,7 +172,11 @@ class WebPracticalTaskService:
         ):
             return None
 
-        attempt = self._repository.get_attempt(self._db_path, attempt_id)
+        attempt = self._repository.get_attempt(
+            self._db_path,
+            attempt_id,
+            company_id=self._company_id,
+        )
         if attempt is None or attempt.user_id != normalized_user_id:
             return None
         return attempt
@@ -179,6 +188,12 @@ def _validate_user_id(user_id: int) -> int:
             "user_id must be a positive integer"
         )
     return user_id
+
+
+def _validate_company_id(company_id: str) -> str:
+    if not isinstance(company_id, str) or not company_id.strip():
+        raise WebPracticalTaskValidationError("company_id must be a non-empty string")
+    return company_id.strip()
 
 
 def _validate_learner_answer(learner_answer: str) -> str:

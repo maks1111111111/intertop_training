@@ -11,6 +11,8 @@ from typing import Optional, Tuple
 from app.ai.review_interfaces import ReviewResult
 from app.database.db import get_connection
 
+LEGACY_COMPANY_ID = "intertop"
+
 _USER_LESSON_ATTEMPTS_FROM = """
     FROM practical_task_attempts
     JOIN users
@@ -122,6 +124,12 @@ def _validate_user_id(user_id: int) -> int:
     return user_id
 
 
+def _validate_company_id(company_id: str) -> str:
+    if not isinstance(company_id, str) or not company_id.strip():
+        raise ValueError("company_id must be a non-empty string")
+    return company_id.strip()
+
+
 def create_attempt_for_user(
     db_path: Path,
     user_id: int,
@@ -131,14 +139,17 @@ def create_attempt_for_user(
     task_description: str,
     expected_result: str,
     learner_answer: str,
+    company_id: str = LEGACY_COMPANY_ID,
 ) -> Optional[int]:
     """Create a pending practical-task attempt for a canonical user."""
     normalized_user_id = _validate_user_id(user_id)
+    normalized_company_id = _validate_company_id(company_id)
 
     with get_connection(db_path) as connection:
         cursor = connection.execute(
             """
             INSERT INTO practical_task_attempts (
+                company_id,
                 user_id,
                 course_slug,
                 lesson_slug,
@@ -148,6 +159,7 @@ def create_attempt_for_user(
                 learner_answer
             )
             SELECT
+                ?,
                 users.id,
                 ?,
                 ?,
@@ -159,6 +171,7 @@ def create_attempt_for_user(
             WHERE users.id = ?
             """,
             (
+                normalized_company_id,
                 course_slug,
                 lesson_slug,
                 task_title,
@@ -229,8 +242,10 @@ def create_attempt(
 def get_attempt(
     db_path: Path,
     attempt_id: int,
+    company_id: str = LEGACY_COMPANY_ID,
 ) -> Optional[PracticalTaskAttempt]:
     """Return a single attempt by id, or None if it does not exist."""
+    normalized_company_id = _validate_company_id(company_id)
     with get_connection(db_path) as connection:
         row = connection.execute(
             """
@@ -241,8 +256,9 @@ def get_attempt(
             JOIN users
                 ON users.id = practical_task_attempts.user_id
             WHERE practical_task_attempts.id = ?
+              AND practical_task_attempts.company_id = ?
             """,
-            (attempt_id,),
+            (attempt_id, normalized_company_id),
         ).fetchone()
 
         if row is None:
@@ -255,6 +271,7 @@ def complete_review(
     db_path: Path,
     attempt_id: int,
     result: ReviewResult,
+    company_id: str = LEGACY_COMPANY_ID,
 ) -> bool:
     """Store AI review outcome for a pending attempt. Returns True if updated."""
     strengths_json = json.dumps(
@@ -266,6 +283,7 @@ def complete_review(
         ensure_ascii=False,
     )
 
+    normalized_company_id = _validate_company_id(company_id)
     with get_connection(db_path) as connection:
         cursor = connection.execute(
             """
@@ -279,6 +297,7 @@ def complete_review(
                 status = 'reviewed',
                 reviewed_at = CURRENT_TIMESTAMP
             WHERE id = ?
+              AND company_id = ?
               AND status = 'pending'
             """,
             (
@@ -289,6 +308,7 @@ def complete_review(
                 strengths_json,
                 improvements_json,
                 attempt_id,
+                normalized_company_id,
             ),
         )
 
@@ -334,9 +354,11 @@ def get_attempts_for_lesson_for_user(
     course_slug: str,
     lesson_slug: str,
     limit: int = 10,
+    company_id: str = LEGACY_COMPANY_ID,
 ) -> list[PracticalTaskAttempt]:
     """Return recent lesson attempts for one canonical user."""
     normalized_user_id = _validate_user_id(user_id)
+    normalized_company_id = _validate_company_id(company_id)
     if limit <= 0:
         return []
 
@@ -350,6 +372,7 @@ def get_attempts_for_lesson_for_user(
             JOIN users
                 ON users.id = practical_task_attempts.user_id
             WHERE practical_task_attempts.user_id = ?
+              AND practical_task_attempts.company_id = ?
               AND practical_task_attempts.course_slug = ?
               AND practical_task_attempts.lesson_slug = ?
             ORDER BY practical_task_attempts.started_at DESC,
@@ -358,6 +381,7 @@ def get_attempts_for_lesson_for_user(
             """,
             (
                 normalized_user_id,
+                normalized_company_id,
                 course_slug,
                 lesson_slug,
                 limit,
@@ -370,9 +394,11 @@ def get_attempts_for_lesson_for_user(
 def get_attempts_aggregate_for_user(
     db_path: Path,
     user_id: int,
+    company_id: str = LEGACY_COMPANY_ID,
 ) -> PracticalTaskAttemptAggregate:
     """Return aggregate practical-task metrics for one canonical user."""
     normalized_user_id = _validate_user_id(user_id)
+    normalized_company_id = _validate_company_id(company_id)
 
     with get_connection(db_path) as connection:
         counts_row = connection.execute(
@@ -397,8 +423,9 @@ def get_attempts_aggregate_for_user(
                 ) AS failed_attempts_count
             FROM practical_task_attempts
             WHERE user_id = ?
+              AND company_id = ?
             """,
-            (normalized_user_id,),
+            (normalized_user_id, normalized_company_id),
         ).fetchone()
 
         score_rows = connection.execute(
@@ -406,12 +433,13 @@ def get_attempts_aggregate_for_user(
             SELECT score, max_score
             FROM practical_task_attempts
             WHERE user_id = ?
+              AND company_id = ?
               AND status = 'reviewed'
               AND score IS NOT NULL
               AND max_score IS NOT NULL
               AND max_score > 0
             """,
-            (normalized_user_id,),
+            (normalized_user_id, normalized_company_id),
         ).fetchall()
 
     score_percents = [
@@ -439,9 +467,11 @@ def get_attempts_for_user(
     db_path: Path,
     user_id: int,
     limit: int = 10,
+    company_id: str = LEGACY_COMPANY_ID,
 ) -> list[PracticalTaskAttempt]:
     """Return recent practical-task attempts for one canonical user."""
     normalized_user_id = _validate_user_id(user_id)
+    normalized_company_id = _validate_company_id(company_id)
     if limit <= 0:
         return []
 
@@ -455,12 +485,14 @@ def get_attempts_for_user(
             JOIN users
                 ON users.id = practical_task_attempts.user_id
             WHERE practical_task_attempts.user_id = ?
+              AND practical_task_attempts.company_id = ?
             ORDER BY practical_task_attempts.started_at DESC,
                      practical_task_attempts.id DESC
             LIMIT ?
             """,
             (
                 normalized_user_id,
+                normalized_company_id,
                 limit,
             ),
         ).fetchall()
@@ -471,9 +503,11 @@ def get_attempts_for_user(
 def get_reviewed_feedback_for_user(
     db_path: Path,
     user_id: int,
+    company_id: str = LEGACY_COMPANY_ID,
 ) -> list[PracticalTaskReviewFeedback]:
     """Return reviewed practical-task feedback for one canonical user."""
     normalized_user_id = _validate_user_id(user_id)
+    normalized_company_id = _validate_company_id(company_id)
 
     with get_connection(db_path) as connection:
         rows = connection.execute(
@@ -488,10 +522,11 @@ def get_reviewed_feedback_for_user(
                 reviewed_at
             FROM practical_task_attempts
             WHERE user_id = ?
+              AND company_id = ?
               AND status = 'reviewed'
             ORDER BY reviewed_at ASC, id ASC
             """,
-            (normalized_user_id,),
+            (normalized_user_id, normalized_company_id),
         ).fetchall()
 
     return [

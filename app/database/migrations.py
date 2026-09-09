@@ -443,6 +443,149 @@ def migrate_companies_table(connection: sqlite3.Connection) -> None:
             ON company_memberships(company_id, role);
         """
     )
+def migrate_learning_progress_tenant_scope(
+    connection: sqlite3.Connection,
+) -> None:
+    """Scope legacy learning records to Intertop and add tenant indexes.
+
+    Enrollments and lesson progress must be rebuilt because their legacy
+    uniqueness constraints did not include a company.  Other attempt tables
+    can safely receive a non-null legacy tenant column in place.
+    """
+    enrollment_columns = _get_table_columns(connection, "enrollments")
+    progress_columns = _get_table_columns(connection, "lesson_progress")
+
+    if "company_id" not in enrollment_columns or "company_id" not in progress_columns:
+        # A populated legacy installation needs an owning tenant before its
+        # globally-addressed learning records are rebuilt. New installations
+        # create their first company explicitly during onboarding instead.
+        legacy_users = connection.execute(
+            "SELECT 1 FROM users LIMIT 1"
+        ).fetchone()
+        if legacy_users is not None:
+            connection.execute(
+                """INSERT INTO companies (id, name) VALUES ('intertop', 'Intertop')
+                   ON CONFLICT(id) DO NOTHING"""
+            )
+        foreign_keys_enabled = bool(
+            connection.execute("PRAGMA foreign_keys").fetchone()[0]
+        )
+        # Earlier additive migrations may have created the legacy tenant in
+        # this connection.  Publish that prerequisite before the SQLite table
+        # rebuild, which must toggle foreign-key enforcement outside a txn.
+        if connection.in_transaction:
+            connection.commit()
+        if foreign_keys_enabled:
+            connection.execute("PRAGMA foreign_keys = OFF")
+        try:
+            connection.execute("BEGIN")
+            if "company_id" not in enrollment_columns:
+                connection.executescript(
+                    """
+                    CREATE TABLE enrollments_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        company_id TEXT NOT NULL DEFAULT 'intertop',
+                        user_id INTEGER NOT NULL,
+                        course_id INTEGER NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'assigned',
+                        progress_percent INTEGER NOT NULL DEFAULT 0,
+                        assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        assigned_by_user_id INTEGER,
+                        due_at TEXT,
+                        development_source TEXT,
+                        development_reason TEXT,
+                        started_at TEXT,
+                        completed_at TEXT,
+                        UNIQUE(company_id, user_id, course_id),
+                        FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                        FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+                        FOREIGN KEY (assigned_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+                    );
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO enrollments_new (
+                        id, company_id, user_id, course_id, status,
+                        progress_percent, assigned_at, assigned_by_user_id,
+                        due_at, development_source, development_reason,
+                        started_at, completed_at
+                    )
+                    SELECT id, 'intertop', user_id, course_id, status,
+                           progress_percent, assigned_at, assigned_by_user_id,
+                           due_at, development_source, development_reason,
+                           started_at, completed_at
+                    FROM enrollments
+                    """
+                )
+                connection.execute("DROP TABLE enrollments")
+                connection.execute("ALTER TABLE enrollments_new RENAME TO enrollments")
+
+            if "company_id" not in progress_columns:
+                connection.executescript(
+                    """
+                    CREATE TABLE lesson_progress_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        company_id TEXT NOT NULL DEFAULT 'intertop',
+                        user_id INTEGER NOT NULL,
+                        lesson_id INTEGER NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'not_started',
+                        started_at TEXT,
+                        completed_at TEXT,
+                        UNIQUE(company_id, user_id, lesson_id),
+                        FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                        FOREIGN KEY (lesson_id) REFERENCES lessons(id) ON DELETE CASCADE
+                    );
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO lesson_progress_new (
+                        id, company_id, user_id, lesson_id, status,
+                        started_at, completed_at
+                    )
+                    SELECT id, 'intertop', user_id, lesson_id, status,
+                           started_at, completed_at
+                    FROM lesson_progress
+                    """
+                )
+                connection.execute("DROP TABLE lesson_progress")
+                connection.execute("ALTER TABLE lesson_progress_new RENAME TO lesson_progress")
+
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            if foreign_keys_enabled:
+                connection.execute("PRAGMA foreign_keys = ON")
+
+    for table_name in (
+        "quiz_attempts",
+        "practical_task_attempts",
+        "web_lesson_progress",
+    ):
+        if "company_id" not in _get_table_columns(connection, table_name):
+            connection.execute(
+                f"ALTER TABLE {table_name} ADD COLUMN company_id TEXT NOT NULL DEFAULT 'intertop'"
+            )
+
+    connection.executescript(
+        """
+        CREATE INDEX IF NOT EXISTS idx_enrollments_company_user
+            ON enrollments(company_id, user_id);
+        CREATE INDEX IF NOT EXISTS idx_lesson_progress_company_user
+            ON lesson_progress(company_id, user_id);
+        CREATE INDEX IF NOT EXISTS idx_quiz_attempts_company_user_course
+            ON quiz_attempts(company_id, user_id, course_slug);
+        CREATE INDEX IF NOT EXISTS idx_practical_task_attempts_company_user
+            ON practical_task_attempts(company_id, user_id);
+        CREATE INDEX IF NOT EXISTS idx_web_lesson_progress_company_user_course
+            ON web_lesson_progress(company_id, user_id, course_slug);
+        """
+    )
 
 
 def run_migrations(connection: sqlite3.Connection) -> None:
@@ -456,3 +599,4 @@ def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_knowledge_document_chunks_table(connection)
     migrate_user_password_credentials_table(connection)
     migrate_companies_table(connection)
+    migrate_learning_progress_tenant_scope(connection)

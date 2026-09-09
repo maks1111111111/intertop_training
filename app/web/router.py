@@ -342,6 +342,7 @@ def get_progress_service(
         db_path,
         ProgressRepository(),
         identity.user_id,
+        identity.company_id,
     )
 
 
@@ -363,6 +364,7 @@ def get_web_practical_task_service(
     request: Request,
     runtime: ContentRuntime = Depends(get_content_runtime),
     db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_web_identity),
 ) -> WebPracticalTaskService:
     """Return the canonical-user Web practical-task service."""
     override = getattr(request.app.state, "web_practical_task_service", None)
@@ -372,12 +374,14 @@ def get_web_practical_task_service(
         runtime,
         _optional_practical_task_review_service(),
         db_path,
+        company_id=identity.company_id,
     )
 
 
 def get_dashboard_service(
     runtime: ContentRuntime = Depends(get_content_runtime),
     db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_web_identity),
 ) -> DashboardService:
     """Return the dashboard service wired to the application runtime."""
     return DashboardService(
@@ -385,6 +389,7 @@ def get_dashboard_service(
         ProgressRepository(),
         quiz_repository,
         db_path,
+        identity.company_id,
     )
 
 
@@ -401,6 +406,7 @@ def get_manager_team_service(
 def get_manager_employee_analytics_service(
     runtime: ContentRuntime = Depends(get_content_runtime),
     db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_web_identity),
 ) -> ManagerEmployeeAnalyticsService:
     """Return quiz analytics service for manager employee views."""
     return ManagerEmployeeAnalyticsService(
@@ -408,6 +414,7 @@ def get_manager_employee_analytics_service(
         quiz_repository,
         db_path,
         practical_task_attempt_repository,
+        identity.company_id,
     )
 
 
@@ -4269,6 +4276,7 @@ async def quiz_submit_page(
         course_slug=course.slug,
         quiz_version=course.quiz.version,
         questions_count=result.questions_count,
+        company_id=identity.company_id,
     )
     if attempt_id is None:
         raise HTTPException(status_code=401, detail="Authentication required")

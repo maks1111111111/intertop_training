@@ -4,6 +4,8 @@ from typing import Optional, TypedDict
 
 from app.database.db import get_connection
 
+LEGACY_COMPANY_ID = "intertop"
+
 DEFAULT_PASSING_SCORE = 80
 
 _USER_COURSE_ATTEMPTS_FROM = """
@@ -314,15 +316,23 @@ def _validate_user_id(user_id: int) -> int:
     return user_id
 
 
+def _validate_company_id(company_id: str) -> str:
+    if not isinstance(company_id, str) or not company_id.strip():
+        raise ValueError("company_id must be a non-empty string")
+    return company_id.strip()
+
+
 def create_attempt_for_user(
     db_path: Path,
     user_id: int,
     course_slug: str,
     quiz_version: int,
     questions_count: int,
+    company_id: str = LEGACY_COMPANY_ID,
 ) -> Optional[int]:
     """Create or return the active quiz attempt for a canonical user."""
     normalized_user_id = _validate_user_id(user_id)
+    normalized_company_id = _validate_company_id(company_id)
 
     with get_connection(db_path) as connection:
         active_attempt = connection.execute(
@@ -331,6 +341,7 @@ def create_attempt_for_user(
             FROM quiz_attempts
             WHERE user_id = ?
               AND course_slug = ?
+              AND company_id = ?
               AND finished_at IS NULL
             ORDER BY started_at DESC, id DESC
             LIMIT 1
@@ -338,6 +349,7 @@ def create_attempt_for_user(
             (
                 normalized_user_id,
                 course_slug,
+                normalized_company_id,
             ),
         ).fetchone()
 
@@ -347,6 +359,7 @@ def create_attempt_for_user(
         cursor = connection.execute(
             """
             INSERT INTO quiz_attempts (
+                company_id,
                 user_id,
                 course_slug,
                 quiz_version,
@@ -354,6 +367,7 @@ def create_attempt_for_user(
                 questions_count
             )
             SELECT
+                ?,
                 users.id,
                 ?,
                 ?,
@@ -363,6 +377,7 @@ def create_attempt_for_user(
             WHERE users.id = ?
             """,
             (
+                normalized_company_id,
                 course_slug,
                 quiz_version,
                 questions_count,
@@ -380,9 +395,11 @@ def get_active_attempt_for_user(
     db_path: Path,
     user_id: int,
     course_slug: str,
+    company_id: str = LEGACY_COMPANY_ID,
 ) -> Optional[sqlite3.Row]:
     """Return the active quiz attempt for a canonical user."""
     normalized_user_id = _validate_user_id(user_id)
+    normalized_company_id = _validate_company_id(company_id)
 
     with get_connection(db_path) as connection:
         return connection.execute(
@@ -391,6 +408,7 @@ def get_active_attempt_for_user(
             FROM quiz_attempts
             WHERE user_id = ?
               AND course_slug = ?
+              AND company_id = ?
               AND finished_at IS NULL
             ORDER BY started_at DESC, id DESC
             LIMIT 1
@@ -398,6 +416,7 @@ def get_active_attempt_for_user(
             (
                 normalized_user_id,
                 course_slug,
+                normalized_company_id,
             ),
         ).fetchone()
 
@@ -407,9 +426,11 @@ def get_finished_attempts_for_user(
     user_id: int,
     course_slug: str,
     limit: int = 10,
+    company_id: str = LEGACY_COMPANY_ID,
 ) -> list[sqlite3.Row]:
     """Return finished quiz attempts for a canonical user."""
     normalized_user_id = _validate_user_id(user_id)
+    normalized_company_id = _validate_company_id(company_id)
 
     if limit <= 0:
         return []
@@ -421,6 +442,7 @@ def get_finished_attempts_for_user(
             FROM quiz_attempts
             WHERE user_id = ?
               AND course_slug = ?
+              AND company_id = ?
               AND finished_at IS NOT NULL
             ORDER BY finished_at DESC, id DESC
             LIMIT ?
@@ -428,6 +450,7 @@ def get_finished_attempts_for_user(
             (
                 normalized_user_id,
                 course_slug,
+                normalized_company_id,
                 limit,
             ),
         ).fetchall()
@@ -437,9 +460,11 @@ def get_finished_answers_for_user(
     db_path: Path,
     user_id: int,
     course_slug: str,
+    company_id: str = LEGACY_COMPANY_ID,
 ) -> list[sqlite3.Row]:
     """Return answers from finished quiz attempts for a canonical user and course."""
     normalized_user_id = _validate_user_id(user_id)
+    normalized_company_id = _validate_company_id(company_id)
 
     with get_connection(db_path) as connection:
         return connection.execute(
@@ -454,6 +479,7 @@ def get_finished_answers_for_user(
                 ON quiz_attempts.id = quiz_answers.attempt_id
             WHERE quiz_attempts.user_id = ?
               AND quiz_attempts.course_slug = ?
+              AND quiz_attempts.company_id = ?
               AND quiz_attempts.finished_at IS NOT NULL
             ORDER BY
                 quiz_attempts.finished_at ASC,
@@ -463,6 +489,7 @@ def get_finished_answers_for_user(
             (
                 normalized_user_id,
                 course_slug,
+                normalized_company_id,
             ),
         ).fetchall()
 
@@ -471,12 +498,15 @@ def get_course_quiz_stats_for_user(
     db_path: Path,
     user_id: int,
     course_slug: str,
+    company_id: str = LEGACY_COMPANY_ID,
 ) -> CourseQuizStats:
     """Return quiz statistics for one canonical user and course."""
     normalized_user_id = _validate_user_id(user_id)
+    normalized_company_id = _validate_company_id(company_id)
     params = (
         normalized_user_id,
         course_slug,
+        normalized_company_id,
     )
 
     with get_connection(db_path) as connection:
@@ -490,6 +520,7 @@ def get_course_quiz_stats_for_user(
             FROM quiz_attempts
             WHERE user_id = ?
               AND course_slug = ?
+              AND company_id = ?
               AND finished_at IS NOT NULL
             """,
             params,
@@ -504,6 +535,7 @@ def get_course_quiz_stats_for_user(
             FROM quiz_attempts
             WHERE user_id = ?
               AND course_slug = ?
+              AND company_id = ?
               AND finished_at IS NOT NULL
             ORDER BY finished_at DESC, id DESC
             LIMIT 1

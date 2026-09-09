@@ -42,6 +42,12 @@ def _validate_user_id(user_id: int) -> int:
     return user_id
 
 
+def _validate_company_id(company_id: str) -> str:
+    if not isinstance(company_id, str) or not company_id.strip():
+        raise ValueError("company_id must be a non-empty string")
+    return company_id.strip()
+
+
 class WebProgressService:
     """Persist and read Web lesson completion through canonical progress tables."""
 
@@ -50,10 +56,12 @@ class WebProgressService:
         db_path: Path,
         progress_repository: ProgressRepository,
         user_id: int,
+        company_id: str = "intertop",
     ) -> None:
         self._db_path = db_path
         self._progress_repository = progress_repository
         self._user_id = _validate_user_id(user_id)
+        self._company_id = _validate_company_id(company_id)
 
     def mark_lesson_completed(self, course_slug: str, lesson_id: str) -> None:
         """Record one completed lesson without creating duplicates."""
@@ -64,12 +72,14 @@ class WebProgressService:
             self._db_path,
             self._user_id,
             course_slug,
+            self._company_id,
         )
         self._progress_repository.complete_lesson_for_user(
             self._db_path,
             self._user_id,
             course_slug,
             lesson_id,
+            self._company_id,
         )
 
     def is_lesson_completed(self, course_slug: str, lesson_id: str) -> bool:
@@ -87,12 +97,13 @@ class WebProgressService:
                 JOIN courses
                     ON courses.id = lessons.course_id
                 WHERE lesson_progress.user_id = ?
+                  AND lesson_progress.company_id = ?
                   AND courses.slug = ?
                   AND lessons.slug = ?
                   AND lesson_progress.status = 'completed'
                 LIMIT 1
                 """,
-                (self._user_id, course_slug, lesson_id),
+                (self._user_id, self._company_id, course_slug, lesson_id),
             ).fetchone()
         return row is not None
 
@@ -111,11 +122,12 @@ class WebProgressService:
                 JOIN courses
                     ON courses.id = lessons.course_id
                 WHERE lesson_progress.user_id = ?
+                  AND lesson_progress.company_id = ?
                   AND courses.slug = ?
                   AND lesson_progress.status = 'completed'
                 ORDER BY lessons.slug
                 """,
-                (self._user_id, course_slug),
+                (self._user_id, self._company_id, course_slug),
             ).fetchall()
         return {str(row["slug"]) for row in rows}
 
