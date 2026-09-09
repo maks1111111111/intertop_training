@@ -75,6 +75,15 @@ class ManagerCourseAssignmentRepository:
                 if "company_id" in enrollment_columns
                 else ""
             )
+            course_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(courses)")
+            }
+            course_company_join = (
+                "AND courses.company_id = company_memberships.company_id"
+                if "company_id" in course_columns
+                else ""
+            )
             rows = connection.execute(
                 f"""
                 SELECT
@@ -101,6 +110,7 @@ class ManagerCourseAssignmentRepository:
                    {enrollment_company_join}
                 JOIN courses
                     ON courses.id = enrollments.course_id
+                   {course_company_join}
                 LEFT JOIN users AS assignment_author_users
                     ON assignment_author_users.id = enrollments.assigned_by_user_id
                 WHERE company_memberships.company_id = ?

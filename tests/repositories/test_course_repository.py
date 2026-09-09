@@ -126,6 +126,49 @@ class CourseRepositoryLifecycleTests(unittest.TestCase):
                 ).lastrowid
             )
 
+    def test_same_slug_is_isolated_by_company_in_catalog_and_progress(self) -> None:
+        from app.database.db import get_connection
+
+        with get_connection(self.db_path) as connection:
+            connection.executemany(
+                "INSERT INTO companies (id, name) VALUES (?, ?)",
+                (("company-a", "Company A"), ("company-b", "Company B")),
+            )
+        user_id = self._create_user()
+        alpha_a = self.repository.save(
+            self.db_path, "alpha", "Alpha A", None, 0, "company-a"
+        )
+        alpha_b = self.repository.save(
+            self.db_path, "alpha", "Alpha B", None, 0, "company-b"
+        )
+
+        self.assertNotEqual(alpha_a, alpha_b)
+        self.assertEqual(
+            self.repository.get_by_slug(self.db_path, "alpha", "company-a")["title"],
+            "Alpha A",
+        )
+        self.assertEqual(
+            self.repository.get_by_slug(self.db_path, "alpha", "company-b")["title"],
+            "Alpha B",
+        )
+
+        ProgressRepository().start_course_for_user(
+            self.db_path, user_id, "alpha", "company-a"
+        )
+
+        self.assertEqual(
+            ProgressRepository().get_course_progress_for_user(
+                self.db_path, user_id, "alpha", "company-a"
+            ),
+            ("in_progress", 0),
+        )
+        self.assertEqual(
+            ProgressRepository().get_course_progress_for_user(
+                self.db_path, user_id, "alpha", "company-b"
+            ),
+            ("not_started", 0),
+        )
+
 
 class CourseRepositoryDeleteTests(unittest.TestCase):
     """Verify course repository delete behavior."""

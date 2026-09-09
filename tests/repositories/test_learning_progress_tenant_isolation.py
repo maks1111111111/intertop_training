@@ -33,7 +33,7 @@ class LearningProgressTenantIsolationTests(unittest.TestCase):
         assert row is not None
         self.user_id = int(row["id"])
         course_id = CourseRepository().save(
-            self.db_path, "safety", "Safety", None, 0
+            self.db_path, "safety", "Safety", None, 0, "company-a"
         )
         LessonRepository().save(
             self.db_path,

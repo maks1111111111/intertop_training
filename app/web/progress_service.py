@@ -99,11 +99,18 @@ class WebProgressService:
                 WHERE lesson_progress.user_id = ?
                   AND lesson_progress.company_id = ?
                   AND courses.slug = ?
+                  AND courses.company_id = ?
                   AND lessons.slug = ?
                   AND lesson_progress.status = 'completed'
                 LIMIT 1
                 """,
-                (self._user_id, self._company_id, course_slug, lesson_id),
+                (
+                    self._user_id,
+                    self._company_id,
+                    course_slug,
+                    self._company_id,
+                    lesson_id,
+                ),
             ).fetchone()
         return row is not None
 
@@ -124,10 +131,16 @@ class WebProgressService:
                 WHERE lesson_progress.user_id = ?
                   AND lesson_progress.company_id = ?
                   AND courses.slug = ?
+                  AND courses.company_id = ?
                   AND lesson_progress.status = 'completed'
                 ORDER BY lessons.slug
                 """,
-                (self._user_id, self._company_id, course_slug),
+                (
+                    self._user_id,
+                    self._company_id,
+                    course_slug,
+                    self._company_id,
+                ),
             ).fetchall()
         return {str(row["slug"]) for row in rows}
 

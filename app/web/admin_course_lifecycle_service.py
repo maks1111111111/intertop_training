@@ -56,12 +56,14 @@ class AdminCourseLifecycleService:
         courses_dir: Path,
         runtime: ContentRuntime,
         db_path: Path,
+        company_id: str = "intertop",
         *,
         course_repository: Optional[CourseRepository] = None,
     ) -> None:
         self._courses_dir = courses_dir
         self._runtime = runtime
         self._db_path = db_path
+        self._company_id = company_id
         self._course_repository = course_repository or CourseRepository()
 
     def get_archive_view(self, slug: str) -> Optional[AdminCourseLifecycleView]:
@@ -74,6 +76,7 @@ class AdminCourseLifecycleService:
         active_assignments_count = self._course_repository.count_active_enrollments(
             self._db_path,
             normalized_slug,
+            self._company_id,
         )
         detail_url = f"/admin/courses/{normalized_slug}"
         return AdminCourseLifecycleView(
@@ -166,6 +169,7 @@ class AdminCourseLifecycleService:
                 self._db_path,
                 normalized_slug,
                 _ARCHIVED_STATUS,
+                self._company_id,
             )
             if not updated:
                 self._restore_course_json(course_json_path, original_payload)
@@ -290,6 +294,7 @@ class AdminCourseLifecycleService:
                 self._db_path,
                 normalized_slug,
                 _PUBLISHED_STATUS,
+                self._company_id,
             )
             if not updated:
                 self._restore_course_json(course_json_path, original_payload)

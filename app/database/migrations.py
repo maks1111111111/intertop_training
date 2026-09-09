@@ -588,6 +588,77 @@ def migrate_learning_progress_tenant_scope(
     )
 
 
+def migrate_courses_tenant_scope(connection: sqlite3.Connection) -> None:
+    """Give legacy courses an explicit owner without changing their ids."""
+    columns = _get_table_columns(connection, "courses")
+    if "company_id" in columns:
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_courses_company_id ON courses(company_id)"
+        )
+        return
+
+    if connection.execute("SELECT 1 FROM courses LIMIT 1").fetchone() is not None:
+        connection.execute(
+            """INSERT INTO companies (id, name) VALUES ('intertop', 'Intertop')
+               ON CONFLICT(id) DO NOTHING"""
+        )
+    foreign_keys_enabled = bool(
+        connection.execute("PRAGMA foreign_keys").fetchone()[0]
+    )
+    if connection.in_transaction:
+        connection.commit()
+    if foreign_keys_enabled:
+        connection.execute("PRAGMA foreign_keys = OFF")
+    try:
+        connection.execute("BEGIN")
+        connection.executescript(
+            """
+            CREATE TABLE courses_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id TEXT NOT NULL DEFAULT 'intertop',
+                slug TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                cover_path TEXT,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'draft',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(company_id, slug)
+            );
+            """
+        )
+        def source(column_name: str, fallback_sql: str) -> str:
+            return column_name if column_name in columns else fallback_sql
+
+        connection.execute(
+            f"""
+            INSERT INTO courses_new (
+                id, company_id, slug, title, description, cover_path,
+                sort_order, status, created_at, updated_at
+            )
+            SELECT id, 'intertop', slug, title,
+                   {source('description', "''")}, {source('cover_path', 'NULL')},
+                   {source('sort_order', '0')}, {source('status', "'draft'")},
+                   {source('created_at', 'CURRENT_TIMESTAMP')},
+                   {source('updated_at', 'CURRENT_TIMESTAMP')}
+            FROM courses
+            """
+        )
+        connection.execute("DROP TABLE courses")
+        connection.execute("ALTER TABLE courses_new RENAME TO courses")
+        connection.execute(
+            "CREATE INDEX idx_courses_company_id ON courses(company_id)"
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        if foreign_keys_enabled:
+            connection.execute("PRAGMA foreign_keys = ON")
+
+
 def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_users_table(connection)
     migrate_enrollments_assignment_author(connection)
@@ -599,4 +670,5 @@ def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_knowledge_document_chunks_table(connection)
     migrate_user_password_credentials_table(connection)
     migrate_companies_table(connection)
+    migrate_courses_tenant_scope(connection)
     migrate_learning_progress_tenant_scope(connection)

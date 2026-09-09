@@ -726,17 +726,23 @@ def get_admin_course_edit_service(
 def get_admin_course_delete_service(
     runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_web_management_identity),
 ) -> AdminCourseDeleteService:
     """Return the admin course delete service for the current application."""
-    return AdminCourseDeleteService(runtime.base_dir, runtime, db_path)
+    return AdminCourseDeleteService(
+        runtime.base_dir, runtime, db_path, identity.company_id
+    )
 
 
 def get_admin_course_lifecycle_service(
     runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_web_management_identity),
 ) -> AdminCourseLifecycleService:
     """Return the admin course lifecycle service for the current application."""
-    return AdminCourseLifecycleService(runtime.base_dir, runtime, db_path)
+    return AdminCourseLifecycleService(
+        runtime.base_dir, runtime, db_path, identity.company_id
+    )
 
 
 def get_admin_lesson_edit_service(

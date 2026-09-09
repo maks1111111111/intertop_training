@@ -88,7 +88,13 @@ def _resolve_course_dir(courses_dir: Path, slug: str) -> Path:
     return course_dir
 
 
-def _count_course_history(db_path: Path, *, course_slug: str, course_id: Optional[int]) -> AdminCourseDeleteHistoryCounts:
+def _count_course_history(
+    db_path: Path,
+    *,
+    company_id: str,
+    course_slug: str,
+    course_id: Optional[int],
+) -> AdminCourseDeleteHistoryCounts:
     """Return learner history counts that block deletion for one course."""
     enrollments_count = 0
     quiz_attempts_count = 0
@@ -112,8 +118,9 @@ def _count_course_history(db_path: Path, *, course_slug: str, course_id: Optiona
             SELECT COUNT(*) AS count
             FROM quiz_attempts
             WHERE course_slug = ?
+              AND company_id = ?
             """,
-            (course_slug,),
+            (course_slug, company_id),
         ).fetchone()
         quiz_attempts_count = int(row["count"])
 
@@ -122,8 +129,9 @@ def _count_course_history(db_path: Path, *, course_slug: str, course_id: Optiona
             SELECT COUNT(*) AS count
             FROM practical_task_attempts
             WHERE course_slug = ?
+              AND company_id = ?
             """,
-            (course_slug,),
+            (course_slug, company_id),
         ).fetchone()
         practical_task_attempts_count = int(row["count"])
 
@@ -132,8 +140,9 @@ def _count_course_history(db_path: Path, *, course_slug: str, course_id: Optiona
             SELECT COUNT(*) AS count
             FROM web_lesson_progress
             WHERE course_slug = ?
+              AND company_id = ?
             """,
-            (course_slug,),
+            (course_slug, company_id),
         ).fetchone()
         web_lesson_progress_count = int(row["count"])
 
@@ -153,12 +162,14 @@ class AdminCourseDeleteService:
         courses_dir: Path,
         runtime: ContentRuntime,
         db_path: Path,
+        company_id: str = "intertop",
         *,
         course_repository: Optional[CourseRepository] = None,
     ) -> None:
         self._courses_dir = courses_dir
         self._runtime = runtime
         self._db_path = db_path
+        self._company_id = company_id
         self._course_repository = course_repository or CourseRepository()
 
     def get_delete_view(self, slug: str) -> Optional[AdminCourseDeleteView]:
@@ -174,10 +185,13 @@ class AdminCourseDeleteService:
         if not course_dir.is_dir():
             return None
 
-        course_row = self._course_repository.get_by_slug(self._db_path, normalized_slug)
+        course_row = self._course_repository.get_by_slug(
+            self._db_path, normalized_slug, self._company_id
+        )
         course_id = int(course_row["id"]) if course_row is not None else None
         history = _count_course_history(
             self._db_path,
+            company_id=self._company_id,
             course_slug=normalized_slug,
             course_id=course_id,
         )
@@ -242,6 +256,7 @@ class AdminCourseDeleteService:
             self._course_repository.delete_by_slug(
                 self._db_path,
                 normalized_slug,
+                self._company_id,
             )
             RuntimeRefreshService(ContentRuntimeManager(self._runtime)).refresh()
         except Exception:

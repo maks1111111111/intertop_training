@@ -8,6 +8,7 @@ from app.services.scanner import scan_courses
 def sync_courses(
     base_dir: Path,
     db_path: Path,
+    company_id: str = "intertop",
 ) -> None:
     course_repository = CourseRepository()
     lesson_repository = LessonRepository()
@@ -21,6 +22,7 @@ def sync_courses(
             title=course.title,
             cover_path=course.cover_path,
             sort_order=course_sort_order,
+            company_id=company_id,
         )
 
         for lesson_sort_order, lesson in enumerate(course.lessons):
