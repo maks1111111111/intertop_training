@@ -26,6 +26,9 @@ from app.repositories.manager_course_assignment_repository import (
 from app.repositories.progress_repository import ProgressRepository
 from app.repositories.user_repository import UserRepository
 from app.services.tenant_context_service import TenantContextService
+from app.services.tenant_content_runtime_registry import (
+    TenantContentRuntimeRegistry,
+)
 from app.web.admin_course_delete_service import (
     AdminCourseDeleteError,
     AdminCourseDeleteService,
@@ -307,6 +310,28 @@ def require_web_identity(
     return identity
 
 
+def get_tenant_content_runtime(
+    request: Request,
+    legacy_runtime: ContentRuntime = Depends(get_content_runtime),
+    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
+) -> ContentRuntime:
+    """Return content confined to the resolved session's tenant.
+
+    Route-level authorization remains responsible for deciding whether a caller
+    may continue.  Keeping that decision out of this factory preserves the
+    established distinction between learner redirects and management ``403``
+    responses.
+    """
+    registry: TenantContentRuntimeRegistry = request.app.state.tenant_content_runtimes
+    # Test and embedding callers may replace the legacy runtime directly.
+    # Production configures both values together in ``create_app``.
+    if legacy_runtime is not registry.legacy_runtime:
+        return legacy_runtime
+    if identity is None:
+        return registry.legacy_runtime
+    return registry.get_runtime(identity.company_id)
+
+
 def require_web_management_identity(
     identity: Optional[WebIdentity] = Depends(get_current_web_identity),
     authorization_service: WebAuthorizationService = Depends(
@@ -362,7 +387,7 @@ def _optional_practical_task_review_service():
 
 def get_web_practical_task_service(
     request: Request,
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     db_path: Path = Depends(get_db_path),
     identity: WebIdentity = Depends(require_web_identity),
 ) -> WebPracticalTaskService:
@@ -379,7 +404,7 @@ def get_web_practical_task_service(
 
 
 def get_dashboard_service(
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     db_path: Path = Depends(get_db_path),
     identity: WebIdentity = Depends(require_web_identity),
 ) -> DashboardService:
@@ -404,7 +429,7 @@ def get_manager_team_service(
 
 
 def get_manager_employee_analytics_service(
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     db_path: Path = Depends(get_db_path),
     identity: WebIdentity = Depends(require_web_identity),
 ) -> ManagerEmployeeAnalyticsService:
@@ -447,7 +472,7 @@ def get_manager_team_analytics_service(
 
 def get_manager_course_assignment_service(
     team_service: ManagerTeamService = Depends(get_manager_team_service),
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     db_path: Path = Depends(get_db_path),
 ) -> ManagerCourseAssignmentService:
     """Return the tenant-scoped manager course assignment service."""
@@ -623,7 +648,7 @@ def _normalize_assignment_development_context(
 
 
 def get_admin_service(
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> AdminService:
     """Return the admin service wired to the application runtime."""
     return AdminService(runtime)
@@ -678,7 +703,7 @@ def get_upload_service(request: Request) -> AdminUploadService:
 def get_admin_generation_service(
     request: Request,
     upload_service: AdminUploadService = Depends(get_upload_service),
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> AdminGenerationService:
     """Return the admin generation service for the current application."""
     override = getattr(request.app.state, "admin_generation_service", None)
@@ -692,14 +717,14 @@ def get_admin_generation_service(
 
 
 def get_admin_course_edit_service(
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> AdminCourseEditService:
     """Return the admin course edit service for the current application."""
     return AdminCourseEditService(runtime.base_dir, runtime)
 
 
 def get_admin_course_delete_service(
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     db_path: Path = Depends(get_db_path),
 ) -> AdminCourseDeleteService:
     """Return the admin course delete service for the current application."""
@@ -707,7 +732,7 @@ def get_admin_course_delete_service(
 
 
 def get_admin_course_lifecycle_service(
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     db_path: Path = Depends(get_db_path),
 ) -> AdminCourseLifecycleService:
     """Return the admin course lifecycle service for the current application."""
@@ -715,14 +740,14 @@ def get_admin_course_lifecycle_service(
 
 
 def get_admin_lesson_edit_service(
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> AdminLessonEditService:
     """Return the admin lesson edit service for the current application."""
     return AdminLessonEditService(runtime.base_dir, runtime)
 
 
 def get_admin_lesson_create_service(
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> AdminLessonCreateService:
     """Return the admin lesson create service for the current application."""
     return AdminLessonCreateService(runtime.base_dir, runtime)
@@ -741,7 +766,7 @@ def get_admin_lesson_question_preview_store(
 
 def get_admin_lesson_question_preview_service(
     request: Request,
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     preview_store: AdminLessonQuestionPreviewStore = Depends(
         get_admin_lesson_question_preview_store
     ),
@@ -759,7 +784,7 @@ def get_admin_lesson_question_preview_service(
 
 def get_admin_lesson_question_apply_service(
     request: Request,
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     preview_store: AdminLessonQuestionPreviewStore = Depends(
         get_admin_lesson_question_preview_store
     ),
@@ -792,7 +817,7 @@ def get_admin_lesson_practical_task_preview_store(
 
 def get_admin_lesson_practical_task_preview_service(
     request: Request,
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     preview_store: AdminLessonPracticalTaskPreviewStore = Depends(
         get_admin_lesson_practical_task_preview_store
     ),
@@ -813,7 +838,7 @@ def get_admin_lesson_practical_task_preview_service(
 
 def get_admin_lesson_practical_task_apply_service(
     request: Request,
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     preview_store: AdminLessonPracticalTaskPreviewStore = Depends(
         get_admin_lesson_practical_task_preview_store
     ),
@@ -834,42 +859,42 @@ def get_admin_lesson_practical_task_apply_service(
 
 
 def get_admin_quiz_edit_service(
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> AdminQuizEditService:
     """Return the admin quiz edit service for the current application."""
     return AdminQuizEditService(runtime.base_dir, runtime)
 
 
 def get_admin_quiz_question_edit_service(
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> AdminQuizQuestionEditService:
     """Return the admin quiz question edit service for the current application."""
     return AdminQuizQuestionEditService(runtime.base_dir, runtime)
 
 
 def get_admin_quiz_question_create_service(
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> AdminQuizQuestionCreateService:
     """Return the admin quiz question create/delete service for the current application."""
     return AdminQuizQuestionCreateService(runtime.base_dir, runtime)
 
 
 def get_admin_quiz_question_reorder_service(
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> AdminQuizQuestionReorderService:
     """Return the admin quiz question reorder service for the current application."""
     return AdminQuizQuestionReorderService(runtime.base_dir, runtime)
 
 
 def get_admin_manual_course_create_service(
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> AdminManualCourseCreateService:
     """Return the admin manual course create service for the current application."""
     return AdminManualCourseCreateService(runtime.base_dir, runtime)
 
 
 def get_admin_quiz_create_service(
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> AdminQuizCreateService:
     """Return the admin quiz create service for the current application."""
     return AdminQuizCreateService(runtime.base_dir, runtime)
@@ -1106,7 +1131,7 @@ def manager_team_member_page(
     assignment_history_service: ManagerCourseAssignmentHistoryService = Depends(
         get_manager_course_assignment_history_service
     ),
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     identity: WebIdentity = Depends(require_web_management_identity),
 ) -> HTMLResponse:
     """Render one tenant-scoped employee learning profile."""
@@ -2320,7 +2345,7 @@ def _get_preview_course_or_not_found(
 def admin_course_preview_page(
     slug: str,
     request: Request,
-    content_runtime: ContentRuntime = Depends(get_content_runtime),
+    content_runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> HTMLResponse:
     """Render a course as employees will see it without saving progress."""
     course, not_found = _get_preview_course_or_not_found(request, slug, content_runtime)
@@ -2358,7 +2383,7 @@ def admin_lesson_preview_page(
     slug: str,
     lesson_id: str,
     request: Request,
-    content_runtime: ContentRuntime = Depends(get_content_runtime),
+    content_runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> HTMLResponse:
     """Render one lesson in admin preview mode without recording progress."""
     course, not_found = _get_preview_course_or_not_found(request, slug, content_runtime)
@@ -2405,7 +2430,7 @@ def admin_lesson_preview_page(
 def admin_quiz_preview_page(
     slug: str,
     request: Request,
-    content_runtime: ContentRuntime = Depends(get_content_runtime),
+    content_runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> HTMLResponse:
     """Render the course quiz in admin preview mode."""
     course, not_found = _get_preview_course_or_not_found(request, slug, content_runtime)
@@ -2445,7 +2470,7 @@ def admin_quiz_preview_page(
 async def admin_quiz_preview_submit_page(
     slug: str,
     request: Request,
-    content_runtime: ContentRuntime = Depends(get_content_runtime),
+    content_runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> HTMLResponse:
     """Score a preview quiz submission without persisting attempts."""
     course, not_found = _get_preview_course_or_not_found(request, slug, content_runtime)
@@ -3216,7 +3241,7 @@ def _render_admin_quiz_edit_page(
 def admin_quiz_edit_page(
     slug: str,
     request: Request,
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     edit_service: AdminQuizEditService = Depends(get_admin_quiz_edit_service),
 ) -> HTMLResponse:
     """Render the quiz settings edit form for one published course."""
@@ -3253,7 +3278,7 @@ def admin_quiz_edit_page(
 async def admin_quiz_edit_submit(
     slug: str,
     request: Request,
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     edit_service: AdminQuizEditService = Depends(get_admin_quiz_edit_service),
 ):
     """Validate and persist updated quiz settings, then redirect to course detail."""
@@ -3374,7 +3399,7 @@ def admin_quiz_question_edit_page(
     slug: str,
     question_id: str,
     request: Request,
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     edit_service: AdminQuizQuestionEditService = Depends(
         get_admin_quiz_question_edit_service
     ),
@@ -3425,7 +3450,7 @@ async def admin_quiz_question_edit_submit(
     slug: str,
     question_id: str,
     request: Request,
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     edit_service: AdminQuizQuestionEditService = Depends(
         get_admin_quiz_question_edit_service
     ),
@@ -3555,7 +3580,7 @@ def _render_admin_quiz_question_create_page(
 def admin_quiz_question_create_page(
     slug: str,
     request: Request,
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     create_service: AdminQuizQuestionCreateService = Depends(
         get_admin_quiz_question_create_service
     ),
@@ -3595,7 +3620,7 @@ def admin_quiz_question_create_page(
 async def admin_quiz_question_create_submit(
     slug: str,
     request: Request,
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     create_service: AdminQuizQuestionCreateService = Depends(
         get_admin_quiz_question_create_service
     ),
@@ -3670,7 +3695,7 @@ async def admin_quiz_question_delete_submit(
     slug: str,
     question_id: str,
     request: Request,
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     edit_service: AdminQuizEditService = Depends(get_admin_quiz_edit_service),
     create_service: AdminQuizQuestionCreateService = Depends(
         get_admin_quiz_question_create_service
@@ -3797,7 +3822,7 @@ async def admin_quiz_question_move_up(
     slug: str,
     question_id: str,
     request: Request,
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     edit_service: AdminQuizEditService = Depends(get_admin_quiz_edit_service),
     reorder_service: AdminQuizQuestionReorderService = Depends(
         get_admin_quiz_question_reorder_service
@@ -3823,7 +3848,7 @@ async def admin_quiz_question_move_down(
     slug: str,
     question_id: str,
     request: Request,
-    runtime: ContentRuntime = Depends(get_content_runtime),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     edit_service: AdminQuizEditService = Depends(get_admin_quiz_edit_service),
     reorder_service: AdminQuizQuestionReorderService = Depends(
         get_admin_quiz_question_reorder_service
@@ -3847,7 +3872,7 @@ router.include_router(admin_router)
 @router.get("/courses", response_class=HTMLResponse, include_in_schema=False)
 def courses_page(
     request: Request,
-    content_runtime: ContentRuntime = Depends(get_content_runtime),
+    content_runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     identity: WebIdentity = Depends(require_web_identity),
 ) -> HTMLResponse:
     """Render the published course catalog."""
@@ -3872,7 +3897,7 @@ def courses_page(
 def course_detail_page(
     slug: str,
     request: Request,
-    content_runtime: ContentRuntime = Depends(get_content_runtime),
+    content_runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     progress_service: WebProgressService = Depends(get_progress_service),
 ) -> HTMLResponse:
     """Render one published course and its lesson list."""
@@ -4001,7 +4026,7 @@ def lesson_detail_page(
     slug: str,
     lesson_id: str,
     request: Request,
-    content_runtime: ContentRuntime = Depends(get_content_runtime),
+    content_runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     progress_service: WebProgressService = Depends(get_progress_service),
     identity: WebIdentity = Depends(require_web_identity),
     practical_task_service: WebPracticalTaskService = Depends(
@@ -4056,7 +4081,7 @@ async def lesson_practical_task_submit(
     slug: str,
     lesson_id: str,
     request: Request,
-    content_runtime: ContentRuntime = Depends(get_content_runtime),
+    content_runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     identity: WebIdentity = Depends(require_web_identity),
     practical_task_service: WebPracticalTaskService = Depends(
         get_web_practical_task_service
@@ -4192,7 +4217,7 @@ async def lesson_practical_task_submit(
 def quiz_page(
     slug: str,
     request: Request,
-    content_runtime: ContentRuntime = Depends(get_content_runtime),
+    content_runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     identity: WebIdentity = Depends(require_web_identity),
 ) -> HTMLResponse:
     """Render the course quiz form."""
@@ -4238,7 +4263,7 @@ def quiz_page(
 async def quiz_submit_page(
     slug: str,
     request: Request,
-    content_runtime: ContentRuntime = Depends(get_content_runtime),
+    content_runtime: ContentRuntime = Depends(get_tenant_content_runtime),
     db_path: Path = Depends(get_db_path),
     identity: WebIdentity = Depends(require_web_identity),
 ) -> HTMLResponse:

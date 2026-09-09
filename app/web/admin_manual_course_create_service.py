@@ -115,6 +115,7 @@ class AdminManualCourseCreateService:
         course_dir = (self._courses_dir / slug).resolve()
 
         try:
+            self._courses_dir.mkdir(parents=True, exist_ok=True)
             course_dir.mkdir(parents=False, exist_ok=False)
         except OSError as exc:
             _logger.exception("Failed to create course directory for manual create")
