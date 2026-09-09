@@ -10,7 +10,11 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.api.app import create_app
-from app.content.runtime import ContentRuntime
+from app.services.tenant_content_runtime_registry import (
+    TenantContentRuntimeRegistry,
+)
+from app.web.router import get_current_web_identity
+from app.web.web_identity_service import WebIdentity
 
 
 def _write_course(
@@ -52,11 +56,61 @@ class CourseApiTests(unittest.TestCase):
         _write_course(self.courses_dir, "alpha", title="Alpha Course", language="ru")
 
         self.app = create_app()
-        self.app.state.content_runtime = ContentRuntime(self.courses_dir)
+        registry = TenantContentRuntimeRegistry(self.courses_dir)
+        self.app.state.content_runtime = registry.legacy_runtime
+        self.app.state.tenant_content_runtimes = registry
+        self.identity = WebIdentity(
+            user_id=1,
+            telegram_id=None,
+            company_id="intertop",
+            company_name="Intertop",
+            role="student",
+        )
+        self.app.dependency_overrides[get_current_web_identity] = lambda: self.identity
         self.client = TestClient(self.app)
 
     def tearDown(self) -> None:
+        self.app.dependency_overrides.clear()
         self.tmp.cleanup()
+
+    def test_anonymous_request_cannot_read_course_catalog(self) -> None:
+        self.app.dependency_overrides.pop(get_current_web_identity)
+
+        response = self.client.get("/api/v1/courses")
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_catalog_is_confined_to_signed_session_company(self) -> None:
+        (self.courses_dir / "company-a").mkdir()
+        (self.courses_dir / "company-b").mkdir()
+        _write_course(
+            self.courses_dir / "company-a",
+            "alpha",
+            title="Alpha A",
+        )
+        _write_course(
+            self.courses_dir / "company-b",
+            "beta",
+            title="Beta B",
+        )
+        registry = TenantContentRuntimeRegistry(self.courses_dir)
+        self.app.state.content_runtime = registry.legacy_runtime
+        self.app.state.tenant_content_runtimes = registry
+        self.identity = WebIdentity(
+            user_id=1,
+            telegram_id=None,
+            company_id="company-a",
+            company_name="Company A",
+            role="student",
+        )
+
+        response = self.client.get("/api/v1/courses")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item["title"] for item in response.json()["items"]],
+            ["Alpha A"],
+        )
 
     def test_list_courses_returns_200(self) -> None:
         response = self.client.get("/api/v1/courses")
