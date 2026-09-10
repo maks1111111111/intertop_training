@@ -33,6 +33,23 @@ def _ensure_legacy_company(connection, company_id: str) -> None:
         )
 
 
+def _has_active_membership(connection, company_id: str, user_id: int) -> bool:
+    """Keep legacy Telegram writes compatible while guarding SaaS tenants."""
+    if company_id == LEGACY_COMPANY_ID:
+        return True
+    return connection.execute(
+        """
+        SELECT 1
+        FROM company_memberships
+        WHERE company_id = ?
+          AND user_id = ?
+          AND is_active = 1
+        LIMIT 1
+        """,
+        (company_id, user_id),
+    ).fetchone() is not None
+
+
 def _validate_due_at(due_at: Optional[str]) -> Optional[str]:
     if due_at is None:
         return None
@@ -130,6 +147,17 @@ class ProgressRepository:
         development_source, development_reason = _validate_development_context(development_source, development_reason)
         with get_connection(db_path) as connection:
             _ensure_legacy_company(connection, company_id)
+            if not _has_active_membership(connection, company_id, user_id):
+                return False
+            if (
+                assigned_by_user_id is not None
+                and not _has_active_membership(
+                    connection,
+                    company_id,
+                    assigned_by_user_id,
+                )
+            ):
+                return False
             if assigned_by_user_id is not None and connection.execute("SELECT 1 FROM users WHERE id = ?", (assigned_by_user_id,)).fetchone() is None:
                 return False
             connection.execute(
@@ -163,6 +191,8 @@ class ProgressRepository:
         user_id, company_id = _validate_user_id(user_id), _validate_company_id(company_id)
         with get_connection(db_path) as connection:
             _ensure_legacy_company(connection, company_id)
+            if not _has_active_membership(connection, company_id, user_id):
+                return
             connection.execute(
                 """INSERT INTO enrollments (company_id, user_id, course_id, status, progress_percent, started_at)
                    SELECT ?, ?, courses.id, 'in_progress', 0, CURRENT_TIMESTAMP FROM courses
@@ -188,6 +218,8 @@ class ProgressRepository:
         user_id, company_id = _validate_user_id(user_id), _validate_company_id(company_id)
         with get_connection(db_path) as connection:
             _ensure_legacy_company(connection, company_id)
+            if not _has_active_membership(connection, company_id, user_id):
+                return
             connection.execute(
                 """INSERT INTO lesson_progress (company_id, user_id, lesson_id, status, started_at, completed_at)
                    SELECT ?, ?, lessons.id, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM courses
@@ -213,6 +245,8 @@ class ProgressRepository:
     def complete_course_for_user(self, db_path: Path, user_id: int, course_slug: str, company_id: str = LEGACY_COMPANY_ID) -> None:
         user_id, company_id = _validate_user_id(user_id), _validate_company_id(company_id)
         with get_connection(db_path) as connection:
+            if not _has_active_membership(connection, company_id, user_id):
+                return
             connection.execute("""UPDATE enrollments SET status = 'completed', progress_percent = 100, completed_at = CURRENT_TIMESTAMP
                 WHERE company_id = ? AND user_id = ? AND course_id = (SELECT id FROM courses WHERE slug = ? AND company_id = ?)""", (company_id, user_id, course_slug, company_id))
 
