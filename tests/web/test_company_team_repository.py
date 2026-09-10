@@ -39,6 +39,7 @@ class CompanyTeamRepositoryTests(unittest.TestCase):
 
                 CREATE TABLE enrollments (
                     id INTEGER PRIMARY KEY,
+                    company_id TEXT NOT NULL DEFAULT 'company-a',
                     user_id INTEGER NOT NULL,
                     status TEXT NOT NULL,
                     progress_percent INTEGER NOT NULL DEFAULT 0
@@ -104,20 +105,23 @@ class CompanyTeamRepositoryTests(unittest.TestCase):
         user_id: int,
         status: str,
         progress_percent: int,
+        company_id: str = "company-a",
     ) -> None:
         with sqlite3.connect(self.db_path) as connection:
             connection.execute(
                 """
                 INSERT INTO enrollments (
                     id,
+                    company_id,
                     user_id,
                     status,
                     progress_percent
                 )
-                VALUES (?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 (
                     enrollment_id,
+                    company_id,
                     user_id,
                     status,
                     progress_percent,
@@ -190,6 +194,18 @@ class CompanyTeamRepositoryTests(unittest.TestCase):
         self.assertEqual(record.started_courses_count, 0)
         self.assertEqual(record.completed_courses_count, 0)
         self.assertEqual(record.average_progress_percent, 0)
+
+    def test_aggregates_do_not_include_another_company_progress(self) -> None:
+        self._insert_user(1, "alice", "Alice", "company-a")
+        self._insert_enrollment(1, 1, "completed", 100, "company-a")
+        self._insert_enrollment(2, 1, "in_progress", 20, "company-b")
+
+        record = self.repository.get_learning_summary(self.db_path, "company-a", 1)
+
+        self.assertIsNotNone(record)
+        self.assertEqual(record.started_courses_count, 1)
+        self.assertEqual(record.completed_courses_count, 1)
+        self.assertEqual(record.average_progress_percent, 100)
 
 
     def test_get_learning_summary_returns_member_inside_company(self) -> None:
