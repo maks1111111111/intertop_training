@@ -130,6 +130,23 @@ def _validate_company_id(company_id: str) -> str:
     return company_id.strip()
 
 
+def _has_active_membership(connection, company_id: str, user_id: int) -> bool:
+    """Keep legacy Telegram writes compatible while guarding SaaS tenants."""
+    if company_id == LEGACY_COMPANY_ID:
+        return True
+    return connection.execute(
+        """
+        SELECT 1
+        FROM company_memberships
+        WHERE company_id = ?
+          AND user_id = ?
+          AND is_active = 1
+        LIMIT 1
+        """,
+        (company_id, user_id),
+    ).fetchone() is not None
+
+
 def create_attempt_for_user(
     db_path: Path,
     user_id: int,
@@ -146,6 +163,11 @@ def create_attempt_for_user(
     normalized_company_id = _validate_company_id(company_id)
 
     with get_connection(db_path) as connection:
+        if not _has_active_membership(
+            connection, normalized_company_id, normalized_user_id
+        ):
+            return None
+
         cursor = connection.execute(
             """
             INSERT INTO practical_task_attempts (

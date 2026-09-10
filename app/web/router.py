@@ -4321,12 +4321,14 @@ async def quiz_submit_page(
             question_id=review.question_id,
             selected_option_id=review.selected_option_id,
             is_correct=review.is_correct,
+            company_id=identity.company_id,
         )
 
     quiz_repository.finish_attempt(
         db_path,
         attempt_id,
         passing_score=result.passing_score,
+        company_id=identity.company_id,
     )
 
     return templates.TemplateResponse(

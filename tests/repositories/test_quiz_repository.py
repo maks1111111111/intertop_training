@@ -196,8 +196,8 @@ class QuizRepositorySaveAnswerTests(unittest.TestCase):
                     (attempt_id, "q1", "b", 1),
                 )
 
-    def test_save_answer_with_unknown_attempt_raises_integrity_error(self) -> None:
-        with self.assertRaises(sqlite3.IntegrityError):
+    def test_save_answer_with_unknown_attempt_returns_false(self) -> None:
+        self.assertFalse(
             quiz_repository.save_answer(
                 self.db_path,
                 attempt_id=999999,
@@ -205,6 +205,7 @@ class QuizRepositorySaveAnswerTests(unittest.TestCase):
                 selected_option_id="a",
                 is_correct=True,
             )
+        )
 
     def test_finish_attempt_never_exceeds_questions_count(self) -> None:
         db_path = Path(self._tmpdir.name) / "legacy-corrupt.db"

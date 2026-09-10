@@ -94,13 +94,32 @@ def save_answer(
     question_id: str,
     selected_option_id: str,
     is_correct: bool,
+    company_id: str = LEGACY_COMPANY_ID,
 ) -> bool:
     """Persist one answer for a question within an attempt.
 
     Returns ``True`` when the answer is stored for the first time.
     Returns ``False`` when the question was already answered in this attempt.
     """
+    normalized_company_id = _validate_company_id(company_id)
+
     with get_connection(db_path) as connection:
+        company_scoped = _has_company_id_column(connection)
+        company_predicate = " AND company_id = ?" if company_scoped else ""
+        attempt_params: tuple[object, ...] = (attempt_id,)
+        if company_scoped:
+            attempt_params += (normalized_company_id,)
+        attempt = connection.execute(
+            """
+            SELECT 1
+            FROM quiz_attempts
+            WHERE id = ?
+            """ + company_predicate,
+            attempt_params,
+        ).fetchone()
+        if attempt is None:
+            return False
+
         cursor = connection.execute(
             """
             INSERT INTO quiz_answers (
@@ -126,24 +145,33 @@ def finish_attempt(
     db_path: Path,
     attempt_id: int,
     passing_score: int = DEFAULT_PASSING_SCORE,
-) -> None:
+    company_id: str = LEGACY_COMPANY_ID,
+) -> bool:
+    """Finish an active attempt within its owning company."""
+    normalized_company_id = _validate_company_id(company_id)
+
     with get_connection(db_path) as connection:
+        company_scoped = _has_company_id_column(connection)
+        company_predicate = " AND company_id = ?" if company_scoped else ""
+        attempt_params: tuple[object, ...] = (attempt_id,)
+        if company_scoped:
+            attempt_params += (normalized_company_id,)
         attempt = connection.execute(
             """
             SELECT questions_count
             FROM quiz_attempts
             WHERE id = ?
               AND finished_at IS NULL
-            """,
-            (attempt_id,),
+            """ + company_predicate,
+            attempt_params,
         ).fetchone()
 
         if attempt is None:
-            return
+            return False
 
         questions_count = int(attempt["questions_count"])
         if questions_count == 0:
-            return
+            return False
 
         stats = connection.execute(
             """
@@ -167,7 +195,15 @@ def finish_attempt(
             score_percent = 100.0
         passed = int(score_percent >= passing_score)
 
-        connection.execute(
+        update_params: tuple[object, ...] = (
+            correct_answers,
+            score_percent,
+            passed,
+            attempt_id,
+        )
+        if company_scoped:
+            update_params += (normalized_company_id,)
+        cursor = connection.execute(
             """
             UPDATE quiz_attempts
             SET finished_at = CURRENT_TIMESTAMP,
@@ -175,14 +211,11 @@ def finish_attempt(
                 score_percent = ?,
                 passed = ?
             WHERE id = ?
-            """,
-            (
-                correct_answers,
-                score_percent,
-                passed,
-                attempt_id,
-            ),
+              AND finished_at IS NULL
+            """ + company_predicate,
+            update_params,
         )
+        return cursor.rowcount == 1
 
 
 def get_attempt(
@@ -322,6 +355,31 @@ def _validate_company_id(company_id: str) -> str:
     return company_id.strip()
 
 
+def _has_company_id_column(connection) -> bool:
+    """Recognize pre-SaaS quiz fixtures as legacy Intertop-only storage."""
+    return any(
+        row["name"] == "company_id"
+        for row in connection.execute("PRAGMA table_info(quiz_attempts)")
+    )
+
+
+def _has_active_membership(connection, company_id: str, user_id: int) -> bool:
+    """Keep legacy Telegram writes compatible while guarding SaaS tenants."""
+    if company_id == LEGACY_COMPANY_ID:
+        return True
+    return connection.execute(
+        """
+        SELECT 1
+        FROM company_memberships
+        WHERE company_id = ?
+          AND user_id = ?
+          AND is_active = 1
+        LIMIT 1
+        """,
+        (company_id, user_id),
+    ).fetchone() is not None
+
+
 def create_attempt_for_user(
     db_path: Path,
     user_id: int,
@@ -335,6 +393,11 @@ def create_attempt_for_user(
     normalized_company_id = _validate_company_id(company_id)
 
     with get_connection(db_path) as connection:
+        if not _has_active_membership(
+            connection, normalized_company_id, normalized_user_id
+        ):
+            return None
+
         active_attempt = connection.execute(
             """
             SELECT id

@@ -247,7 +247,9 @@ class LearningProgressTenantIsolationTests(unittest.TestCase):
             company_id="company-a",
         )
         assert attempt_id is not None
-        quiz_repository.finish_attempt(self.db_path, attempt_id)
+        quiz_repository.finish_attempt(
+            self.db_path, attempt_id, company_id="company-a"
+        )
 
         self.assertEqual(
             quiz_repository.get_course_quiz_stats_for_user(
@@ -260,6 +262,83 @@ class LearningProgressTenantIsolationTests(unittest.TestCase):
                 self.db_path, self.user_id, "safety", "company-b"
             )["attempts_count"],
             0,
+        )
+
+    def test_nonmember_cannot_create_or_modify_quiz_attempts(self) -> None:
+        attempt_id = quiz_repository.create_attempt_for_user(
+            self.db_path,
+            self.user_id,
+            "safety",
+            quiz_version=1,
+            questions_count=1,
+            company_id="company-a",
+        )
+        assert attempt_id is not None
+
+        self.assertFalse(
+            quiz_repository.save_answer(
+                self.db_path,
+                attempt_id,
+                question_id="q1",
+                selected_option_id="a",
+                is_correct=True,
+                company_id="company-b",
+            )
+        )
+        self.assertFalse(
+            quiz_repository.finish_attempt(
+                self.db_path, attempt_id, company_id="company-b"
+            )
+        )
+        self.assertIsNotNone(
+            quiz_repository.get_active_attempt_for_user(
+                self.db_path, self.user_id, "safety", "company-a"
+            )
+        )
+        self.assertIsNone(
+            quiz_repository.create_attempt_for_user(
+                self.db_path,
+                self.user_id,
+                "safety",
+                quiz_version=1,
+                questions_count=1,
+                company_id="company-b",
+            )
+        )
+
+    def test_inactive_member_cannot_create_attempts(self) -> None:
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                UPDATE company_memberships
+                SET is_active = 0
+                WHERE company_id = 'company-a' AND user_id = ?
+                """,
+                (self.user_id,),
+            )
+
+        self.assertIsNone(
+            quiz_repository.create_attempt_for_user(
+                self.db_path,
+                self.user_id,
+                "safety",
+                quiz_version=1,
+                questions_count=1,
+                company_id="company-a",
+            )
+        )
+        self.assertIsNone(
+            practical_task_attempt_repository.create_attempt_for_user(
+                self.db_path,
+                self.user_id,
+                "safety",
+                "lesson-1",
+                "Task",
+                "Description",
+                "Expected",
+                "Answer",
+                company_id="company-a",
+            )
         )
 
     def test_practical_attempts_do_not_cross_company_boundary(self) -> None:
@@ -295,6 +374,19 @@ class LearningProgressTenantIsolationTests(unittest.TestCase):
                 company_id="company-b",
             ),
             [],
+        )
+        self.assertIsNone(
+            practical_task_attempt_repository.create_attempt_for_user(
+                self.db_path,
+                self.user_id,
+                "safety",
+                "lesson-1",
+                "Task",
+                "Description",
+                "Expected",
+                "Answer",
+                company_id="company-b",
+            )
         )
 
 
