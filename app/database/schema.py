@@ -191,7 +191,7 @@ def create_tables(connection: sqlite3.Connection) -> None:
             course_slug TEXT NOT NULL,
             lesson_id TEXT NOT NULL,
             completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id, course_slug, lesson_id)
+            UNIQUE(company_id, user_id, course_slug, lesson_id)
         );
 
         CREATE INDEX IF NOT EXISTS idx_web_lesson_progress_user_course

@@ -13,6 +13,27 @@ def _get_table_columns(
     return {row["name"]: row for row in rows}
 
 
+def _has_unique_index(
+    connection: sqlite3.Connection,
+    table_name: str,
+    expected_columns: tuple[str, ...],
+) -> bool:
+    """Return whether a table has a unique index with these exact columns."""
+    for index in connection.execute(f"PRAGMA index_list({table_name})"):
+        if not bool(index["unique"]):
+            continue
+        index_name = str(index["name"]).replace("'", "''")
+        columns = tuple(
+            str(column["name"])
+            for column in connection.execute(
+                f"PRAGMA index_info('{index_name}')"
+            )
+        )
+        if columns == expected_columns:
+            return True
+    return False
+
+
 def _rebuild_users_with_optional_telegram_id(
     connection: sqlite3.Connection,
     columns: Dict[str, sqlite3.Row],
@@ -572,6 +593,8 @@ def migrate_learning_progress_tenant_scope(
                 f"ALTER TABLE {table_name} ADD COLUMN company_id TEXT NOT NULL DEFAULT 'intertop'"
             )
 
+    migrate_web_lesson_progress_tenant_scope(connection)
+
     connection.executescript(
         """
         CREATE INDEX IF NOT EXISTS idx_enrollments_company_user
@@ -584,6 +607,67 @@ def migrate_learning_progress_tenant_scope(
             ON practical_task_attempts(company_id, user_id);
         CREATE INDEX IF NOT EXISTS idx_web_lesson_progress_company_user_course
             ON web_lesson_progress(company_id, user_id, course_slug);
+        """
+    )
+
+
+def migrate_web_lesson_progress_tenant_scope(
+    connection: sqlite3.Connection,
+) -> None:
+    """Include the company in the legacy Web progress uniqueness boundary."""
+    if "company_id" not in _get_table_columns(
+        connection,
+        "web_lesson_progress",
+    ):
+        connection.execute(
+            "ALTER TABLE web_lesson_progress "
+            "ADD COLUMN company_id TEXT NOT NULL DEFAULT 'intertop'"
+        )
+
+    expected_columns = (
+        "company_id",
+        "user_id",
+        "course_slug",
+        "lesson_id",
+    )
+    if _has_unique_index(
+        connection,
+        "web_lesson_progress",
+        expected_columns,
+    ):
+        return
+
+    connection.executescript(
+        """
+        CREATE TABLE web_lesson_progress_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id TEXT NOT NULL DEFAULT 'intertop',
+            user_id TEXT NOT NULL,
+            course_slug TEXT NOT NULL,
+            lesson_id TEXT NOT NULL,
+            completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(company_id, user_id, course_slug, lesson_id)
+        );
+
+        INSERT INTO web_lesson_progress_new (
+            id,
+            company_id,
+            user_id,
+            course_slug,
+            lesson_id,
+            completed_at
+        )
+        SELECT
+            id,
+            company_id,
+            user_id,
+            course_slug,
+            lesson_id,
+            completed_at
+        FROM web_lesson_progress;
+
+        DROP TABLE web_lesson_progress;
+        ALTER TABLE web_lesson_progress_new RENAME TO web_lesson_progress;
         """
     )
 

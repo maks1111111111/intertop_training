@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from app.database.db import get_connection, initialize_database
+from app.database.migrations import migrate_web_lesson_progress_tenant_scope
 
 
 class LearningTenantIntegritySchemaTests(unittest.TestCase):
@@ -123,6 +124,82 @@ class LearningTenantIntegritySchemaTests(unittest.TestCase):
                     "UPDATE lesson_progress SET company_id = 'company-b' WHERE id = ?",
                     (progress_id,),
                 )
+
+    def test_legacy_web_progress_is_unique_per_company(self) -> None:
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO web_lesson_progress (
+                    company_id, user_id, course_slug, lesson_id
+                )
+                VALUES ('company-a', 'shared-user', 'same-course', 'lesson-1')
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO web_lesson_progress (
+                    company_id, user_id, course_slug, lesson_id
+                )
+                VALUES ('company-b', 'shared-user', 'same-course', 'lesson-1')
+                """
+            )
+            count = connection.execute(
+                "SELECT COUNT(*) FROM web_lesson_progress"
+            ).fetchone()[0]
+
+        self.assertEqual(count, 2)
+
+    def test_web_progress_migration_preserves_legacy_rows(self) -> None:
+        legacy_path = Path(self._tmpdir.name) / "legacy-progress.db"
+        with sqlite3.connect(legacy_path) as connection:
+            connection.row_factory = sqlite3.Row
+            connection.execute(
+                """
+                CREATE TABLE web_lesson_progress (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    course_slug TEXT NOT NULL,
+                    lesson_id TEXT NOT NULL,
+                    completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, course_slug, lesson_id)
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO web_lesson_progress (
+                    user_id, course_slug, lesson_id, completed_at
+                )
+                VALUES ('legacy-user', 'course', 'lesson', '2026-09-10 09:00:00')
+                """
+            )
+
+            migrate_web_lesson_progress_tenant_scope(connection)
+
+            row = connection.execute(
+                """
+                SELECT id, company_id, user_id, course_slug, lesson_id, completed_at
+                FROM web_lesson_progress
+                """
+            ).fetchone()
+            self.assertEqual(
+                tuple(row),
+                (1, "intertop", "legacy-user", "course", "lesson", "2026-09-10 09:00:00"),
+            )
+
+            connection.execute(
+                """
+                INSERT INTO web_lesson_progress (
+                    company_id, user_id, course_slug, lesson_id
+                )
+                VALUES ('company-b', 'legacy-user', 'course', 'lesson')
+                """
+            )
+            count = connection.execute(
+                "SELECT COUNT(*) FROM web_lesson_progress"
+            ).fetchone()[0]
+
+        self.assertEqual(count, 2)
 
 
 if __name__ == "__main__":
