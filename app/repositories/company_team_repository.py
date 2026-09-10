@@ -51,26 +51,45 @@ class CompanyTeamRepository:
                 for row in connection.execute("PRAGMA table_info(enrollments)")
             }
             tenant_filter = (
-                "AND company_id = ?" if "company_id" in enrollment_columns else ""
+                "AND enrollments.company_id = ?"
+                if "company_id" in enrollment_columns
+                else ""
             )
+            course_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(courses)")
+            }
+            course_tenant_join = ""
+            course_tenant_params: tuple[str, ...] = ()
+            if (
+                {"company_id", "course_id"}.issubset(enrollment_columns)
+                and "company_id" in course_columns
+            ):
+                course_tenant_join = """
+                    JOIN courses
+                        ON courses.id = enrollments.course_id
+                       AND courses.company_id = ?
+                """
+                course_tenant_params = (normalized_company_id,)
             rows = connection.execute(
                 f"""
                 WITH progress AS (
                     SELECT
-                        user_id,
+                        enrollments.user_id,
                         COUNT(*) AS started_courses_count,
                         SUM(
                             CASE
-                                WHEN status = 'completed' THEN 1
+                                WHEN enrollments.status = 'completed' THEN 1
                                 ELSE 0
                             END
                         ) AS completed_courses_count,
                         ROUND(
-                            AVG(progress_percent)
+                            AVG(enrollments.progress_percent)
                         ) AS average_progress_percent
                     FROM enrollments
-                    WHERE status IN ('in_progress', 'completed') {tenant_filter}
-                    GROUP BY user_id
+                    {course_tenant_join}
+                    WHERE enrollments.status IN ('in_progress', 'completed') {tenant_filter}
+                    GROUP BY enrollments.user_id
                 )
                 SELECT
                     users.id AS user_id,
@@ -104,11 +123,9 @@ class CompanyTeamRepository:
                     users.username COLLATE NOCASE,
                     users.id
                 """,
-                (
-                    (normalized_company_id, normalized_company_id)
-                    if tenant_filter
-                    else (normalized_company_id,)
-                ),
+                course_tenant_params
+                + ((normalized_company_id,) if tenant_filter else ())
+                + (normalized_company_id,),
             ).fetchall()
 
         return tuple(
@@ -156,24 +173,43 @@ class CompanyTeamRepository:
                 for row in connection.execute("PRAGMA table_info(enrollments)")
             }
             tenant_filter = (
-                "AND company_id = ?" if "company_id" in enrollment_columns else ""
+                "AND enrollments.company_id = ?"
+                if "company_id" in enrollment_columns
+                else ""
             )
+            course_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(courses)")
+            }
+            course_tenant_join = ""
+            course_tenant_params: tuple[str, ...] = ()
+            if (
+                {"company_id", "course_id"}.issubset(enrollment_columns)
+                and "company_id" in course_columns
+            ):
+                course_tenant_join = """
+                    JOIN courses
+                        ON courses.id = enrollments.course_id
+                       AND courses.company_id = ?
+                """
+                course_tenant_params = (normalized_company_id,)
             row = connection.execute(
                 f"""
                 WITH progress AS (
                     SELECT
-                        user_id,
+                        enrollments.user_id,
                         COUNT(*) AS started_courses_count,
                         SUM(
                             CASE
-                                WHEN status = 'completed' THEN 1
+                                WHEN enrollments.status = 'completed' THEN 1
                                 ELSE 0
                             END
                         ) AS completed_courses_count,
-                        ROUND(AVG(progress_percent)) AS average_progress_percent
+                        ROUND(AVG(enrollments.progress_percent)) AS average_progress_percent
                     FROM enrollments
-                    WHERE status IN ('in_progress', 'completed') {tenant_filter}
-                    GROUP BY user_id
+                    {course_tenant_join}
+                    WHERE enrollments.status IN ('in_progress', 'completed') {tenant_filter}
+                    GROUP BY enrollments.user_id
                 )
                 SELECT
                     users.id AS user_id,
@@ -198,11 +234,9 @@ class CompanyTeamRepository:
                   AND users.is_active = 1
                 LIMIT 1
                 """,
-                (
-                    (normalized_company_id, normalized_company_id, user_id)
-                    if tenant_filter
-                    else (normalized_company_id, user_id)
-                ),
+                course_tenant_params
+                + ((normalized_company_id,) if tenant_filter else ())
+                + (normalized_company_id, user_id),
             ).fetchone()
 
         if row is None:

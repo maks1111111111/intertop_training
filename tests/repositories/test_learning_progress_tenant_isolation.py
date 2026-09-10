@@ -8,6 +8,7 @@ from pathlib import Path
 
 from app.database.db import get_connection, initialize_database, upsert_telegram_user
 from app.repositories import practical_task_attempt_repository, quiz_repository
+from app.repositories.company_team_repository import CompanyTeamRepository
 from app.repositories.course_repository import CourseRepository
 from app.repositories.lesson_repository import LessonRepository
 from app.repositories.progress_repository import ProgressRepository
@@ -101,6 +102,42 @@ class LearningProgressTenantIsolationTests(unittest.TestCase):
                 self.db_path, self.user_id, "company-a"
             )
         )
+
+    def test_team_summary_ignores_legacy_cross_tenant_enrollment(self) -> None:
+        other_course_id = CourseRepository().save(
+            self.db_path, "other-safety", "Other Safety", None, 0, "company-b"
+        )
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO company_memberships (company_id, user_id, role)
+                VALUES ('company-a', ?, 'student')
+                """,
+                (self.user_id,),
+            )
+            connection.execute(
+                "DROP TRIGGER enforce_enrollment_course_company_insert"
+            )
+            connection.execute(
+                """
+                INSERT INTO enrollments (
+                    company_id, user_id, course_id, status, progress_percent
+                )
+                VALUES ('company-a', ?, ?, 'in_progress', 75)
+                """,
+                (self.user_id, other_course_id),
+            )
+
+        summary = CompanyTeamRepository().get_learning_summary(
+            self.db_path,
+            "company-a",
+            self.user_id,
+        )
+
+        self.assertIsNotNone(summary)
+        self.assertEqual(summary.started_courses_count, 0)
+        self.assertEqual(summary.completed_courses_count, 0)
+        self.assertEqual(summary.average_progress_percent, 0)
 
     def test_quiz_attempts_do_not_cross_company_boundary(self) -> None:
         attempt_id = quiz_repository.create_attempt_for_user(
