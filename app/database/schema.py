@@ -304,5 +304,59 @@ def create_tables(connection: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_company_memberships_company_role
             ON company_memberships(company_id, role);
+
+        CREATE TRIGGER IF NOT EXISTS enforce_enrollment_course_company_insert
+        BEFORE INSERT ON enrollments
+        FOR EACH ROW
+        WHEN NOT EXISTS (
+            SELECT 1
+            FROM courses
+            WHERE courses.id = NEW.course_id
+              AND courses.company_id = NEW.company_id
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'enrollment course belongs to another company');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_enrollment_course_company_update
+        BEFORE UPDATE OF company_id, course_id ON enrollments
+        FOR EACH ROW
+        WHEN NOT EXISTS (
+            SELECT 1
+            FROM courses
+            WHERE courses.id = NEW.course_id
+              AND courses.company_id = NEW.company_id
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'enrollment course belongs to another company');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_lesson_progress_course_company_insert
+        BEFORE INSERT ON lesson_progress
+        FOR EACH ROW
+        WHEN NOT EXISTS (
+            SELECT 1
+            FROM lessons
+            JOIN courses ON courses.id = lessons.course_id
+            WHERE lessons.id = NEW.lesson_id
+              AND courses.company_id = NEW.company_id
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'lesson belongs to another company');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_lesson_progress_course_company_update
+        BEFORE UPDATE OF company_id, lesson_id ON lesson_progress
+        FOR EACH ROW
+        WHEN NOT EXISTS (
+            SELECT 1
+            FROM lessons
+            JOIN courses ON courses.id = lessons.course_id
+            WHERE lessons.id = NEW.lesson_id
+              AND courses.company_id = NEW.company_id
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'lesson belongs to another company');
+        END;
         """
     )

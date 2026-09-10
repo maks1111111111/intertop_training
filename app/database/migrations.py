@@ -659,6 +659,67 @@ def migrate_courses_tenant_scope(connection: sqlite3.Connection) -> None:
             connection.execute("PRAGMA foreign_keys = ON")
 
 
+def migrate_learning_tenant_integrity(connection: sqlite3.Connection) -> None:
+    """Enforce that learning records belong to the owning course tenant."""
+    connection.executescript(
+        """
+        CREATE TRIGGER IF NOT EXISTS enforce_enrollment_course_company_insert
+        BEFORE INSERT ON enrollments
+        FOR EACH ROW
+        WHEN NOT EXISTS (
+            SELECT 1
+            FROM courses
+            WHERE courses.id = NEW.course_id
+              AND courses.company_id = NEW.company_id
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'enrollment course belongs to another company');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_enrollment_course_company_update
+        BEFORE UPDATE OF company_id, course_id ON enrollments
+        FOR EACH ROW
+        WHEN NOT EXISTS (
+            SELECT 1
+            FROM courses
+            WHERE courses.id = NEW.course_id
+              AND courses.company_id = NEW.company_id
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'enrollment course belongs to another company');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_lesson_progress_course_company_insert
+        BEFORE INSERT ON lesson_progress
+        FOR EACH ROW
+        WHEN NOT EXISTS (
+            SELECT 1
+            FROM lessons
+            JOIN courses ON courses.id = lessons.course_id
+            WHERE lessons.id = NEW.lesson_id
+              AND courses.company_id = NEW.company_id
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'lesson belongs to another company');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_lesson_progress_course_company_update
+        BEFORE UPDATE OF company_id, lesson_id ON lesson_progress
+        FOR EACH ROW
+        WHEN NOT EXISTS (
+            SELECT 1
+            FROM lessons
+            JOIN courses ON courses.id = lessons.course_id
+            WHERE lessons.id = NEW.lesson_id
+              AND courses.company_id = NEW.company_id
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'lesson belongs to another company');
+        END;
+        """
+    )
+
+
 def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_users_table(connection)
     migrate_enrollments_assignment_author(connection)
@@ -672,3 +733,4 @@ def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_companies_table(connection)
     migrate_courses_tenant_scope(connection)
     migrate_learning_progress_tenant_scope(connection)
+    migrate_learning_tenant_integrity(connection)

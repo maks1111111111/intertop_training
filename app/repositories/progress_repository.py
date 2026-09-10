@@ -227,13 +227,13 @@ class ProgressRepository:
         user_id, company_id = _validate_user_id(user_id), _validate_company_id(company_id)
         with get_connection(db_path) as connection:
             row = connection.execute("""SELECT courses.slug, enrollments.progress_percent FROM enrollments JOIN courses ON courses.id = enrollments.course_id
-                WHERE enrollments.company_id = ? AND enrollments.user_id = ? AND enrollments.status = 'in_progress'
-                ORDER BY enrollments.started_at DESC, courses.id DESC LIMIT 1""", (company_id, user_id)).fetchone()
+                WHERE enrollments.company_id = ? AND courses.company_id = ? AND enrollments.user_id = ? AND enrollments.status = 'in_progress'
+                ORDER BY enrollments.started_at DESC, courses.id DESC LIMIT 1""", (company_id, company_id, user_id)).fetchone()
         return (str(row["slug"]), int(row["progress_percent"])) if row else None
 
     def get_latest_in_progress_course(self, db_path: Path, telegram_id: int) -> Optional[Tuple[str, int]]:
         with get_connection(db_path) as connection:
             row = connection.execute("""SELECT courses.slug, enrollments.progress_percent FROM enrollments JOIN users ON users.id = enrollments.user_id
-                JOIN courses ON courses.id = enrollments.course_id WHERE enrollments.company_id = ? AND users.telegram_id = ?
-                AND enrollments.status = 'in_progress' ORDER BY enrollments.started_at DESC, courses.id DESC LIMIT 1""", (LEGACY_COMPANY_ID, telegram_id)).fetchone()
+                JOIN courses ON courses.id = enrollments.course_id WHERE enrollments.company_id = ? AND courses.company_id = ? AND users.telegram_id = ?
+                AND enrollments.status = 'in_progress' ORDER BY enrollments.started_at DESC, courses.id DESC LIMIT 1""", (LEGACY_COMPANY_ID, LEGACY_COMPANY_ID, telegram_id)).fetchone()
         return (str(row["slug"]), int(row["progress_percent"])) if row else None

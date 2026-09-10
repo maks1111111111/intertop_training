@@ -77,6 +77,31 @@ class LearningProgressTenantIsolationTests(unittest.TestCase):
             0,
         )
 
+    def test_latest_course_ignores_legacy_cross_tenant_enrollment(self) -> None:
+        """Read paths stay isolated even if historical data violates the new invariant."""
+        other_course_id = CourseRepository().save(
+            self.db_path, "other-safety", "Other Safety", None, 0, "company-b"
+        )
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                "DROP TRIGGER enforce_enrollment_course_company_insert"
+            )
+            connection.execute(
+                """
+                INSERT INTO enrollments (
+                    company_id, user_id, course_id, status, progress_percent
+                )
+                VALUES ('company-a', ?, ?, 'in_progress', 75)
+                """,
+                (self.user_id, other_course_id),
+            )
+
+        self.assertIsNone(
+            ProgressRepository().get_latest_in_progress_course_for_user(
+                self.db_path, self.user_id, "company-a"
+            )
+        )
+
     def test_quiz_attempts_do_not_cross_company_boundary(self) -> None:
         attempt_id = quiz_repository.create_attempt_for_user(
             self.db_path,
