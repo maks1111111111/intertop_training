@@ -99,6 +99,12 @@ class TenantAuditTests(unittest.TestCase):
                 "DROP TRIGGER enforce_lesson_progress_course_company_insert"
             )
             connection.execute(
+                "DROP TRIGGER enforce_quiz_attempt_course_company_insert"
+            )
+            connection.execute(
+                "DROP TRIGGER enforce_practical_attempt_course_company_insert"
+            )
+            connection.execute(
                 """
                 INSERT INTO enrollments (
                     company_id, user_id, course_id, status, progress_percent
@@ -120,7 +126,18 @@ class TenantAuditTests(unittest.TestCase):
                     company_id, user_id, course_slug, quiz_version,
                     started_at, questions_count
                 )
-                VALUES ('company-b', ?, 'beta', 1, CURRENT_TIMESTAMP, 1)
+                VALUES ('company-a', ?, 'beta', 1, CURRENT_TIMESTAMP, 1)
+                """,
+                (self.user_id,),
+            )
+            connection.execute(
+                """
+                INSERT INTO practical_task_attempts (
+                    company_id, user_id, course_slug, lesson_slug,
+                    task_title, task_description, expected_result, learner_answer
+                )
+                VALUES ('company-a', ?, 'beta', 'lesson-b', 'Task', 'Description',
+                        'Expected', 'Answer')
                 """,
                 (self.user_id,),
             )
@@ -149,7 +166,8 @@ class TenantAuditTests(unittest.TestCase):
                 ("unknown_company", "courses"),
                 ("course_company_mismatch", "enrollments"),
                 ("lesson_company_mismatch", "lesson_progress"),
-                ("inactive_or_missing_membership", "quiz_attempts"),
+                ("assessment_course_company_mismatch", "quiz_attempts"),
+                ("assessment_course_company_mismatch", "practical_task_attempts"),
             },
         )
 

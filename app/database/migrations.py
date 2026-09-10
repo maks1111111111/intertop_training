@@ -800,6 +800,62 @@ def migrate_learning_tenant_integrity(connection: sqlite3.Connection) -> None:
         BEGIN
             SELECT RAISE(ABORT, 'lesson belongs to another company');
         END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_quiz_attempt_course_company_insert
+        BEFORE INSERT ON quiz_attempts
+        FOR EACH ROW
+        WHEN NEW.company_id != 'intertop'
+         AND NOT EXISTS (
+            SELECT 1
+            FROM courses
+            WHERE courses.company_id = NEW.company_id
+              AND courses.slug = NEW.course_slug
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'quiz course belongs to another company');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_quiz_attempt_course_company_update
+        BEFORE UPDATE OF company_id, course_slug ON quiz_attempts
+        FOR EACH ROW
+        WHEN NEW.company_id != 'intertop'
+         AND NOT EXISTS (
+            SELECT 1
+            FROM courses
+            WHERE courses.company_id = NEW.company_id
+              AND courses.slug = NEW.course_slug
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'quiz course belongs to another company');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_practical_attempt_course_company_insert
+        BEFORE INSERT ON practical_task_attempts
+        FOR EACH ROW
+        WHEN NEW.company_id != 'intertop'
+         AND NOT EXISTS (
+            SELECT 1
+            FROM courses
+            WHERE courses.company_id = NEW.company_id
+              AND courses.slug = NEW.course_slug
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'practical-task course belongs to another company');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_practical_attempt_course_company_update
+        BEFORE UPDATE OF company_id, course_slug ON practical_task_attempts
+        FOR EACH ROW
+        WHEN NEW.company_id != 'intertop'
+         AND NOT EXISTS (
+            SELECT 1
+            FROM courses
+            WHERE courses.company_id = NEW.company_id
+              AND courses.slug = NEW.course_slug
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'practical-task course belongs to another company');
+        END;
         """
     )
 

@@ -306,6 +306,40 @@ class LearningProgressTenantIsolationTests(unittest.TestCase):
             )
         )
 
+    def test_assessment_attempts_require_course_owned_by_company(self) -> None:
+        CourseRepository().save(
+            self.db_path,
+            "company-b-only",
+            "Company B only",
+            None,
+            0,
+            "company-b",
+        )
+
+        self.assertIsNone(
+            quiz_repository.create_attempt_for_user(
+                self.db_path,
+                self.user_id,
+                "company-b-only",
+                quiz_version=1,
+                questions_count=1,
+                company_id="company-a",
+            )
+        )
+        self.assertIsNone(
+            practical_task_attempt_repository.create_attempt_for_user(
+                self.db_path,
+                self.user_id,
+                "company-b-only",
+                "lesson-1",
+                "Task",
+                "Description",
+                "Expected",
+                "Answer",
+                company_id="company-a",
+            )
+        )
+
     def test_inactive_member_cannot_create_attempts(self) -> None:
         with get_connection(self.db_path) as connection:
             connection.execute(

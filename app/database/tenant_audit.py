@@ -43,6 +43,7 @@ def audit_tenant_data(db_path: Path) -> TenantAuditReport:
             *_find_unknown_company_records(connection),
             *_find_cross_tenant_enrollments(connection),
             *_find_cross_tenant_lesson_progress(connection),
+            *_find_cross_tenant_assessment_attempts(connection),
             *_find_nonmember_learning_records(connection),
         ]
     return TenantAuditReport(findings=tuple(findings))
@@ -142,6 +143,40 @@ def _find_cross_tenant_lesson_progress(
         )
         for row in rows
     ]
+
+
+def _find_cross_tenant_assessment_attempts(
+    connection: sqlite3.Connection,
+) -> list[TenantAuditFinding]:
+    findings: list[TenantAuditFinding] = []
+    for table_name in ("quiz_attempts", "practical_task_attempts"):
+        rows = connection.execute(
+            f"""
+            SELECT {table_name}.id, {table_name}.company_id, {table_name}.course_slug
+            FROM {table_name}
+            LEFT JOIN courses
+                ON courses.company_id = {table_name}.company_id
+               AND courses.slug = {table_name}.course_slug
+            WHERE {table_name}.company_id != ?
+              AND courses.id IS NULL
+            ORDER BY {table_name}.id ASC
+            """,
+            (LEGACY_COMPANY_ID,),
+        ).fetchall()
+        findings.extend(
+            TenantAuditFinding(
+                code="assessment_course_company_mismatch",
+                table_name=table_name,
+                record_id=int(row["id"]),
+                company_id=str(row["company_id"]),
+                detail=(
+                    "course_slug is not owned by this company: "
+                    f"{str(row['course_slug'])}"
+                ),
+            )
+            for row in rows
+        )
+    return findings
 
 
 def _find_nonmember_learning_records(

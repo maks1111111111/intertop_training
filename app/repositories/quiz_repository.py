@@ -380,6 +380,22 @@ def _has_active_membership(connection, company_id: str, user_id: int) -> bool:
     ).fetchone() is not None
 
 
+def _has_course_for_company(connection, company_id: str, course_slug: str) -> bool:
+    """Require a catalog course for SaaS assessment records."""
+    if company_id == LEGACY_COMPANY_ID:
+        return True
+    return connection.execute(
+        """
+        SELECT 1
+        FROM courses
+        WHERE company_id = ?
+          AND slug = ?
+        LIMIT 1
+        """,
+        (company_id, course_slug),
+    ).fetchone() is not None
+
+
 def create_attempt_for_user(
     db_path: Path,
     user_id: int,
@@ -395,6 +411,10 @@ def create_attempt_for_user(
     with get_connection(db_path) as connection:
         if not _has_active_membership(
             connection, normalized_company_id, normalized_user_id
+        ):
+            return None
+        if not _has_course_for_company(
+            connection, normalized_company_id, course_slug
         ):
             return None
 

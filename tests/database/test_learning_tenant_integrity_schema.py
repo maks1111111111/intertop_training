@@ -125,6 +125,81 @@ class LearningTenantIntegritySchemaTests(unittest.TestCase):
                     (progress_id,),
                 )
 
+    def test_assessment_attempts_must_belong_to_their_company_course(self) -> None:
+        with get_connection(self.db_path) as connection:
+            with self.assertRaisesRegex(
+                sqlite3.IntegrityError,
+                "quiz course belongs to another company",
+            ):
+                connection.execute(
+                    """
+                    INSERT INTO quiz_attempts (
+                        company_id, user_id, course_slug, quiz_version,
+                        started_at, questions_count
+                    )
+                    VALUES ('company-a', ?, 'course-b', 1, CURRENT_TIMESTAMP, 1)
+                    """,
+                    (self.user_id,),
+                )
+            with self.assertRaisesRegex(
+                sqlite3.IntegrityError,
+                "practical-task course belongs to another company",
+            ):
+                connection.execute(
+                    """
+                    INSERT INTO practical_task_attempts (
+                        company_id, user_id, course_slug, lesson_slug,
+                        task_title, task_description, expected_result, learner_answer
+                    )
+                    VALUES ('company-a', ?, 'course-b', 'lesson', 'Task', 'Description',
+                            'Expected', 'Answer')
+                    """,
+                    (self.user_id,),
+                )
+
+            quiz_id = int(
+                connection.execute(
+                    """
+                    INSERT INTO quiz_attempts (
+                        company_id, user_id, course_slug, quiz_version,
+                        started_at, questions_count
+                    )
+                    VALUES ('company-a', ?, 'course-a', 1, CURRENT_TIMESTAMP, 1)
+                    """,
+                    (self.user_id,),
+                ).lastrowid
+            )
+            practical_id = int(
+                connection.execute(
+                    """
+                    INSERT INTO practical_task_attempts (
+                        company_id, user_id, course_slug, lesson_slug,
+                        task_title, task_description, expected_result, learner_answer
+                    )
+                    VALUES ('company-a', ?, 'course-a', 'lesson', 'Task', 'Description',
+                            'Expected', 'Answer')
+                    """,
+                    (self.user_id,),
+                ).lastrowid
+            )
+
+            with self.assertRaisesRegex(
+                sqlite3.IntegrityError,
+                "quiz course belongs to another company",
+            ):
+                connection.execute(
+                    "UPDATE quiz_attempts SET company_id = 'company-b' WHERE id = ?",
+                    (quiz_id,),
+                )
+            with self.assertRaisesRegex(
+                sqlite3.IntegrityError,
+                "practical-task course belongs to another company",
+            ):
+                connection.execute(
+                    "UPDATE practical_task_attempts SET company_id = 'company-b' WHERE id = ?",
+                    (practical_id,),
+                )
+
     def test_legacy_web_progress_is_unique_per_company(self) -> None:
         with get_connection(self.db_path) as connection:
             connection.execute(
