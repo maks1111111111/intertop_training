@@ -305,6 +305,37 @@ def create_tables(connection: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_company_memberships_company_role
             ON company_memberships(company_id, role);
 
+        CREATE TABLE IF NOT EXISTS company_usage_limits (
+            company_id TEXT PRIMARY KEY,
+            max_active_members INTEGER,
+            max_courses INTEGER,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+            CHECK (max_active_members IS NULL OR max_active_members > 0),
+            CHECK (max_courses IS NULL OR max_courses > 0)
+        );
+
+        CREATE TRIGGER IF NOT EXISTS enforce_company_member_limit_insert
+        BEFORE INSERT ON company_memberships
+        FOR EACH ROW WHEN NEW.is_active = 1 AND EXISTS (
+            SELECT 1 FROM company_usage_limits
+            WHERE company_id = NEW.company_id
+              AND max_active_members IS NOT NULL
+              AND (SELECT COUNT(*) FROM company_memberships
+                   WHERE company_id = NEW.company_id AND is_active = 1) >= max_active_members
+        )
+        BEGIN SELECT RAISE(ABORT, 'company active member limit reached'); END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_company_course_limit_insert
+        BEFORE INSERT ON courses
+        FOR EACH ROW WHEN EXISTS (
+            SELECT 1 FROM company_usage_limits
+            WHERE company_id = NEW.company_id
+              AND max_courses IS NOT NULL
+              AND (SELECT COUNT(*) FROM courses WHERE company_id = NEW.company_id) >= max_courses
+        )
+        BEGIN SELECT RAISE(ABORT, 'company course limit reached'); END;
+
         CREATE TABLE IF NOT EXISTS platform_admins (
             user_id INTEGER PRIMARY KEY,
             is_owner INTEGER NOT NULL DEFAULT 0,

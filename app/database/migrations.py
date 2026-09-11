@@ -557,6 +557,42 @@ def migrate_platform_support_accesses_table(
             ON platform_support_accesses(company_id, expires_at);
         """
     )
+
+
+def migrate_company_usage_limits_table(connection: sqlite3.Connection) -> None:
+    """Add enforced company member and course limits to existing databases."""
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS company_usage_limits (
+            company_id TEXT PRIMARY KEY,
+            max_active_members INTEGER,
+            max_courses INTEGER,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+            CHECK (max_active_members IS NULL OR max_active_members > 0),
+            CHECK (max_courses IS NULL OR max_courses > 0)
+        );
+        CREATE TRIGGER IF NOT EXISTS enforce_company_member_limit_insert
+        BEFORE INSERT ON company_memberships
+        FOR EACH ROW WHEN NEW.is_active = 1 AND EXISTS (
+            SELECT 1 FROM company_usage_limits
+            WHERE company_id = NEW.company_id
+              AND max_active_members IS NOT NULL
+              AND (SELECT COUNT(*) FROM company_memberships
+                   WHERE company_id = NEW.company_id AND is_active = 1) >= max_active_members
+        )
+        BEGIN SELECT RAISE(ABORT, 'company active member limit reached'); END;
+        CREATE TRIGGER IF NOT EXISTS enforce_company_course_limit_insert
+        BEFORE INSERT ON courses
+        FOR EACH ROW WHEN EXISTS (
+            SELECT 1 FROM company_usage_limits
+            WHERE company_id = NEW.company_id
+              AND max_courses IS NOT NULL
+              AND (SELECT COUNT(*) FROM courses WHERE company_id = NEW.company_id) >= max_courses
+        )
+        BEGIN SELECT RAISE(ABORT, 'company course limit reached'); END;
+        """
+    )
 def migrate_learning_progress_tenant_scope(
     connection: sqlite3.Connection,
 ) -> None:
@@ -1025,6 +1061,7 @@ def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_companies_table(connection)
     migrate_platform_admins_table(connection)
     migrate_platform_support_accesses_table(connection)
+    migrate_company_usage_limits_table(connection)
     migrate_courses_tenant_scope(connection)
     migrate_learning_progress_tenant_scope(connection)
     migrate_learning_tenant_integrity(connection)
