@@ -55,7 +55,7 @@ class WebMultiCompanySessionE2ETests(unittest.TestCase):
         self.client = TestClient(self.app)
 
         companies = CompanyRepository()
-        memberships = CompanyMembershipRepository()
+        self.memberships = CompanyMembershipRepository()
         companies.create(self.db_path, "company-a", "Company A")
         companies.create(self.db_path, "company-b", "Company B")
 
@@ -63,25 +63,25 @@ class WebMultiCompanySessionE2ETests(unittest.TestCase):
         self.company_a_user_id = self._create_user(102, "a-learner", "A Learner")
         self.company_b_user_id = self._create_user(103, "b-learner", "B Learner")
 
-        memberships.add(
+        self.memberships.add(
             self.db_path,
             "company-a",
             self.shared_user_id,
             role="student",
         )
-        memberships.add(
+        self.memberships.add(
             self.db_path,
             "company-a",
             self.company_a_user_id,
             role="student",
         )
-        memberships.add(
+        self.memberships.add(
             self.db_path,
             "company-b",
             self.shared_user_id,
             role="manager",
         )
-        memberships.add(
+        self.memberships.add(
             self.db_path,
             "company-b",
             self.company_b_user_id,
@@ -170,6 +170,40 @@ class WebMultiCompanySessionE2ETests(unittest.TestCase):
         self.assertNotIn("A Learner", manager_b.text)
         self.assertEqual(company_a_profile.status_code, 404)
         self.assertEqual(company_b_profile.status_code, 200)
+
+    def test_deactivated_membership_invalidates_existing_signed_session(self) -> None:
+        headers = self._headers_for_company("company-a")
+
+        self.assertEqual(
+            self.client.get("/dashboard", headers=headers).status_code,
+            200,
+        )
+        self.assertTrue(
+            self.memberships.set_active(
+                self.db_path,
+                "company-a",
+                self.shared_user_id,
+                False,
+            )
+        )
+
+        dashboard = self.client.get(
+            "/dashboard",
+            headers=headers,
+            follow_redirects=False,
+        )
+        catalog = self.client.get("/api/v1/courses", headers=headers)
+        manager = self.client.get(
+            "/manager/team",
+            headers=headers,
+            follow_redirects=False,
+        )
+
+        self.assertEqual(dashboard.status_code, 303)
+        self.assertEqual(dashboard.headers["location"], "/login")
+        self.assertEqual(catalog.status_code, 401)
+        self.assertEqual(manager.status_code, 303)
+        self.assertEqual(manager.headers["location"], "/login")
 
 
 if __name__ == "__main__":
