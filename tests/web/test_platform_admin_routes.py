@@ -199,6 +199,7 @@ class PlatformAdminRouteTests(unittest.TestCase):
                 "company_id": "support-company",
                 "duration_minutes": "15",
                 "reason": "Investigate ticket INC-42",
+                "current_password": "Strong-password-123!",
             },
             follow_redirects=False,
         )
@@ -212,6 +213,25 @@ class PlatformAdminRouteTests(unittest.TestCase):
         self.assertEqual(diagnostics.status_code, 200)
         self.assertIn("Персональные данные и изменения недоступны", diagnostics.text)
         self.assertIn("Активные сотрудники", diagnostics.text)
+
+    def test_support_grant_requires_fresh_owner_password_confirmation(self) -> None:
+        CompanyRepository().create(self.db_path, "support-company", "Support Co")
+        self._login()
+
+        response = self.client.post(
+            "/platform-admin/support",
+            data={
+                "operator_user_id": str(self.owner_id),
+                "company_id": "support-company",
+                "duration_minutes": "15",
+                "reason": "Investigate ticket INC-43",
+                "current_password": "wrong-password",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Не удалось подтвердить текущий пароль", response.text)
+        self.assertNotIn("INC-43", response.text)
 
 
 if __name__ == "__main__":

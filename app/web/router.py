@@ -44,6 +44,9 @@ from app.services.platform_support_access_service import (
     PlatformSupportAccessError,
     PlatformSupportAccessService,
 )
+from app.services.platform_owner_confirmation_service import (
+    PlatformOwnerConfirmationService,
+)
 from app.services.tenant_content_runtime_registry import (
     TenantContentRuntimeRegistry,
 )
@@ -306,6 +309,15 @@ def get_platform_support_access_service() -> PlatformSupportAccessService:
         PlatformSupportAccessRepository(),
         PlatformAdminRepository(),
         CompanyRepository(),
+    )
+
+
+def get_platform_owner_confirmation_service() -> PlatformOwnerConfirmationService:
+    """Return fresh-password confirmation for sensitive owner operations."""
+    return PlatformOwnerConfirmationService(
+        PasswordCredentialRepository(),
+        PlatformAdminRepository(),
+        PasswordHashingService(),
     )
 
 
@@ -1463,8 +1475,22 @@ async def platform_support_grant(
     support_service: PlatformSupportAccessService = Depends(
         get_platform_support_access_service
     ),
+    confirmation_service: PlatformOwnerConfirmationService = Depends(
+        get_platform_owner_confirmation_service
+    ),
 ) -> HTMLResponse:
     form = await request.form()
+    if not confirmation_service.confirm(
+        db_path,
+        owner_user_id=owner.user_id,
+        password=str(form.get("current_password") or ""),
+    ):
+        return _render_platform_support_page(
+            request,
+            db_path=db_path,
+            support_service=support_service,
+            error_message="Не удалось подтвердить текущий пароль.",
+        )
     try:
         support_service.grant(
             db_path,
@@ -1497,8 +1523,22 @@ async def platform_support_revoke(
     support_service: PlatformSupportAccessService = Depends(
         get_platform_support_access_service
     ),
+    confirmation_service: PlatformOwnerConfirmationService = Depends(
+        get_platform_owner_confirmation_service
+    ),
 ) -> HTMLResponse:
     form = await request.form()
+    if not confirmation_service.confirm(
+        db_path,
+        owner_user_id=owner.user_id,
+        password=str(form.get("current_password") or ""),
+    ):
+        return _render_platform_support_page(
+            request,
+            db_path=db_path,
+            support_service=support_service,
+            error_message="Не удалось подтвердить текущий пароль.",
+        )
     try:
         support_service.revoke(
             db_path,
