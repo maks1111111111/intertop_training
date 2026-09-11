@@ -100,6 +100,79 @@ class PlatformAdminRepository:
             ).fetchone()
         return _row_to_platform_admin(row) if row is not None else None
 
+    def list_all(self, db_path: Path) -> tuple[PlatformAdmin, ...]:
+        """List global platform privileges without involving tenant memberships."""
+        with get_connection(db_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM platform_admins
+                ORDER BY is_owner DESC, is_active DESC, user_id ASC
+                """
+            ).fetchall()
+        return tuple(_row_to_platform_admin(row) for row in rows)
+
+    def grant_admin(self, db_path: Path, user_id: int) -> PlatformAdmin:
+        """Grant or reactivate a non-owner platform administrator."""
+        normalized_user_id = _validate_user_id(user_id)
+        with get_connection(db_path) as connection:
+            user = connection.execute(
+                "SELECT id FROM users WHERE id = ? AND is_active = 1",
+                (normalized_user_id,),
+            ).fetchone()
+            if user is None:
+                raise ValueError("user_id must reference an active user")
+            row = connection.execute(
+                "SELECT * FROM platform_admins WHERE user_id = ?",
+                (normalized_user_id,),
+            ).fetchone()
+            if row is None:
+                connection.execute(
+                    "INSERT INTO platform_admins (user_id) VALUES (?)",
+                    (normalized_user_id,),
+                )
+            elif bool(row["is_owner"]):
+                raise ValueError("platform owner cannot be granted as an admin")
+            elif not bool(row["is_active"]):
+                connection.execute(
+                    """
+                    UPDATE platform_admins
+                    SET is_active = 1, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                    """,
+                    (normalized_user_id,),
+                )
+            result = connection.execute(
+                "SELECT * FROM platform_admins WHERE user_id = ?",
+                (normalized_user_id,),
+            ).fetchone()
+        if result is None:
+            raise RuntimeError("failed to load platform admin after grant")
+        return _row_to_platform_admin(result)
+
+    def revoke_admin(self, db_path: Path, user_id: int) -> bool:
+        """Deactivate one non-owner platform administrator."""
+        normalized_user_id = _validate_user_id(user_id)
+        with get_connection(db_path) as connection:
+            row = connection.execute(
+                "SELECT * FROM platform_admins WHERE user_id = ?",
+                (normalized_user_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            if bool(row["is_owner"]):
+                raise ValueError("platform owner cannot be revoked")
+            if not bool(row["is_active"]):
+                return False
+            cursor = connection.execute(
+                """
+                UPDATE platform_admins
+                SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+                """,
+                (normalized_user_id,),
+            )
+        return cursor.rowcount > 0
+
     def bootstrap_owner(
         self,
         db_path: Path,

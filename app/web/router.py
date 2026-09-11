@@ -35,6 +35,10 @@ from app.services.platform_company_service import (
     PlatformCompanyError,
     PlatformCompanyService,
 )
+from app.services.platform_admin_management_service import (
+    PlatformAdminManagementError,
+    PlatformAdminManagementService,
+)
 from app.services.tenant_content_runtime_registry import (
     TenantContentRuntimeRegistry,
 )
@@ -281,6 +285,11 @@ def get_platform_company_service() -> PlatformCompanyService:
         CompanyRepository(),
         PlatformAdminRepository(),
     )
+
+
+def get_platform_admin_management_service() -> PlatformAdminManagementService:
+    """Return owner-controlled lifecycle operations for platform admins."""
+    return PlatformAdminManagementService(PlatformAdminRepository())
 
 
 def get_web_session_service() -> WebSessionService:
@@ -1061,6 +1070,23 @@ def _render_platform_companies_page(
     )
 
 
+def _render_platform_admins_page(
+    request: Request,
+    *,
+    db_path: Path,
+    error_message: str = "",
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "platform_admins.html",
+        {
+            "admins": PlatformAdminRepository().list_all(db_path),
+            "error_message": error_message,
+        },
+        status_code=400 if error_message else 200,
+    )
+
+
 def _secure_session_cookie(request: Request) -> bool:
     deployment_config = getattr(request.app.state, "deployment_config", None)
     return bool(
@@ -1311,6 +1337,68 @@ async def platform_company_status_update(
             error_message=str(error),
         )
     return RedirectResponse(url="/platform-admin/companies", status_code=303)
+
+
+@router.get("/platform-admin/admins", response_class=HTMLResponse, include_in_schema=False)
+def platform_admins_page(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    _: PlatformAdminContext = Depends(require_platform_admin),
+) -> HTMLResponse:
+    return _render_platform_admins_page(request, db_path=db_path)
+
+
+@router.post("/platform-admin/admins", response_class=HTMLResponse, include_in_schema=False)
+async def platform_admin_grant(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    owner: PlatformAdminContext = Depends(require_platform_owner),
+    service: PlatformAdminManagementService = Depends(
+        get_platform_admin_management_service
+    ),
+) -> HTMLResponse:
+    form = await request.form()
+    try:
+        service.grant(
+            db_path,
+            actor_user_id=owner.user_id,
+            target_user_id=int(str(form.get("user_id") or "")),
+            reason=str(form.get("reason") or ""),
+        )
+    except (PlatformAdminManagementError, ValueError) as error:
+        return _render_platform_admins_page(
+            request, db_path=db_path, error_message=str(error)
+        )
+    return RedirectResponse(url="/platform-admin/admins", status_code=303)
+
+
+@router.post(
+    "/platform-admin/admins/{user_id}/revoke",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def platform_admin_revoke(
+    user_id: int,
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    owner: PlatformAdminContext = Depends(require_platform_owner),
+    service: PlatformAdminManagementService = Depends(
+        get_platform_admin_management_service
+    ),
+) -> HTMLResponse:
+    form = await request.form()
+    try:
+        service.revoke(
+            db_path,
+            actor_user_id=owner.user_id,
+            target_user_id=user_id,
+            reason=str(form.get("reason") or ""),
+        )
+    except PlatformAdminManagementError as error:
+        return _render_platform_admins_page(
+            request, db_path=db_path, error_message=str(error)
+        )
+    return RedirectResponse(url="/platform-admin/admins", status_code=303)
 
 
 @router.post("/logout", include_in_schema=False)
