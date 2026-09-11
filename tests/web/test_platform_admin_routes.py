@@ -114,6 +114,13 @@ class PlatformAdminRouteTests(unittest.TestCase):
         self.assertIn("Usage Co", owner_response.text)
         self.assertIn("Агрегированные показатели", owner_response.text)
 
+        updated = self.client.post(
+            "/platform-admin/usage/usage-company/limits",
+            data={"max_active_members": "10", "max_courses": "2", "reason": "Plan change", "current_password": "Strong-password-123!"},
+            follow_redirects=False,
+        )
+        self.assertEqual(updated.status_code, 303)
+
     def test_platform_session_is_not_accepted_by_tenant_routes(self) -> None:
         self._login()
 

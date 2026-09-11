@@ -48,6 +48,8 @@ from app.services.platform_owner_confirmation_service import (
     PlatformOwnerConfirmationService,
 )
 from app.services.platform_usage_service import PlatformUsageService
+from app.services.platform_usage_limit_service import PlatformUsageLimitError, PlatformUsageLimitService
+from app.repositories.company_usage_limit_repository import CompanyUsageLimitRepository
 from app.services.tenant_content_runtime_registry import (
     TenantContentRuntimeRegistry,
 )
@@ -325,6 +327,9 @@ def get_platform_owner_confirmation_service() -> PlatformOwnerConfirmationServic
 def get_platform_usage_service() -> PlatformUsageService:
     """Return aggregate, non-personal platform usage metrics."""
     return PlatformUsageService()
+
+def get_platform_usage_limit_service() -> PlatformUsageLimitService:
+    return PlatformUsageLimitService(CompanyUsageLimitRepository(), CompanyRepository(), PlatformAdminRepository())
 
 
 def get_web_session_service() -> WebSessionService:
@@ -1351,6 +1356,20 @@ def platform_usage_page(
         "platform_usage.html",
         {"usage": usage_service.get_overview(db_path)},
     )
+
+@router.post("/platform-admin/usage/{company_id}/limits", response_class=HTMLResponse, include_in_schema=False)
+async def platform_usage_limits_update(company_id: str, request: Request, db_path: Path = Depends(get_db_path), owner: PlatformAdminContext = Depends(require_platform_owner), limit_service: PlatformUsageLimitService = Depends(get_platform_usage_limit_service), confirmation_service: PlatformOwnerConfirmationService = Depends(get_platform_owner_confirmation_service)) -> HTMLResponse:
+    form = await request.form()
+    if not confirmation_service.confirm(db_path, owner_user_id=owner.user_id, password=str(form.get("current_password") or "")):
+        raise HTTPException(status_code=403, detail="Owner password confirmation required")
+    def number(name: str):
+        value = str(form.get(name) or "").strip()
+        return int(value) if value else None
+    try:
+        limit_service.set(db_path, actor_user_id=owner.user_id, company_id=company_id, max_active_members=number("max_active_members"), max_courses=number("max_courses"), reason=str(form.get("reason") or ""))
+    except (PlatformUsageLimitError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return RedirectResponse(url="/platform-admin/usage", status_code=303)
 
 
 @router.get(
