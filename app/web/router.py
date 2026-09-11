@@ -1330,9 +1330,22 @@ async def platform_company_create(
     db_path: Path = Depends(get_db_path),
     owner: PlatformAdminContext = Depends(require_platform_owner),
     service: PlatformCompanyService = Depends(get_platform_company_service),
+    confirmation_service: PlatformOwnerConfirmationService = Depends(
+        get_platform_owner_confirmation_service
+    ),
 ) -> HTMLResponse:
     """Provision a new tenant company with an explicit operational reason."""
     form = await request.form()
+    if not confirmation_service.confirm(
+        db_path,
+        owner_user_id=owner.user_id,
+        password=str(form.get("current_password") or ""),
+    ):
+        return _render_platform_companies_page(
+            request,
+            db_path=db_path,
+            error_message="Не удалось подтвердить текущий пароль.",
+        )
     try:
         service.create_company(
             db_path,
@@ -1361,9 +1374,22 @@ async def platform_company_status_update(
     db_path: Path = Depends(get_db_path),
     owner: PlatformAdminContext = Depends(require_platform_owner),
     service: PlatformCompanyService = Depends(get_platform_company_service),
+    confirmation_service: PlatformOwnerConfirmationService = Depends(
+        get_platform_owner_confirmation_service
+    ),
 ) -> HTMLResponse:
     """Activate or deactivate a company with a required audit reason."""
     form = await request.form()
+    if not confirmation_service.confirm(
+        db_path,
+        owner_user_id=owner.user_id,
+        password=str(form.get("current_password") or ""),
+    ):
+        return _render_platform_companies_page(
+            request,
+            db_path=db_path,
+            error_message="Не удалось подтвердить текущий пароль.",
+        )
     state = str(form.get("state") or "")
     if state not in {"active", "inactive"}:
         return _render_platform_companies_page(
@@ -1405,8 +1431,20 @@ async def platform_admin_grant(
     service: PlatformAdminManagementService = Depends(
         get_platform_admin_management_service
     ),
+    confirmation_service: PlatformOwnerConfirmationService = Depends(
+        get_platform_owner_confirmation_service
+    ),
 ) -> HTMLResponse:
     form = await request.form()
+    if not confirmation_service.confirm(
+        db_path,
+        owner_user_id=owner.user_id,
+        password=str(form.get("current_password") or ""),
+    ):
+        return _render_platform_admins_page(
+            request, db_path=db_path,
+            error_message="Не удалось подтвердить текущий пароль.",
+        )
     try:
         service.grant(
             db_path,
@@ -1434,8 +1472,20 @@ async def platform_admin_revoke(
     service: PlatformAdminManagementService = Depends(
         get_platform_admin_management_service
     ),
+    confirmation_service: PlatformOwnerConfirmationService = Depends(
+        get_platform_owner_confirmation_service
+    ),
 ) -> HTMLResponse:
     form = await request.form()
+    if not confirmation_service.confirm(
+        db_path,
+        owner_user_id=owner.user_id,
+        password=str(form.get("current_password") or ""),
+    ):
+        return _render_platform_admins_page(
+            request, db_path=db_path,
+            error_message="Не удалось подтвердить текущий пароль.",
+        )
     try:
         service.revoke(
             db_path,

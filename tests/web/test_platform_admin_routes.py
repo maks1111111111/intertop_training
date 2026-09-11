@@ -139,13 +139,18 @@ class PlatformAdminRouteTests(unittest.TestCase):
                 "company_id": "north-shop",
                 "name": "North Shop",
                 "reason": "Initial customer provisioning",
+                "current_password": "Strong-password-123!",
             },
             follow_redirects=False,
         )
         self.assertEqual(created.status_code, 303)
         disabled = self.client.post(
             "/platform-admin/companies/north-shop/status",
-            data={"state": "inactive", "reason": "Contract ended"},
+            data={
+                "state": "inactive",
+                "reason": "Contract ended",
+                "current_password": "Strong-password-123!",
+            },
             follow_redirects=False,
         )
         self.assertEqual(disabled.status_code, 303)
@@ -232,6 +237,23 @@ class PlatformAdminRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("Не удалось подтвердить текущий пароль", response.text)
         self.assertNotIn("INC-43", response.text)
+
+    def test_company_lifecycle_requires_fresh_owner_password_confirmation(self) -> None:
+        self._login()
+
+        response = self.client.post(
+            "/platform-admin/companies",
+            data={
+                "company_id": "north-shop",
+                "name": "North Shop",
+                "reason": "Initial customer provisioning",
+                "current_password": "wrong-password",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Не удалось подтвердить текущий пароль", response.text)
+        self.assertIsNone(CompanyRepository().get_by_id(self.db_path, "north-shop"))
 
 
 if __name__ == "__main__":

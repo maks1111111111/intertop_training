@@ -23,6 +23,7 @@
         <label class="auth-field"><span>ID компании</span><input name="company_id" pattern="[a-z0-9][a-z0-9-]{0,62}" required></label>
         <label class="auth-field"><span>Название</span><input name="name" required></label>
         <label class="auth-field"><span>Причина</span><input name="reason" required></label>
+        <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
         <button type="submit" class="button button-primary">Создать</button>
     </form>
 </section>
@@ -39,6 +40,7 @@
             <form method="post" action="/platform-admin/companies/{{ company.id }}/status" class="auth-form">
                 <input type="hidden" name="state" value="{% if company.is_active %}inactive{% else %}active{% endif %}">
                 <label class="auth-field"><span>Причина</span><input name="reason" required></label>
+                <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
                 <button type="submit" class="button button-secondary">{% if company.is_active %}Отключить{% else %}Включить{% endif %}</button>
             </form>
             {% endif %}
