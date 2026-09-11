@@ -84,12 +84,26 @@ class PlatformSupportAccessService:
     ) -> PlatformSupportAccess | None:
         if self._admins.get_active_by_user_id(db_path, operator_user_id) is None:
             return None
-        return self._support.get_active_for_operator(
+        access = self._support.get_active_for_operator(
             db_path,
             access_id=access_id,
             operator_user_id=operator_user_id,
             now=self._now(),
         )
+        if access is not None:
+            self._admins.append_audit_event(
+                db_path,
+                actor_user_id=operator_user_id,
+                action="support_access.read_only_diagnostics_viewed",
+                target_type="support_access",
+                target_id=str(access.id),
+                reason=access.reason,
+            )
+        return access
+
+    def list_active(self, db_path: Path) -> tuple[PlatformSupportAccess, ...]:
+        """List currently usable grants for the platform owner dashboard."""
+        return self._support.list_active(db_path, now=self._now())
 
     def revoke(
         self,

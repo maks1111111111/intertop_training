@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.api.mappers import course_mapper
 from app.content.runtime import ContentRuntime
+from app.database.db import get_connection
 from app.repositories import practical_task_attempt_repository, quiz_repository
 from app.repositories.company_membership_repository import CompanyMembershipRepository
 from app.repositories.company_repository import CompanyRepository
@@ -38,6 +39,10 @@ from app.services.platform_company_service import (
 from app.services.platform_admin_management_service import (
     PlatformAdminManagementError,
     PlatformAdminManagementService,
+)
+from app.services.platform_support_access_service import (
+    PlatformSupportAccessError,
+    PlatformSupportAccessService,
 )
 from app.services.tenant_content_runtime_registry import (
     TenantContentRuntimeRegistry,
@@ -180,6 +185,9 @@ from app.web.manager_team_development_actions import (
 from app.web.manager_team_service import ManagerTeamService
 from app.web.password_hashing_service import PasswordHashingService
 from app.web.platform_authentication_service import PlatformAuthenticationService
+from app.repositories.platform_support_access_repository import (
+    PlatformSupportAccessRepository,
+)
 from app.web.progress_service import WebProgressService
 from app.web.web_practical_task_service import (
     WebPracticalTaskAttemptCreationError,
@@ -290,6 +298,15 @@ def get_platform_company_service() -> PlatformCompanyService:
 def get_platform_admin_management_service() -> PlatformAdminManagementService:
     """Return owner-controlled lifecycle operations for platform admins."""
     return PlatformAdminManagementService(PlatformAdminRepository())
+
+
+def get_platform_support_access_service() -> PlatformSupportAccessService:
+    """Return the least-privilege, time-bound platform support workflow."""
+    return PlatformSupportAccessService(
+        PlatformSupportAccessRepository(),
+        PlatformAdminRepository(),
+        CompanyRepository(),
+    )
 
 
 def get_web_session_service() -> WebSessionService:
@@ -1087,6 +1104,26 @@ def _render_platform_admins_page(
     )
 
 
+def _render_platform_support_page(
+    request: Request,
+    *,
+    db_path: Path,
+    support_service: PlatformSupportAccessService,
+    error_message: str = "",
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "platform_support.html",
+        {
+            "accesses": support_service.list_active(db_path),
+            "companies": CompanyRepository().list_all(db_path),
+            "admins": PlatformAdminRepository().list_all(db_path),
+            "error_message": error_message,
+        },
+        status_code=400 if error_message else 200,
+    )
+
+
 def _secure_session_cookie(request: Request) -> bool:
     deployment_config = getattr(request.app.state, "deployment_config", None)
     return bool(
@@ -1399,6 +1436,135 @@ async def platform_admin_revoke(
             request, db_path=db_path, error_message=str(error)
         )
     return RedirectResponse(url="/platform-admin/admins", status_code=303)
+
+
+@router.get("/platform-admin/support", response_class=HTMLResponse, include_in_schema=False)
+def platform_support_page(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    _: PlatformAdminContext = Depends(require_platform_admin),
+    support_service: PlatformSupportAccessService = Depends(
+        get_platform_support_access_service
+    ),
+) -> HTMLResponse:
+    """Show active, explicitly granted company support windows."""
+    return _render_platform_support_page(
+        request,
+        db_path=db_path,
+        support_service=support_service,
+    )
+
+
+@router.post("/platform-admin/support", response_class=HTMLResponse, include_in_schema=False)
+async def platform_support_grant(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    owner: PlatformAdminContext = Depends(require_platform_owner),
+    support_service: PlatformSupportAccessService = Depends(
+        get_platform_support_access_service
+    ),
+) -> HTMLResponse:
+    form = await request.form()
+    try:
+        support_service.grant(
+            db_path,
+            actor_user_id=owner.user_id,
+            operator_user_id=int(str(form.get("operator_user_id") or "")),
+            company_id=str(form.get("company_id") or ""),
+            reason=str(form.get("reason") or ""),
+            duration_minutes=int(str(form.get("duration_minutes") or "")),
+        )
+    except (PlatformSupportAccessError, ValueError) as error:
+        return _render_platform_support_page(
+            request,
+            db_path=db_path,
+            support_service=support_service,
+            error_message=str(error),
+        )
+    return RedirectResponse(url="/platform-admin/support", status_code=303)
+
+
+@router.post(
+    "/platform-admin/support/{access_id}/revoke",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def platform_support_revoke(
+    access_id: int,
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    owner: PlatformAdminContext = Depends(require_platform_owner),
+    support_service: PlatformSupportAccessService = Depends(
+        get_platform_support_access_service
+    ),
+) -> HTMLResponse:
+    form = await request.form()
+    try:
+        support_service.revoke(
+            db_path,
+            actor_user_id=owner.user_id,
+            access_id=access_id,
+            reason=str(form.get("reason") or ""),
+        )
+    except PlatformSupportAccessError as error:
+        return _render_platform_support_page(
+            request,
+            db_path=db_path,
+            support_service=support_service,
+            error_message=str(error),
+        )
+    return RedirectResponse(url="/platform-admin/support", status_code=303)
+
+
+@router.get(
+    "/platform-admin/support/{access_id}",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def platform_support_diagnostics(
+    access_id: int,
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    context: PlatformAdminContext = Depends(require_platform_admin),
+    support_service: PlatformSupportAccessService = Depends(
+        get_platform_support_access_service
+    ),
+) -> HTMLResponse:
+    """Expose only aggregate company diagnostics for an active support grant."""
+    access = support_service.resolve_for_operator(
+        db_path,
+        access_id=access_id,
+        operator_user_id=context.user_id,
+    )
+    if access is None:
+        raise HTTPException(status_code=404, detail="Support access not found")
+    company = CompanyRepository().get_by_id(db_path, access.company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    with get_connection(db_path) as connection:
+        counts = connection.execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM company_memberships
+                 WHERE company_id = ? AND is_active = 1) AS active_members,
+                (SELECT COUNT(*) FROM courses WHERE company_id = ?) AS courses,
+                (SELECT COUNT(*) FROM enrollments
+                 WHERE company_id = ? AND status != 'completed') AS active_enrollments,
+                (SELECT COUNT(*) FROM knowledge_documents
+                 WHERE company_id = ? AND status = 'active') AS active_documents
+            """,
+            (company.id, company.id, company.id, company.id),
+        ).fetchone()
+    assert counts is not None
+    return templates.TemplateResponse(
+        request,
+        "platform_support_diagnostics.html",
+        {
+            "access": access,
+            "company": company,
+            "counts": counts,
+        },
+    )
 
 
 @router.post("/logout", include_in_schema=False)

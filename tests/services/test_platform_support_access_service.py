@@ -53,7 +53,13 @@ class PlatformSupportAccessServiceTests(unittest.TestCase):
         self.assertEqual(access.expires_at, self.now + timedelta(minutes=15))
         self.assertEqual(self.service.resolve_for_operator(self.db_path, access_id=access.id, operator_user_id=self.operator_id), access)
         self.assertIsNone(self.service.resolve_for_operator(self.db_path, access_id=access.id, operator_user_id=self.owner_id))
-        self.assertEqual(self.admins.list_audit_events(self.db_path)[0].action, "support_access.granted")
+        self.assertEqual(
+            [event.action for event in self.admins.list_audit_events(self.db_path)[:2]],
+            [
+                "support_access.read_only_diagnostics_viewed",
+                "support_access.granted",
+            ],
+        )
 
     def test_access_expires_and_can_be_revoked_immediately(self) -> None:
         access = self.service.grant(self.db_path, actor_user_id=self.owner_id, operator_user_id=self.operator_id, company_id="company-a", reason="Investigate ticket INC-2", duration_minutes=5)

@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from app.database.db import get_connection
 from app.repositories.password_credential_repository import PasswordCredentialRepository
 from app.repositories.platform_admin_repository import PlatformAdminRepository
+from app.repositories.company_repository import CompanyRepository
 from app.web.password_hashing_service import PasswordHashingService
 from app.web.router import get_web_session_service
 from app.web.web_session_service import (
@@ -186,6 +187,31 @@ class PlatformAdminRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["detail"], "Platform owner required")
+
+    def test_owner_can_issue_read_only_support_and_open_diagnostics(self) -> None:
+        CompanyRepository().create(self.db_path, "support-company", "Support Co")
+        self._login()
+
+        granted = self.client.post(
+            "/platform-admin/support",
+            data={
+                "operator_user_id": str(self.owner_id),
+                "company_id": "support-company",
+                "duration_minutes": "15",
+                "reason": "Investigate ticket INC-42",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(granted.status_code, 303)
+        support_page = self.client.get("/platform-admin/support")
+        self.assertEqual(support_page.status_code, 200)
+        self.assertIn("Support Co", support_page.text)
+        self.assertIn("Диагностика", support_page.text)
+
+        diagnostics = self.client.get("/platform-admin/support/1")
+        self.assertEqual(diagnostics.status_code, 200)
+        self.assertIn("Персональные данные и изменения недоступны", diagnostics.text)
+        self.assertIn("Активные сотрудники", diagnostics.text)
 
 
 if __name__ == "__main__":

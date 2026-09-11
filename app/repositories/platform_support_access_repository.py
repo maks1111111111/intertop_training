@@ -101,6 +101,23 @@ class PlatformSupportAccessRepository:
             ).fetchone()
         return _row_to_access(row) if row is not None else None
 
+    def list_active(
+        self,
+        db_path: Path,
+        *,
+        now: datetime,
+    ) -> tuple[PlatformSupportAccess, ...]:
+        with get_connection(db_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM platform_support_accesses
+                WHERE revoked_at IS NULL AND expires_at > ?
+                ORDER BY expires_at ASC, id ASC
+                """,
+                (_serialize_timestamp(now),),
+            ).fetchall()
+        return tuple(_row_to_access(row) for row in rows)
+
     def revoke(self, db_path: Path, access_id: int, *, now: datetime) -> bool:
         with get_connection(db_path) as connection:
             cursor = connection.execute(
