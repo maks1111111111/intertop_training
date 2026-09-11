@@ -1294,7 +1294,11 @@ def platform_admin_dashboard(
 ) -> HTMLResponse:
     """Show a read-only platform overview to an authenticated global admin."""
     companies = CompanyRepository().list_active(db_path)
-    audit_events = PlatformAdminRepository().list_audit_events(db_path, limit=20)
+    audit_events = (
+        PlatformAdminRepository().list_audit_events(db_path, limit=20)
+        if context.is_owner
+        else ()
+    )
     return templates.TemplateResponse(
         request,
         "platform_admin_dashboard.html",
@@ -1303,6 +1307,24 @@ def platform_admin_dashboard(
             "active_companies": companies,
             "audit_events": audit_events,
         },
+    )
+
+
+@router.get(
+    "/platform-admin/audit",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def platform_audit_page(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    _: PlatformAdminContext = Depends(require_platform_owner),
+) -> HTMLResponse:
+    """Show the immutable platform operation history to its owner only."""
+    return templates.TemplateResponse(
+        request,
+        "platform_audit.html",
+        {"audit_events": PlatformAdminRepository().list_audit_events(db_path, limit=500)},
     )
 
 

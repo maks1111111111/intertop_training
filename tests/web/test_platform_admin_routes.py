@@ -84,6 +84,27 @@ class PlatformAdminRouteTests(unittest.TestCase):
         self.assertIn("Управление платформой", dashboard.text)
         self.assertIn("Владелец", dashboard.text)
 
+    def test_audit_history_is_visible_to_owner_only(self) -> None:
+        self._login()
+
+        owner_response = self.client.get("/platform-admin/audit")
+        self.assertEqual(owner_response.status_code, 200)
+        self.assertIn("platform_admin.bootstrap_owner", owner_response.text)
+
+        with get_connection(self.db_path) as connection:
+            other_id = int(connection.execute("INSERT INTO users (username) VALUES ('other-admin')").lastrowid)
+            connection.execute("INSERT INTO platform_admins (user_id) VALUES (?)", (other_id,))
+        token = self.session_service.create_token(
+            user_id=other_id,
+            company_id="__platform_admin__",
+            scope=PLATFORM_SESSION_SCOPE,
+        )
+        other_response = self.client.get(
+            "/platform-admin/audit",
+            headers={"Cookie": f"intertop_session={token}"},
+        )
+        self.assertEqual(other_response.status_code, 403)
+
     def test_platform_session_is_not_accepted_by_tenant_routes(self) -> None:
         self._login()
 

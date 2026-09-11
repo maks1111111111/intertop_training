@@ -43,8 +43,9 @@
     <a href="/platform-admin/support">Временный support-доступ</a>
 </section>
 
+{% if platform_admin.is_owner %}
 <section class="content-section">
-    <div class="section-heading"><h2>Последние действия</h2></div>
+    <div class="section-heading"><h2>Последние действия</h2><a href="/platform-admin/audit">Весь журнал</a></div>
     {% if audit_events %}
     <ul class="simple-list">
         {% for event in audit_events %}
@@ -55,4 +56,5 @@
     <p class="empty-state">Действий пока нет.</p>
     {% endif %}
 </section>
+{% endif %}
 {% endblock %}

@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Журнал операций · Platform Admin{% endblock %}
+{% block content %}
+<section class="page-header"><div><p class="page-eyebrow">Platform Admin</p><h1>Неизменяемый журнал операций</h1><p class="page-subtitle">Показаны последние 500 событий. Записи нельзя изменить или удалить.</p></div><a class="button button-secondary" href="/platform-admin">Обзор</a></section>
+<section class="content-section"><ul class="simple-list">{% for event in audit_events %}<li><div><strong>{{ event.action }}</strong><span>{{ event.created_at }} · исполнитель: {% if event.actor_user_id %}#{{ event.actor_user_id }}{% else %}система{% endif %} · {{ event.target_type }}: {{ event.target_id }}</span><span>Причина: {{ event.reason }}</span></div></li>{% endfor %}</ul></section>
+{% endblock %}
