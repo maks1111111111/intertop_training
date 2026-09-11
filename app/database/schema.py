@@ -305,6 +305,56 @@ def create_tables(connection: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_company_memberships_company_role
             ON company_memberships(company_id, role);
 
+        CREATE TABLE IF NOT EXISTS platform_admins (
+            user_id INTEGER PRIMARY KEY,
+            is_owner INTEGER NOT NULL DEFAULT 0,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id)
+                REFERENCES users(id)
+                ON DELETE CASCADE,
+            CHECK (is_owner IN (0, 1)),
+            CHECK (is_active IN (0, 1))
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_admins_single_active_owner
+            ON platform_admins(is_owner)
+            WHERE is_owner = 1 AND is_active = 1;
+
+        CREATE TABLE IF NOT EXISTS platform_audit_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor_user_id INTEGER,
+            action TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            reason TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CHECK (length(trim(action)) > 0),
+            CHECK (length(trim(target_type)) > 0),
+            CHECK (length(trim(target_id)) > 0)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_platform_audit_events_created_at
+            ON platform_audit_events(created_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_platform_audit_events_target
+            ON platform_audit_events(target_type, target_id);
+
+        CREATE TRIGGER IF NOT EXISTS prevent_platform_audit_event_update
+        BEFORE UPDATE ON platform_audit_events
+        FOR EACH ROW
+        BEGIN
+            SELECT RAISE(ABORT, 'platform audit events are immutable');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS prevent_platform_audit_event_delete
+        BEFORE DELETE ON platform_audit_events
+        FOR EACH ROW
+        BEGIN
+            SELECT RAISE(ABORT, 'platform audit events are immutable');
+        END;
+
         CREATE TRIGGER IF NOT EXISTS enforce_enrollment_course_company_insert
         BEFORE INSERT ON enrollments
         FOR EACH ROW
