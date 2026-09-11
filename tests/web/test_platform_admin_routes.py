@@ -129,6 +129,64 @@ class PlatformAdminRouteTests(unittest.TestCase):
         assert session is not None
         self.assertEqual(session.scope, PLATFORM_SESSION_SCOPE)
 
+    def test_owner_can_create_and_deactivate_company_with_audit_reason(self) -> None:
+        self._login()
+
+        created = self.client.post(
+            "/platform-admin/companies",
+            data={
+                "company_id": "north-shop",
+                "name": "North Shop",
+                "reason": "Initial customer provisioning",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(created.status_code, 303)
+        disabled = self.client.post(
+            "/platform-admin/companies/north-shop/status",
+            data={"state": "inactive", "reason": "Contract ended"},
+            follow_redirects=False,
+        )
+        self.assertEqual(disabled.status_code, 303)
+
+        companies_page = self.client.get("/platform-admin/companies")
+        self.assertEqual(companies_page.status_code, 200)
+        self.assertIn("North Shop", companies_page.text)
+        self.assertIn("отключена", companies_page.text)
+        events = PlatformAdminRepository().list_audit_events(self.db_path)
+        self.assertEqual(events[0].action, "company.deactivated")
+        self.assertEqual(events[0].reason, "Contract ended")
+
+    def test_non_owner_platform_admin_cannot_mutate_companies(self) -> None:
+        with get_connection(self.db_path) as connection:
+            user_id = int(
+                connection.execute(
+                    "INSERT INTO users (username) VALUES ('read-only-admin')"
+                ).lastrowid
+            )
+            connection.execute(
+                "INSERT INTO platform_admins (user_id) VALUES (?)",
+                (user_id,),
+            )
+        token = self.session_service.create_token(
+            user_id=user_id,
+            company_id="__platform_admin__",
+            scope=PLATFORM_SESSION_SCOPE,
+        )
+
+        response = self.client.post(
+            "/platform-admin/companies",
+            headers={"Cookie": f"intertop_session={token}"},
+            data={
+                "company_id": "north-shop",
+                "name": "North Shop",
+                "reason": "Unauthorized test",
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "Platform owner required")
+
 
 if __name__ == "__main__":
     unittest.main()

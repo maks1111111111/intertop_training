@@ -338,6 +338,22 @@ class KnowledgeChunkRepositoryTests(unittest.TestCase):
 
     def test_same_document_id_for_different_companies_isolated(self) -> None:
         shared_document_id = self.document.document_id
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO knowledge_documents (
+                    company_id, document_id, title, original_filename,
+                    source_type, source_language, extracted_text, status, version
+                )
+                VALUES (?, ?, ?, ?, 'pdf', 'auto', '', 'draft', 1)
+                """,
+                (
+                    "company-b",
+                    shared_document_id,
+                    "Other tenant manual",
+                    "other.pdf",
+                ),
+            )
         knowledge_chunk_repository.replace_document_chunks(
             self.db_path,
             company_id="company-b",

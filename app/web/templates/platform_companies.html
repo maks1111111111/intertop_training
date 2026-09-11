@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Компании · Platform Admin{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <div>
+        <p class="page-eyebrow">Platform Admin</p>
+        <h1>Компании</h1>
+        <p class="page-subtitle">Создание и изменение статуса фиксируются в неизменяемом журнале.</p>
+    </div>
+    <a class="button button-secondary" href="/platform-admin">Обзор</a>
+</section>
+
+{% if error_message %}
+<div class="auth-error" role="alert">{{ error_message }}</div>
+{% endif %}
+
+{% if platform_admin and platform_admin.is_owner %}
+<section class="content-section">
+    <div class="section-heading"><h2>Создать компанию</h2></div>
+    <form method="post" action="/platform-admin/companies" class="auth-form">
+        <label class="auth-field"><span>ID компании</span><input name="company_id" pattern="[a-z0-9][a-z0-9-]{0,62}" required></label>
+        <label class="auth-field"><span>Название</span><input name="name" required></label>
+        <label class="auth-field"><span>Причина</span><input name="reason" required></label>
+        <button type="submit" class="button button-primary">Создать</button>
+    </form>
+</section>
+{% endif %}
+
+<section class="content-section">
+    <div class="section-heading"><h2>Все компании</h2></div>
+    {% if companies %}
+    <ul class="simple-list">
+        {% for company in companies %}
+        <li>
+            <div><strong>{{ company.name }}</strong><span>{{ company.id }} · {% if company.is_active %}активна{% else %}отключена{% endif %}</span></div>
+            {% if platform_admin and platform_admin.is_owner %}
+            <form method="post" action="/platform-admin/companies/{{ company.id }}/status" class="auth-form">
+                <input type="hidden" name="state" value="{% if company.is_active %}inactive{% else %}active{% endif %}">
+                <label class="auth-field"><span>Причина</span><input name="reason" required></label>
+                <button type="submit" class="button button-secondary">{% if company.is_active %}Отключить{% else %}Включить{% endif %}</button>
+            </form>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty-state">Компаний пока нет.</p>
+    {% endif %}
+</section>
+{% endblock %}

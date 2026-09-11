@@ -184,3 +184,53 @@ class PlatformAdminRepository:
                 (limit,),
             ).fetchall()
         return tuple(_row_to_audit_event(row) for row in rows)
+
+    def append_audit_event(
+        self,
+        db_path: Path,
+        *,
+        actor_user_id: int,
+        action: str,
+        target_type: str,
+        target_id: str,
+        reason: str,
+    ) -> PlatformAuditEvent:
+        """Append an immutable operational event from an authorized workflow."""
+        normalized_actor_id = _validate_user_id(actor_user_id)
+        normalized_action = _validate_text(action, "action")
+        normalized_target_type = _validate_text(target_type, "target_type")
+        normalized_target_id = _validate_text(target_id, "target_id")
+        normalized_reason = _validate_text(reason, "reason")
+        with get_connection(db_path) as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO platform_audit_events (
+                    actor_user_id, action, target_type, target_id, reason
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    normalized_actor_id,
+                    normalized_action,
+                    normalized_target_type,
+                    normalized_target_id,
+                    normalized_reason,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM platform_audit_events WHERE id = ?",
+                (int(cursor.lastrowid),),
+            ).fetchone()
+
+        if row is None:
+            raise RuntimeError("failed to load audit event after insert")
+        return _row_to_audit_event(row)
+
+
+def _validate_text(value: str, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError(f"{field_name} must not be empty")
+    return normalized

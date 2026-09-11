@@ -106,6 +106,22 @@ class CompanyRepository:
 
         return tuple(_row_to_company(row) for row in rows)
 
+    def list_all(
+        self,
+        db_path: Path,
+    ) -> tuple[Company, ...]:
+        """Return every company for global platform administration."""
+        with get_connection(db_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM companies
+                ORDER BY is_active DESC, id ASC
+                """
+            ).fetchall()
+
+        return tuple(_row_to_company(row) for row in rows)
+
     def set_active(
         self,
         db_path: Path,

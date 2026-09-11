@@ -31,6 +31,10 @@ from app.services.platform_admin_context_service import (
     PlatformAdminContext,
     PlatformAdminContextService,
 )
+from app.services.platform_company_service import (
+    PlatformCompanyError,
+    PlatformCompanyService,
+)
 from app.services.tenant_content_runtime_registry import (
     TenantContentRuntimeRegistry,
 )
@@ -209,6 +213,7 @@ def _web_template_context(request: Request) -> dict[str, object]:
     """Expose request-scoped Web identity to every server-rendered template."""
     return {
         "identity": getattr(request.state, "web_identity", None),
+        "platform_admin": getattr(request.state, "platform_admin", None),
     }
 
 
@@ -270,6 +275,14 @@ def get_platform_authentication_service() -> PlatformAuthenticationService:
     )
 
 
+def get_platform_company_service() -> PlatformCompanyService:
+    """Return owner-only company lifecycle operations."""
+    return PlatformCompanyService(
+        CompanyRepository(),
+        PlatformAdminRepository(),
+    )
+
+
 def get_web_session_service() -> WebSessionService:
     """Return the signed Web session service for the current application."""
     config = WebSessionConfig.from_environment()
@@ -313,7 +326,8 @@ def get_current_web_identity(
         request.state.web_identity = None
         return None
 
-    if session.scope != TENANT_SESSION_SCOPE:
+    session_scope = getattr(session, "scope", TENANT_SESSION_SCOPE)
+    if isinstance(session_scope, str) and session_scope != TENANT_SESSION_SCOPE:
         request.state.web_identity = None
         return None
 
@@ -375,6 +389,15 @@ def require_platform_admin(
             detail="Platform authentication required",
             headers={"Location": "/platform-admin/login"},
         )
+    return context
+
+
+def require_platform_owner(
+    context: PlatformAdminContext = Depends(require_platform_admin),
+) -> PlatformAdminContext:
+    """Require the sole global platform owner for high-impact actions."""
+    if not context.is_owner:
+        raise HTTPException(status_code=403, detail="Platform owner required")
     return context
 
 
@@ -1020,6 +1043,24 @@ def _render_platform_login_page(
     )
 
 
+def _render_platform_companies_page(
+    request: Request,
+    *,
+    db_path: Path,
+    error_message: str = "",
+) -> HTMLResponse:
+    """Render lifecycle controls with all company states visible."""
+    return templates.TemplateResponse(
+        request,
+        "platform_companies.html",
+        {
+            "companies": CompanyRepository().list_all(db_path),
+            "error_message": error_message,
+        },
+        status_code=400 if error_message else 200,
+    )
+
+
 def _secure_session_cookie(request: Request) -> bool:
     deployment_config = getattr(request.app.state, "deployment_config", None)
     return bool(
@@ -1188,6 +1229,88 @@ def platform_admin_dashboard(
             "audit_events": audit_events,
         },
     )
+
+
+@router.get(
+    "/platform-admin/companies",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def platform_companies_page(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    _: PlatformAdminContext = Depends(require_platform_admin),
+) -> HTMLResponse:
+    """Show all company lifecycle states to a global platform administrator."""
+    return _render_platform_companies_page(request, db_path=db_path)
+
+
+@router.post(
+    "/platform-admin/companies",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def platform_company_create(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    owner: PlatformAdminContext = Depends(require_platform_owner),
+    service: PlatformCompanyService = Depends(get_platform_company_service),
+) -> HTMLResponse:
+    """Provision a new tenant company with an explicit operational reason."""
+    form = await request.form()
+    try:
+        service.create_company(
+            db_path,
+            actor_user_id=owner.user_id,
+            company_id=str(form.get("company_id") or ""),
+            name=str(form.get("name") or ""),
+            reason=str(form.get("reason") or ""),
+        )
+    except PlatformCompanyError as error:
+        return _render_platform_companies_page(
+            request,
+            db_path=db_path,
+            error_message=str(error),
+        )
+    return RedirectResponse(url="/platform-admin/companies", status_code=303)
+
+
+@router.post(
+    "/platform-admin/companies/{company_id}/status",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def platform_company_status_update(
+    company_id: str,
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    owner: PlatformAdminContext = Depends(require_platform_owner),
+    service: PlatformCompanyService = Depends(get_platform_company_service),
+) -> HTMLResponse:
+    """Activate or deactivate a company with a required audit reason."""
+    form = await request.form()
+    state = str(form.get("state") or "")
+    if state not in {"active", "inactive"}:
+        return _render_platform_companies_page(
+            request,
+            db_path=db_path,
+            error_message="state must be active or inactive",
+        )
+    try:
+        service.set_company_active(
+            db_path,
+            actor_user_id=owner.user_id,
+            company_id=company_id,
+            is_active=state == "active",
+            reason=str(form.get("reason") or ""),
+        )
+    except PlatformCompanyError as error:
+        return _render_platform_companies_page(
+            request,
+            db_path=db_path,
+            error_message=str(error),
+        )
+    return RedirectResponse(url="/platform-admin/companies", status_code=303)
 
 
 @router.post("/logout", include_in_schema=False)

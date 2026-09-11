@@ -7,6 +7,9 @@ import unittest
 from pathlib import Path
 
 from app.database.db import initialize_database
+from app.repositories.company_membership_repository import (
+    CompanyMembershipRepository,
+)
 from app.repositories.course_repository import CourseRepository
 from app.repositories.progress_repository import ProgressRepository
 from app.services.course_sync import sync_courses
@@ -135,6 +138,11 @@ class CourseRepositoryLifecycleTests(unittest.TestCase):
                 (("company-a", "Company A"), ("company-b", "Company B")),
             )
         user_id = self._create_user()
+        CompanyMembershipRepository().add(
+            self.db_path,
+            "company-a",
+            user_id,
+        )
         alpha_a = self.repository.save(
             self.db_path, "alpha", "Alpha A", None, 0, "company-a"
         )
