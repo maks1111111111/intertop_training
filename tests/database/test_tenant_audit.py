@@ -105,6 +105,9 @@ class TenantAuditTests(unittest.TestCase):
                 "DROP TRIGGER enforce_practical_attempt_course_company_insert"
             )
             connection.execute(
+                "DROP TRIGGER enforce_knowledge_chunk_document_company_insert"
+            )
+            connection.execute(
                 """
                 INSERT INTO enrollments (
                     company_id, user_id, course_id, status, progress_percent
@@ -147,6 +150,22 @@ class TenantAuditTests(unittest.TestCase):
                 VALUES ('missing-company', 'orphaned', 'Orphaned')
                 """
             )
+            connection.execute(
+                """
+                INSERT INTO knowledge_documents (
+                    company_id, document_id, title, original_filename, source_type
+                )
+                VALUES ('company-b', 'company-b-doc', 'Document', 'document.pdf', 'pdf')
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO knowledge_document_chunks (
+                    company_id, document_id, chunk_index, text, start_char, end_char
+                )
+                VALUES ('company-a', 'company-b-doc', 0, 'Foreign chunk', 0, 13)
+                """
+            )
             before_count = connection.execute(
                 "SELECT COUNT(*) FROM enrollments"
             ).fetchone()[0]
@@ -168,6 +187,7 @@ class TenantAuditTests(unittest.TestCase):
                 ("lesson_company_mismatch", "lesson_progress"),
                 ("assessment_course_company_mismatch", "quiz_attempts"),
                 ("assessment_course_company_mismatch", "practical_task_attempts"),
+                ("knowledge_document_company_mismatch", "knowledge_document_chunks"),
             },
         )
 

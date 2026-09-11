@@ -414,5 +414,57 @@ def create_tables(connection: sqlite3.Connection) -> None:
         BEGIN
             SELECT RAISE(ABORT, 'practical-task course belongs to another company');
         END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_knowledge_chunk_document_company_insert
+        BEFORE INSERT ON knowledge_document_chunks
+        FOR EACH ROW
+        WHEN NOT EXISTS (
+            SELECT 1
+            FROM knowledge_documents
+            WHERE knowledge_documents.company_id = NEW.company_id
+              AND knowledge_documents.document_id = NEW.document_id
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'knowledge chunk document belongs to another company');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_knowledge_chunk_document_company_update
+        BEFORE UPDATE OF company_id, document_id ON knowledge_document_chunks
+        FOR EACH ROW
+        WHEN NOT EXISTS (
+            SELECT 1
+            FROM knowledge_documents
+            WHERE knowledge_documents.company_id = NEW.company_id
+              AND knowledge_documents.document_id = NEW.document_id
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'knowledge chunk document belongs to another company');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS prevent_knowledge_document_identity_update_with_chunks
+        BEFORE UPDATE OF company_id, document_id ON knowledge_documents
+        FOR EACH ROW
+        WHEN EXISTS (
+            SELECT 1
+            FROM knowledge_document_chunks
+            WHERE knowledge_document_chunks.company_id = OLD.company_id
+              AND knowledge_document_chunks.document_id = OLD.document_id
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'knowledge document has chunks');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS prevent_knowledge_document_delete_with_chunks
+        BEFORE DELETE ON knowledge_documents
+        FOR EACH ROW
+        WHEN EXISTS (
+            SELECT 1
+            FROM knowledge_document_chunks
+            WHERE knowledge_document_chunks.company_id = OLD.company_id
+              AND knowledge_document_chunks.document_id = OLD.document_id
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'knowledge document has chunks');
+        END;
         """
     )

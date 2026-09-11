@@ -44,6 +44,7 @@ def audit_tenant_data(db_path: Path) -> TenantAuditReport:
             *_find_cross_tenant_enrollments(connection),
             *_find_cross_tenant_lesson_progress(connection),
             *_find_cross_tenant_assessment_attempts(connection),
+            *_find_cross_tenant_knowledge_chunks(connection),
             *_find_nonmember_learning_records(connection),
         ]
     return TenantAuditReport(findings=tuple(findings))
@@ -60,6 +61,8 @@ def _find_unknown_company_records(
         "quiz_attempts",
         "practical_task_attempts",
         "web_lesson_progress",
+        "knowledge_documents",
+        "knowledge_document_chunks",
     ):
         rows = connection.execute(
             f"""
@@ -177,6 +180,38 @@ def _find_cross_tenant_assessment_attempts(
             for row in rows
         )
     return findings
+
+
+def _find_cross_tenant_knowledge_chunks(
+    connection: sqlite3.Connection,
+) -> list[TenantAuditFinding]:
+    rows = connection.execute(
+        """
+        SELECT
+            chunks.id,
+            chunks.company_id,
+            chunks.document_id
+        FROM knowledge_document_chunks AS chunks
+        LEFT JOIN knowledge_documents AS documents
+            ON documents.company_id = chunks.company_id
+           AND documents.document_id = chunks.document_id
+        WHERE documents.id IS NULL
+        ORDER BY chunks.id ASC
+        """
+    ).fetchall()
+    return [
+        TenantAuditFinding(
+            code="knowledge_document_company_mismatch",
+            table_name="knowledge_document_chunks",
+            record_id=int(row["id"]),
+            company_id=str(row["company_id"]),
+            detail=(
+                "document_id is not owned by this company: "
+                f"{str(row['document_id'])}"
+            ),
+        )
+        for row in rows
+    ]
 
 
 def _find_nonmember_learning_records(

@@ -84,11 +84,34 @@ def _insert_chunk(
     return int(cursor.lastrowid)
 
 
+def _insert_document(
+    connection: sqlite3.Connection,
+    *,
+    company_id: str,
+    document_id: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO knowledge_documents (
+            company_id, document_id, title, original_filename, source_type
+        )
+        VALUES (?, ?, 'Document', 'document.pdf', 'pdf')
+        """,
+        (company_id, document_id),
+    )
+
+
 class KnowledgeDocumentChunksSchemaTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
         self.db_path = Path(self._tmpdir.name) / "test.db"
         initialize_database(self.db_path)
+        with get_connection(self.db_path) as connection:
+            _insert_document(
+                connection,
+                company_id="company-a",
+                document_id="doc-001",
+            )
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
@@ -132,6 +155,16 @@ class KnowledgeDocumentChunksSchemaTests(unittest.TestCase):
 
     def test_same_document_id_allowed_for_different_companies(self) -> None:
         with get_connection(self.db_path) as connection:
+            _insert_document(
+                connection,
+                company_id="company-a",
+                document_id="shared-doc",
+            )
+            _insert_document(
+                connection,
+                company_id="company-b",
+                document_id="shared-doc",
+            )
             _insert_chunk(
                 connection,
                 company_id="company-a",
@@ -150,6 +183,62 @@ class KnowledgeDocumentChunksSchemaTests(unittest.TestCase):
             ).fetchone()[0]
 
         self.assertEqual(count, 2)
+
+    def test_chunk_must_belong_to_its_company_document(self) -> None:
+        with get_connection(self.db_path) as connection:
+            _insert_document(
+                connection,
+                company_id="company-b",
+                document_id="company-b-doc",
+            )
+            with self.assertRaisesRegex(
+                sqlite3.IntegrityError,
+                "knowledge chunk document belongs to another company",
+            ):
+                _insert_chunk(
+                    connection,
+                    company_id="company-a",
+                    document_id="company-b-doc",
+                )
+
+            chunk_id = _insert_chunk(connection)
+            with self.assertRaisesRegex(
+                sqlite3.IntegrityError,
+                "knowledge chunk document belongs to another company",
+            ):
+                connection.execute(
+                    """
+                    UPDATE knowledge_document_chunks
+                    SET company_id = 'company-b'
+                    WHERE id = ?
+                    """,
+                    (chunk_id,),
+                )
+
+    def test_document_with_chunks_cannot_be_moved_or_deleted(self) -> None:
+        with get_connection(self.db_path) as connection:
+            _insert_chunk(connection)
+            with self.assertRaisesRegex(
+                sqlite3.IntegrityError,
+                "knowledge document has chunks",
+            ):
+                connection.execute(
+                    """
+                    UPDATE knowledge_documents
+                    SET company_id = 'company-b'
+                    WHERE company_id = 'company-a' AND document_id = 'doc-001'
+                    """
+                )
+            with self.assertRaisesRegex(
+                sqlite3.IntegrityError,
+                "knowledge document has chunks",
+            ):
+                connection.execute(
+                    """
+                    DELETE FROM knowledge_documents
+                    WHERE company_id = 'company-a' AND document_id = 'doc-001'
+                    """
+                )
 
     def test_indexes_exist(self) -> None:
         with get_connection(self.db_path) as connection:
