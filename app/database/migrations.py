@@ -525,6 +525,38 @@ def migrate_platform_admins_table(connection: sqlite3.Connection) -> None:
         END;
         """
     )
+
+
+def migrate_platform_support_accesses_table(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add time-bound company support grants for global administrators."""
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS platform_support_accesses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operator_user_id INTEGER NOT NULL,
+            company_id TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            revoked_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (operator_user_id)
+                REFERENCES users(id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (company_id)
+                REFERENCES companies(id)
+                ON DELETE CASCADE,
+            CHECK (length(trim(reason)) > 0)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_platform_support_accesses_operator
+            ON platform_support_accesses(operator_user_id, expires_at);
+
+        CREATE INDEX IF NOT EXISTS idx_platform_support_accesses_company
+            ON platform_support_accesses(company_id, expires_at);
+        """
+    )
 def migrate_learning_progress_tenant_scope(
     connection: sqlite3.Connection,
 ) -> None:
@@ -992,6 +1024,7 @@ def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_user_password_credentials_table(connection)
     migrate_companies_table(connection)
     migrate_platform_admins_table(connection)
+    migrate_platform_support_accesses_table(connection)
     migrate_courses_tenant_scope(connection)
     migrate_learning_progress_tenant_scope(connection)
     migrate_learning_tenant_integrity(connection)

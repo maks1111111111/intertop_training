@@ -341,6 +341,29 @@ def create_tables(connection: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_platform_audit_events_target
             ON platform_audit_events(target_type, target_id);
 
+        CREATE TABLE IF NOT EXISTS platform_support_accesses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operator_user_id INTEGER NOT NULL,
+            company_id TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            revoked_at TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (operator_user_id)
+                REFERENCES users(id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (company_id)
+                REFERENCES companies(id)
+                ON DELETE CASCADE,
+            CHECK (length(trim(reason)) > 0)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_platform_support_accesses_operator
+            ON platform_support_accesses(operator_user_id, expires_at);
+
+        CREATE INDEX IF NOT EXISTS idx_platform_support_accesses_company
+            ON platform_support_accesses(company_id, expires_at);
+
         CREATE TRIGGER IF NOT EXISTS prevent_platform_audit_event_update
         BEFORE UPDATE ON platform_audit_events
         FOR EACH ROW
