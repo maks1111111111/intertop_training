@@ -47,6 +47,7 @@ from app.services.platform_support_access_service import (
 from app.services.platform_owner_confirmation_service import (
     PlatformOwnerConfirmationService,
 )
+from app.services.platform_usage_service import PlatformUsageService
 from app.services.tenant_content_runtime_registry import (
     TenantContentRuntimeRegistry,
 )
@@ -319,6 +320,11 @@ def get_platform_owner_confirmation_service() -> PlatformOwnerConfirmationServic
         PlatformAdminRepository(),
         PasswordHashingService(),
     )
+
+
+def get_platform_usage_service() -> PlatformUsageService:
+    """Return aggregate, non-personal platform usage metrics."""
+    return PlatformUsageService()
 
 
 def get_web_session_service() -> WebSessionService:
@@ -1325,6 +1331,25 @@ def platform_audit_page(
         request,
         "platform_audit.html",
         {"audit_events": PlatformAdminRepository().list_audit_events(db_path, limit=500)},
+    )
+
+
+@router.get(
+    "/platform-admin/usage",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def platform_usage_page(
+    request: Request,
+    _: PlatformAdminContext = Depends(require_platform_owner),
+    db_path: Path = Depends(get_db_path),
+    usage_service: PlatformUsageService = Depends(get_platform_usage_service),
+) -> HTMLResponse:
+    """Show owner-only aggregate utilization across every company."""
+    return templates.TemplateResponse(
+        request,
+        "platform_usage.html",
+        {"usage": usage_service.get_overview(db_path)},
     )
 
 

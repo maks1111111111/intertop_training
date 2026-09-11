@@ -105,6 +105,15 @@ class PlatformAdminRouteTests(unittest.TestCase):
         )
         self.assertEqual(other_response.status_code, 403)
 
+    def test_usage_is_visible_to_owner_only(self) -> None:
+        CompanyRepository().create(self.db_path, "usage-company", "Usage Co")
+        self._login()
+
+        owner_response = self.client.get("/platform-admin/usage")
+        self.assertEqual(owner_response.status_code, 200)
+        self.assertIn("Usage Co", owner_response.text)
+        self.assertIn("Агрегированные показатели", owner_response.text)
+
     def test_platform_session_is_not_accepted_by_tenant_routes(self) -> None:
         self._login()
 
