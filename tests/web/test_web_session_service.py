@@ -8,6 +8,8 @@ import unittest
 
 from app.web.web_session_service import (
     DEFAULT_SESSION_TTL_SECONDS,
+    PLATFORM_SESSION_SCOPE,
+    TENANT_SESSION_SCOPE,
     WebSession,
     WebSessionService,
 )
@@ -42,6 +44,7 @@ class WebSessionServiceTests(unittest.TestCase):
         assert session is not None
         self.assertEqual(session.user_id, 42)
         self.assertEqual(session.company_id, "intertop")
+        self.assertEqual(session.scope, TENANT_SESSION_SCOPE)
         self.assertEqual(session.issued_at, 1_000)
         self.assertEqual(
             session.expires_at,
@@ -79,6 +82,21 @@ class WebSessionServiceTests(unittest.TestCase):
         self.assertEqual(payload["user_id"], 123)
         self.assertEqual(payload["company_id"], "company-a")
         self.assertNotIn("telegram_id", payload)
+        self.assertEqual(payload["scope"], TENANT_SESSION_SCOPE)
+
+    def test_platform_scope_round_trip_is_explicit(self) -> None:
+        service = WebSessionService(SECRET, clock=lambda: 1_000)
+
+        token = service.create_token(
+            user_id=123,
+            company_id="__platform_admin__",
+            scope=PLATFORM_SESSION_SCOPE,
+        )
+        session = service.resolve_token(token)
+
+        self.assertIsNotNone(session)
+        assert session is not None
+        self.assertEqual(session.scope, PLATFORM_SESSION_SCOPE)
 
     def test_expired_token_is_rejected(self) -> None:
         now = [1_000]
@@ -223,6 +241,18 @@ class WebSessionServiceTests(unittest.TestCase):
                     service.create_token(
                         user_id=42,
                         company_id=invalid,  # type: ignore[arg-type]
+                    )
+
+    def test_invalid_session_scopes_are_rejected_on_create(self) -> None:
+        service = WebSessionService(SECRET, clock=lambda: 1_000)
+
+        for invalid in ("", "support", None, 123):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    service.create_token(
+                        user_id=42,
+                        company_id="intertop",
+                        scope=invalid,  # type: ignore[arg-type]
                     )
 
     def test_short_secret_is_rejected(self) -> None:

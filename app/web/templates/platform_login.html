@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Вход в Platform Admin · Intertop Training{% endblock %}
+
+{% block content %}
+<section class="auth-page">
+    <div class="auth-card">
+        <div class="auth-card-header">
+            <p class="auth-eyebrow">Intertop Training</p>
+            <h1>Platform Admin</h1>
+            <p class="auth-description">
+                Защищённый доступ к управлению платформой. Компания для входа не требуется.
+            </p>
+        </div>
+        {% if error_message %}
+        <div class="auth-error" role="alert">{{ error_message }}</div>
+        {% endif %}
+        <form method="post" action="/platform-admin/login" class="auth-form">
+            <label class="auth-field">
+                <span>Email</span>
+                <input type="email" name="email" value="{{ email }}" autocomplete="username" required autofocus>
+            </label>
+            <label class="auth-field">
+                <span>Пароль</span>
+                <input type="password" name="password" autocomplete="current-password" required>
+            </label>
+            <button type="submit" class="button button-primary auth-submit">Войти</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

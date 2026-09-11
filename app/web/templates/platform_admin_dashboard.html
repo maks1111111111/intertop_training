@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Platform Admin · Intertop Training{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <div>
+        <p class="page-eyebrow">Platform Admin</p>
+        <h1>Управление платформой</h1>
+        <p class="page-subtitle">Глобальный контур, не связанный с ролями компаний.</p>
+    </div>
+    <form method="post" action="/platform-admin/logout">
+        <button type="submit" class="button button-secondary">Выйти</button>
+    </form>
+</section>
+
+<section class="dashboard-grid" aria-label="Статус платформы">
+    <article class="dashboard-card">
+        <span class="dashboard-card-label">Активные компании</span>
+        <strong class="dashboard-card-value">{{ active_companies|length }}</strong>
+    </article>
+    <article class="dashboard-card">
+        <span class="dashboard-card-label">Уровень доступа</span>
+        <strong class="dashboard-card-value">{% if platform_admin.is_owner %}Владелец{% else %}Администратор{% endif %}</strong>
+    </article>
+</section>
+
+<section class="content-section">
+    <div class="section-heading"><h2>Компании</h2></div>
+    {% if active_companies %}
+    <ul class="simple-list">
+        {% for company in active_companies %}
+        <li><strong>{{ company.name }}</strong><span>{{ company.id }}</span></li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty-state">Активных компаний пока нет.</p>
+    {% endif %}
+</section>
+
+<section class="content-section">
+    <div class="section-heading"><h2>Последние действия</h2></div>
+    {% if audit_events %}
+    <ul class="simple-list">
+        {% for event in audit_events %}
+        <li><strong>{{ event.action }}</strong><span>{{ event.created_at }} · {{ event.target_type }}: {{ event.target_id }}</span></li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty-state">Действий пока нет.</p>
+    {% endif %}
+</section>
+{% endblock %}

@@ -20,12 +20,17 @@ from app.repositories.company_membership_repository import CompanyMembershipRepo
 from app.repositories.company_repository import CompanyRepository
 from app.repositories.company_team_repository import CompanyTeamRepository
 from app.repositories.password_credential_repository import PasswordCredentialRepository
+from app.repositories.platform_admin_repository import PlatformAdminRepository
 from app.repositories.manager_course_assignment_repository import (
     ManagerCourseAssignmentRepository,
 )
 from app.repositories.progress_repository import ProgressRepository
 from app.repositories.user_repository import UserRepository
 from app.services.tenant_context_service import TenantContextService
+from app.services.platform_admin_context_service import (
+    PlatformAdminContext,
+    PlatformAdminContextService,
+)
 from app.services.tenant_content_runtime_registry import (
     TenantContentRuntimeRegistry,
 )
@@ -166,6 +171,7 @@ from app.web.manager_team_development_actions import (
 )
 from app.web.manager_team_service import ManagerTeamService
 from app.web.password_hashing_service import PasswordHashingService
+from app.web.platform_authentication_service import PlatformAuthenticationService
 from app.web.progress_service import WebProgressService
 from app.web.web_practical_task_service import (
     WebPracticalTaskAttemptCreationError,
@@ -179,7 +185,11 @@ from app.web.web_authentication_service import WebAuthenticationService
 from app.web.web_authorization_service import WebAuthorizationService
 from app.web.web_identity_service import WebIdentity, WebIdentityService
 from app.web.web_session_config import WEB_SESSION_COOKIE_NAME, WebSessionConfig
-from app.web.web_session_service import WebSessionService
+from app.web.web_session_service import (
+    PLATFORM_SESSION_SCOPE,
+    TENANT_SESSION_SCOPE,
+    WebSessionService,
+)
 from app.web.quiz_scoring import (
     build_quiz_page_view,
     build_quiz_summary_view,
@@ -192,6 +202,7 @@ _logger = logging.getLogger(__name__)
 router = APIRouter(tags=["web"])
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+_PLATFORM_SESSION_COMPANY_ID = "__platform_admin__"
 
 
 def _web_template_context(request: Request) -> dict[str, object]:
@@ -245,6 +256,20 @@ def get_web_authentication_service() -> WebAuthenticationService:
     )
 
 
+def get_platform_admin_context_service() -> PlatformAdminContextService:
+    """Return global administration resolution without tenant membership."""
+    return PlatformAdminContextService(PlatformAdminRepository())
+
+
+def get_platform_authentication_service() -> PlatformAuthenticationService:
+    """Return password authentication for the isolated platform contour."""
+    return PlatformAuthenticationService(
+        PasswordCredentialRepository(),
+        PasswordHashingService(),
+        get_platform_admin_context_service(),
+    )
+
+
 def get_web_session_service() -> WebSessionService:
     """Return the signed Web session service for the current application."""
     config = WebSessionConfig.from_environment()
@@ -288,6 +313,10 @@ def get_current_web_identity(
         request.state.web_identity = None
         return None
 
+    if session.scope != TENANT_SESSION_SCOPE:
+        request.state.web_identity = None
+        return None
+
     identity = web_identity_service.resolve_user(
         db_path,
         session.user_id,
@@ -308,6 +337,45 @@ def require_web_identity(
             headers={"Location": "/login"},
         )
     return identity
+
+
+def get_current_platform_admin(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    web_session_service: Optional[WebSessionService] = Depends(
+        get_web_session_service_for_request
+    ),
+    context_service: PlatformAdminContextService = Depends(
+        get_platform_admin_context_service
+    ),
+) -> Optional[PlatformAdminContext]:
+    """Resolve only an active global admin from a platform-scoped session."""
+    token = request.cookies.get(WEB_SESSION_COOKIE_NAME)
+    if token is None or web_session_service is None:
+        request.state.platform_admin = None
+        return None
+
+    session = web_session_service.resolve_token(token)
+    if session is None or session.scope != PLATFORM_SESSION_SCOPE:
+        request.state.platform_admin = None
+        return None
+
+    context = context_service.resolve_user(db_path, session.user_id)
+    request.state.platform_admin = context
+    return context
+
+
+def require_platform_admin(
+    context: Optional[PlatformAdminContext] = Depends(get_current_platform_admin),
+) -> PlatformAdminContext:
+    """Require the separate global platform-administration identity."""
+    if context is None:
+        raise HTTPException(
+            status_code=303,
+            detail="Platform authentication required",
+            headers={"Location": "/platform-admin/login"},
+        )
+    return context
 
 
 def get_tenant_content_runtime(
@@ -935,6 +1003,23 @@ def _render_login_page(
     )
 
 
+def _render_platform_login_page(
+    request: Request,
+    *,
+    email: str = "",
+    error_message: str = "",
+) -> HTMLResponse:
+    """Render the platform-only login form without a tenant selector."""
+    return templates.TemplateResponse(
+        request,
+        "platform_login.html",
+        {
+            "email": email,
+            "error_message": error_message,
+        },
+    )
+
+
 def _secure_session_cookie(request: Request) -> bool:
     deployment_config = getattr(request.app.state, "deployment_config", None)
     return bool(
@@ -1007,6 +1092,102 @@ async def login_submit(
         path="/",
     )
     return response
+
+
+@router.get(
+    "/platform-admin/login",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def platform_login_page(
+    request: Request,
+    context: Optional[PlatformAdminContext] = Depends(get_current_platform_admin),
+) -> HTMLResponse:
+    """Render the separate platform login page for global administrators."""
+    if context is not None:
+        return RedirectResponse(url="/platform-admin", status_code=302)
+    return _render_platform_login_page(request)
+
+
+@router.post(
+    "/platform-admin/login",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def platform_login_submit(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    authentication_service: PlatformAuthenticationService = Depends(
+        get_platform_authentication_service
+    ),
+    session_service: WebSessionService = Depends(get_web_session_service),
+) -> HTMLResponse:
+    """Authenticate an explicit platform admin into a platform-only session."""
+    form = await request.form()
+    email = str(form.get("email") or "").strip()
+    password = str(form.get("password") or "")
+    context = authentication_service.authenticate(
+        db_path,
+        email=email,
+        password=password,
+    )
+    if context is None:
+        return _render_platform_login_page(
+            request,
+            email=email,
+            error_message="Неверные данные для входа.",
+        )
+
+    token = session_service.create_token(
+        user_id=context.user_id,
+        company_id=_PLATFORM_SESSION_COMPANY_ID,
+        scope=PLATFORM_SESSION_SCOPE,
+    )
+    response = RedirectResponse(url="/platform-admin", status_code=303)
+    response.set_cookie(
+        key=WEB_SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=_secure_session_cookie(request),
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@router.post("/platform-admin/logout", include_in_schema=False)
+def platform_logout_submit() -> RedirectResponse:
+    """Clear a platform-only session without sending the user to tenant login."""
+    response = RedirectResponse(url="/platform-admin/login", status_code=303)
+    response.delete_cookie(
+        key=WEB_SESSION_COOKIE_NAME,
+        path="/",
+    )
+    return response
+
+
+@router.get(
+    "/platform-admin",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def platform_admin_dashboard(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    context: PlatformAdminContext = Depends(require_platform_admin),
+) -> HTMLResponse:
+    """Show a read-only platform overview to an authenticated global admin."""
+    companies = CompanyRepository().list_active(db_path)
+    audit_events = PlatformAdminRepository().list_audit_events(db_path, limit=20)
+    return templates.TemplateResponse(
+        request,
+        "platform_admin_dashboard.html",
+        {
+            "platform_admin": context,
+            "active_companies": companies,
+            "audit_events": audit_events,
+        },
+    )
 
 
 @router.post("/logout", include_in_schema=False)

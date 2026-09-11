@@ -12,6 +12,11 @@ from typing import Callable, Optional
 
 
 DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 12
+TENANT_SESSION_SCOPE = "tenant"
+PLATFORM_SESSION_SCOPE = "platform"
+_VALID_SESSION_SCOPES = frozenset(
+    {TENANT_SESSION_SCOPE, PLATFORM_SESSION_SCOPE}
+)
 
 
 @dataclass(frozen=True)
@@ -22,6 +27,7 @@ class WebSession:
     company_id: str
     issued_at: int
     expires_at: int
+    scope: str = TENANT_SESSION_SCOPE
 
 
 class WebSessionService:
@@ -43,15 +49,18 @@ class WebSessionService:
         *,
         user_id: int,
         company_id: str,
+        scope: str = TENANT_SESSION_SCOPE,
     ) -> str:
         """Return a signed session token for one canonical user."""
         normalized_user_id = _validate_user_id(user_id)
         normalized_company_id = _validate_company_id(company_id)
+        normalized_scope = _validate_scope(scope)
 
         issued_at = int(self._clock())
         payload = {
             "user_id": normalized_user_id,
             "company_id": normalized_company_id,
+            "scope": normalized_scope,
             "issued_at": issued_at,
             "expires_at": issued_at + self._ttl_seconds,
         }
@@ -88,6 +97,9 @@ class WebSessionService:
         try:
             user_id = _validate_user_id(payload["user_id"])
             company_id = _validate_company_id(payload["company_id"])
+            scope = _validate_scope(
+                payload.get("scope", TENANT_SESSION_SCOPE)
+            )
             issued_at = _validate_timestamp(payload["issued_at"])
             expires_at = _validate_timestamp(payload["expires_at"])
         except (KeyError, TypeError, ValueError):
@@ -108,6 +120,7 @@ class WebSessionService:
             company_id=company_id,
             issued_at=issued_at,
             expires_at=expires_at,
+            scope=scope,
         )
 
     def _sign(self, encoded_payload: str) -> str:
@@ -185,6 +198,15 @@ def _validate_company_id(company_id: str) -> str:
     if not normalized:
         raise ValueError("company_id must not be empty")
 
+    return normalized
+
+
+def _validate_scope(scope: str) -> str:
+    if not isinstance(scope, str):
+        raise ValueError("scope must be a string")
+    normalized = scope.strip()
+    if normalized not in _VALID_SESSION_SCOPES:
+        raise ValueError("scope must be a supported session scope")
     return normalized
 
 
