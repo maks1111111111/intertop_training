@@ -158,6 +158,29 @@ export WEB_SESSION_SECRET='уникальный случайный секрет 
 и списка trusted hosts, запрещает wildcard `*` и всегда устанавливает session
 cookie с флагом `Secure`.
 
+Перед запуском или обновлением staging/production выполните read-only preflight
+на резервной копии либо остановленной базе. Обе команды завершаются с ненулевым
+кодом, если требуется разбор результатов, и ничего не изменяют:
+
+```bash
+python -m app.database.tenant_audit --db "$INTERTOP_DB_PATH"
+python -m app.database.platform_audit --db "$INTERTOP_DB_PATH"
+```
+
+После создания первой активной учётной записи платформенного оператора назначьте
+единственного владельца отдельной операторской командой. Она не принимает и не
+выводит пароль; `user-id` должен принадлежать существующему активному пользователю:
+
+```bash
+python -m app.platform_admin_bootstrap \
+  --db "$INTERTOP_DB_PATH" \
+  --user-id 123
+```
+
+Владелец входит через `/platform-admin/login`. Его сессия отделена от tenant
+сессий; доступ к данным другой компании возможен только через временную
+read-only support-диагностику с обязательной причиной и audit trail.
+
 Все ответы получают базовые browser security headers. В `staging` и `production`
 дополнительно включается HSTS; эти окружения должны быть доступны только по HTTPS.
 
