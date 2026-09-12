@@ -439,6 +439,13 @@ def create_tables(connection: sqlite3.Connection) -> None:
             SELECT RAISE(ABORT, 'platform audit events are immutable');
         END;
 
+        CREATE TRIGGER IF NOT EXISTS prevent_course_company_reassignment
+        BEFORE UPDATE OF company_id ON courses
+        FOR EACH ROW WHEN NEW.company_id != OLD.company_id
+        BEGIN
+            SELECT RAISE(ABORT, 'course company ownership is immutable');
+        END;
+
         CREATE TRIGGER IF NOT EXISTS enforce_enrollment_course_company_insert
         BEFORE INSERT ON enrollments
         FOR EACH ROW

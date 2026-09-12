@@ -92,6 +92,17 @@ class LearningTenantIntegritySchemaTests(unittest.TestCase):
                     (enrollment_id,),
                 )
 
+    def test_course_company_ownership_is_immutable(self) -> None:
+        with get_connection(self.db_path) as connection:
+            with self.assertRaisesRegex(
+                sqlite3.IntegrityError,
+                "course company ownership is immutable",
+            ):
+                connection.execute(
+                    "UPDATE courses SET company_id = 'company-b' WHERE id = ?",
+                    (self.course_a_id,),
+                )
+
     def test_lesson_progress_must_belong_to_its_company_course(self) -> None:
         with get_connection(self.db_path) as connection:
             with self.assertRaisesRegex(

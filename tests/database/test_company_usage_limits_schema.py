@@ -45,6 +45,7 @@ class CompanyUsageLimitsSchemaTests(unittest.TestCase):
     def test_course_limit_is_enforced_when_a_course_moves_into_a_company(self):
         CompanyUsageLimitRepository().set(self.db_path, "company-a", None, 1)
         with get_connection(self.db_path) as c:
+            c.execute("DROP TRIGGER prevent_course_company_reassignment")
             c.execute("INSERT INTO courses (company_id, slug, title) VALUES ('company-a', 'one', 'One')")
             c.execute("INSERT INTO courses (company_id, slug, title) VALUES ('company-b', 'two', 'Two')")
             with self.assertRaisesRegex(sqlite3.IntegrityError, "course limit"):

@@ -21,6 +21,7 @@ _REQUIRED_TABLES = (
 _REQUIRED_TRIGGERS = (
     "prevent_platform_audit_event_update",
     "prevent_platform_audit_event_delete",
+    "prevent_course_company_reassignment",
     "enforce_company_member_limit_insert",
     "enforce_company_member_limit_update",
     "enforce_company_course_limit_insert",
