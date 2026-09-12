@@ -1150,7 +1150,7 @@ def _render_platform_support_page(
                     operator_user_id=context.user_id,
                 )
             ),
-            "companies": CompanyRepository().list_all(db_path) if is_owner else (),
+            "companies": CompanyRepository().list_active(db_path) if is_owner else (),
             "admins": PlatformAdminRepository().list_all(db_path) if is_owner else (),
             "error_message": error_message,
             "platform_nav": "support",

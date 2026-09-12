@@ -18,37 +18,36 @@
 <div class="auth-error" role="alert">{{ error_message }}</div>
 {% endif %}
 
-{% if platform_admin and platform_admin.is_owner %}
 <section class="content-section">
-    <div class="section-heading"><h2>Создать компанию</h2></div>
-    <form method="post" action="/platform-admin/companies" class="auth-form">
-        <label class="auth-field"><span>ID компании</span><input name="company_id" pattern="[a-z0-9][a-z0-9-]{0,62}" required></label>
-        <label class="auth-field"><span>Название</span><input name="name" required></label>
+    <div class="section-heading"><div><h2>Создать компанию</h2><p class="section-description">ID нельзя изменить после создания. Используйте короткий латинский идентификатор.</p></div></div>
+    <form method="post" action="/platform-admin/companies" class="platform-operation-form">
+        <label class="auth-field"><span>ID компании</span><input name="company_id" pattern="[a-z0-9][a-z0-9-]{0,62}" placeholder="north-shop" required></label>
+        <label class="auth-field"><span>Название</span><input name="name" placeholder="North Shop" required></label>
         <label class="auth-field"><span>Причина</span><input name="reason" required></label>
         <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
-        <button type="submit" class="button button-primary">Создать</button>
+        <button type="submit" class="button button-primary">Создать компанию</button>
     </form>
 </section>
-{% endif %}
 
 <section class="content-section">
-    <div class="section-heading"><h2>Все компании</h2></div>
+    <div class="section-heading"><div><h2>Все компании</h2><p class="section-description">Отключенная компания теряет tenant- и support-доступ до повторной активации.</p></div></div>
     {% if companies %}
-    <ul class="simple-list">
+    <div class="platform-company-list">
         {% for company in companies %}
-        <li>
-            <div><strong>{{ company.name }}</strong><span>{{ company.id }} · {% if company.is_active %}активна{% else %}отключена{% endif %}</span></div>
-            {% if platform_admin and platform_admin.is_owner %}
-            <form method="post" action="/platform-admin/companies/{{ company.id }}/status" class="auth-form">
+        <article class="platform-company-card">
+            <div class="platform-company-summary">
+                <div><h3>{{ company.name }}</h3><p>{{ company.id }}</p></div>
+                <div class="platform-usage-meta"><span class="platform-status {% if company.is_active %}is-active{% else %}is-inactive{% endif %}">{% if company.is_active %}Активна{% else %}Отключена{% endif %}</span></div>
+            </div>
+            <form method="post" action="/platform-admin/companies/{{ company.id }}/status" class="platform-inline-form">
                 <input type="hidden" name="state" value="{% if company.is_active %}inactive{% else %}active{% endif %}">
-                <label class="auth-field"><span>Причина</span><input name="reason" required></label>
+                <label class="auth-field"><span>Причина изменения</span><input name="reason" required></label>
                 <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
                 <button type="submit" class="button button-secondary">{% if company.is_active %}Отключить{% else %}Включить{% endif %}</button>
             </form>
-            {% endif %}
-        </li>
+        </article>
         {% endfor %}
-    </ul>
+    </div>
     {% else %}
     <p class="empty-state">Компаний пока нет.</p>
     {% endif %}

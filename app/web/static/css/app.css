@@ -4510,8 +4510,59 @@ a:focus-visible,
     border-top: 1px solid #e5e7eb;
 }
 
+.platform-operation-form,
+.platform-inline-form {
+    display: grid;
+    align-items: end;
+    gap: 0.75rem;
+}
+
+.platform-operation-form {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+}
+
+.platform-inline-form {
+    grid-template-columns: minmax(12rem, 1fr) minmax(12rem, 1fr) auto;
+    padding-top: 1rem;
+    border-top: 1px solid #e5e7eb;
+}
+
+.platform-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.75rem;
+}
+
+.platform-card-actions .platform-inline-form {
+    flex: 1 1 32rem;
+}
+
+.platform-status {
+    display: inline-flex;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+}
+
+.platform-status.is-active {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.platform-status.is-inactive {
+    background: #f3f4f6;
+    color: #4b5563;
+}
+
 @media (max-width: 900px) {
     .platform-limit-form {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .platform-operation-form,
+    .platform-inline-form {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
@@ -4539,6 +4590,11 @@ a:focus-visible,
     }
 
     .platform-limit-form {
+        grid-template-columns: 1fr;
+    }
+
+    .platform-operation-form,
+    .platform-inline-form {
         grid-template-columns: 1fr;
     }
 }

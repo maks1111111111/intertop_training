@@ -231,7 +231,7 @@ class PlatformAdminRouteTests(unittest.TestCase):
         companies_page = self.client.get("/platform-admin/companies")
         self.assertEqual(companies_page.status_code, 200)
         self.assertIn("North Shop", companies_page.text)
-        self.assertIn("отключена", companies_page.text)
+        self.assertIn("Отключена", companies_page.text)
         events = PlatformAdminRepository().list_audit_events(self.db_path)
         self.assertEqual(events[0].action, "company.deactivated")
         self.assertEqual(events[0].reason, "Contract ended")
@@ -339,12 +339,25 @@ class PlatformAdminRouteTests(unittest.TestCase):
         support_page = self.client.get("/platform-admin/support")
         self.assertEqual(support_page.status_code, 200)
         self.assertIn("Support Co", support_page.text)
-        self.assertIn("Диагностика", support_page.text)
+        self.assertIn("Открыть диагностику", support_page.text)
 
         diagnostics = self.client.get("/platform-admin/support/1")
         self.assertEqual(diagnostics.status_code, 200)
         self.assertIn("Персональные данные и изменения недоступны", diagnostics.text)
         self.assertIn("Активные сотрудники", diagnostics.text)
+
+    def test_support_form_offers_only_active_companies(self) -> None:
+        CompanyRepository().create(self.db_path, "active-company", "Active Co")
+        CompanyRepository().create(self.db_path, "inactive-company", "Inactive Co")
+        CompanyRepository().set_active(self.db_path, "inactive-company", False)
+        self._login()
+
+        support_page = self.client.get("/platform-admin/support")
+
+        self.assertEqual(support_page.status_code, 200)
+        self.assertIn("Active Co", support_page.text)
+        self.assertNotIn("Inactive Co", support_page.text)
+        self.assertNotIn('value="inactive-company"', support_page.text)
 
     def test_support_grant_requires_fresh_owner_password_confirmation(self) -> None:
         CompanyRepository().create(self.db_path, "support-company", "Support Co")

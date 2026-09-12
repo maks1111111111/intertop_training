@@ -1,11 +1,51 @@
 {% extends "base.html" %}
+
 {% block title %}Администраторы · Platform Admin{% endblock %}
+
 {% block content %}
-<section class="page-header"><div><p class="page-eyebrow">Platform Admin</p><h1>Администраторы платформы</h1><p class="page-subtitle">Доступ предоставляется только владельцем и фиксируется в журнале.</p></div><a class="button button-secondary" href="/platform-admin">Обзор</a></section>
+<section class="page-header">
+    <div>
+        <p class="page-eyebrow">Platform Admin</p>
+        <h1>Администраторы платформы</h1>
+        <p class="page-subtitle">Доступ предоставляется только владельцем и фиксируется в журнале.</p>
+    </div>
+    <a class="button button-secondary" href="/platform-admin">Обзор</a>
+</section>
+
 {% include "_platform_admin_nav.html" %}
-{% if error_message %}<div class="auth-error" role="alert">{{ error_message }}</div>{% endif %}
-{% if platform_admin and platform_admin.is_owner %}
-<section class="content-section"><div class="section-heading"><h2>Добавить администратора</h2></div><form method="post" action="/platform-admin/admins" class="auth-form"><label class="auth-field"><span>ID пользователя</span><input name="user_id" type="number" min="1" required></label><label class="auth-field"><span>Причина</span><input name="reason" required></label><label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label><button type="submit" class="button button-primary">Выдать доступ</button></form></section>
+
+{% if error_message %}
+<div class="auth-error" role="alert">{{ error_message }}</div>
 {% endif %}
-<section class="content-section"><div class="section-heading"><h2>Все записи</h2></div><ul class="simple-list">{% for admin in admins %}<li><div><strong>Пользователь #{{ admin.user_id }}</strong><span>{% if admin.is_owner %}владелец{% elif admin.is_active %}администратор{% else %}доступ отозван{% endif %}</span></div>{% if platform_admin and platform_admin.is_owner and not admin.is_owner and admin.is_active %}<form method="post" action="/platform-admin/admins/{{ admin.user_id }}/revoke" class="auth-form"><label class="auth-field"><span>Причина</span><input name="reason" required></label><label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label><button type="submit" class="button button-secondary">Отозвать</button></form>{% endif %}</li>{% endfor %}</ul></section>
+
+<section class="content-section">
+    <div class="section-heading"><div><h2>Выдать доступ</h2><p class="section-description">Укажите ID существующего активного пользователя. Новый administrator получает только собственные support-окна.</p></div></div>
+    <form method="post" action="/platform-admin/admins" class="platform-operation-form">
+        <label class="auth-field"><span>ID пользователя</span><input name="user_id" type="number" min="1" required></label>
+        <label class="auth-field"><span>Причина</span><input name="reason" required></label>
+        <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
+        <button type="submit" class="button button-primary">Выдать доступ</button>
+    </form>
+</section>
+
+<section class="content-section">
+    <div class="section-heading"><div><h2>Текущие роли</h2><p class="section-description">Владелец не может быть отозван через интерфейс.</p></div></div>
+    <div class="platform-company-list">
+        {% for admin in admins %}
+        <article class="platform-company-card">
+            <div class="platform-company-summary">
+                <div><h3>Пользователь #{{ admin.user_id }}</h3><p>{% if admin.is_owner %}Владелец платформы{% elif admin.is_active %}Platform administrator{% else %}Доступ отозван{% endif %}</p></div>
+                <div class="platform-usage-meta"><span class="platform-status {% if admin.is_active %}is-active{% else %}is-inactive{% endif %}">{% if admin.is_active %}Активен{% else %}Неактивен{% endif %}</span></div>
+            </div>
+            {% if not admin.is_owner and admin.is_active %}
+            <form method="post" action="/platform-admin/admins/{{ admin.user_id }}/revoke" class="platform-inline-form">
+                <label class="auth-field"><span>Причина отзыва</span><input name="reason" required></label>
+                <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
+                <button type="submit" class="button button-secondary">Отозвать доступ</button>
+            </form>
+            {% endif %}
+        </article>
+        {% endfor %}
+    </div>
+</section>
 {% endblock %}
