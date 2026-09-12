@@ -1312,8 +1312,8 @@ def platform_admin_dashboard(
     db_path: Path = Depends(get_db_path),
     context: PlatformAdminContext = Depends(require_platform_admin),
 ) -> HTMLResponse:
-    """Show a read-only platform overview to an authenticated global admin."""
-    companies = CompanyRepository().list_active(db_path)
+    """Show an owner overview or an operator's support-only landing page."""
+    companies = CompanyRepository().list_active(db_path) if context.is_owner else ()
     audit_events = (
         PlatformAdminRepository().list_audit_events(db_path, limit=20)
         if context.is_owner
@@ -1389,9 +1389,9 @@ async def platform_usage_limits_update(company_id: str, request: Request, db_pat
 def platform_companies_page(
     request: Request,
     db_path: Path = Depends(get_db_path),
-    _: PlatformAdminContext = Depends(require_platform_admin),
+    _: PlatformAdminContext = Depends(require_platform_owner),
 ) -> HTMLResponse:
-    """Show all company lifecycle states to a global platform administrator."""
+    """Show all company lifecycle states only to the platform owner."""
     return _render_platform_companies_page(request, db_path=db_path)
 
 
@@ -1493,7 +1493,7 @@ async def platform_company_status_update(
 def platform_admins_page(
     request: Request,
     db_path: Path = Depends(get_db_path),
-    _: PlatformAdminContext = Depends(require_platform_admin),
+    _: PlatformAdminContext = Depends(require_platform_owner),
 ) -> HTMLResponse:
     return _render_platform_admins_page(request, db_path=db_path)
 

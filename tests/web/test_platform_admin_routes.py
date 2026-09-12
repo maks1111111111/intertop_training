@@ -233,6 +233,37 @@ class PlatformAdminRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["detail"], "Platform owner required")
 
+    def test_operator_cannot_read_global_company_or_admin_metadata(self) -> None:
+        CompanyRepository().create(self.db_path, "secret-company", "Secret Co")
+        with get_connection(self.db_path) as connection:
+            operator_id = int(
+                connection.execute(
+                    "INSERT INTO users (username) VALUES ('support-operator')"
+                ).lastrowid
+            )
+            connection.execute(
+                "INSERT INTO platform_admins (user_id) VALUES (?)",
+                (operator_id,),
+            )
+        token = self.session_service.create_token(
+            user_id=operator_id,
+            company_id="__platform_admin__",
+            scope=PLATFORM_SESSION_SCOPE,
+        )
+        headers = {"Cookie": f"intertop_session={token}"}
+
+        dashboard = self.client.get("/platform-admin", headers=headers)
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertNotIn("Secret Co", dashboard.text)
+        self.assertNotIn("secret-company", dashboard.text)
+        self.assertNotIn("/platform-admin/companies", dashboard.text)
+        self.assertNotIn("/platform-admin/admins", dashboard.text)
+
+        for path in ("/platform-admin/companies", "/platform-admin/admins"):
+            response = self.client.get(path, headers=headers)
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(response.json()["detail"], "Platform owner required")
+
     def test_cross_site_request_cannot_create_company_with_owner_session(self) -> None:
         self._login()
 

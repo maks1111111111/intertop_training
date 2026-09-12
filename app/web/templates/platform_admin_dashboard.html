@@ -15,16 +15,19 @@
 </section>
 
 <section class="dashboard-grid" aria-label="Статус платформы">
+    {% if platform_admin.is_owner %}
     <article class="dashboard-card">
         <span class="dashboard-card-label">Активные компании</span>
         <strong class="dashboard-card-value">{{ active_companies|length }}</strong>
     </article>
+    {% endif %}
     <article class="dashboard-card">
         <span class="dashboard-card-label">Уровень доступа</span>
         <strong class="dashboard-card-value">{% if platform_admin.is_owner %}Владелец{% else %}Администратор{% endif %}</strong>
     </article>
 </section>
 
+{% if platform_admin.is_owner %}
 <section class="content-section">
     <div class="section-heading"><h2>Компании</h2><a href="/platform-admin/companies">Управлять</a></div>
     {% if active_companies %}
@@ -37,9 +40,10 @@
     <p class="empty-state">Активных компаний пока нет.</p>
     {% endif %}
 </section>
+{% endif %}
 
 <section class="content-section">
-    <div class="section-heading"><h2>Доступ к платформе</h2><a href="/platform-admin/admins">Администраторы</a></div>
+    <div class="section-heading"><h2>{% if platform_admin.is_owner %}Доступ к платформе{% else %}Поддержка{% endif %}</h2>{% if platform_admin.is_owner %}<a href="/platform-admin/admins">Администраторы</a>{% endif %}</div>
     <a href="/platform-admin/support">Временный support-доступ</a>
     {% if platform_admin.is_owner %}<a href="/platform-admin/usage">Использование платформы</a>{% endif %}
 </section>
