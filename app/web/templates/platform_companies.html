@@ -12,6 +12,8 @@
     <a class="button button-secondary" href="/platform-admin">Обзор</a>
 </section>
 
+{% include "_platform_admin_nav.html" %}
+
 {% if error_message %}
 <div class="auth-error" role="alert">{{ error_message }}</div>
 {% endif %}

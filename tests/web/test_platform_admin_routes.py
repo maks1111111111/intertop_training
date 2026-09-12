@@ -124,6 +124,39 @@ class PlatformAdminRouteTests(unittest.TestCase):
         self.assertIn('value="10"', refreshed.text)
         self.assertIn('value="2"', refreshed.text)
 
+    def test_usage_limit_error_is_rendered_inline(self) -> None:
+        CompanyRepository().create(self.db_path, "usage-company", "Usage Co")
+        self._login()
+
+        response = self.client.post(
+            "/platform-admin/usage/usage-company/limits",
+            data={
+                "max_active_members": "10",
+                "max_courses": "2",
+                "reason": "Plan change",
+                "current_password": "wrong-password",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Не удалось подтвердить текущий пароль", response.text)
+        self.assertIn("Компании и лимиты", response.text)
+
+    def test_owner_navigation_exposes_only_owner_sections(self) -> None:
+        self._login()
+
+        response = self.client.get("/platform-admin")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Разделы Platform Admin", response.text)
+        for path in (
+            "/platform-admin/companies",
+            "/platform-admin/usage",
+            "/platform-admin/admins",
+            "/platform-admin/audit",
+        ):
+            self.assertIn(path, response.text)
+
     def test_platform_session_is_not_accepted_by_tenant_routes(self) -> None:
         self._login()
 

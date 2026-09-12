@@ -2,5 +2,6 @@
 {% block title %}Диагностика компании · Platform Admin{% endblock %}
 {% block content %}
 <section class="page-header"><div><p class="page-eyebrow">Read-only support</p><h1>{{ company.name }}</h1><p class="page-subtitle">Доступ действует до {{ access.expires_at.strftime('%Y-%m-%d %H:%M UTC') }}. Персональные данные и изменения недоступны.</p></div><a class="button button-secondary" href="/platform-admin/support">К support-доступам</a></section>
+{% include "_platform_admin_nav.html" %}
 <section class="dashboard-grid" aria-label="Агрегированная диагностика"><article class="dashboard-card"><span class="dashboard-card-label">Активные сотрудники</span><strong class="dashboard-card-value">{{ counts.active_members }}</strong></article><article class="dashboard-card"><span class="dashboard-card-label">Курсы</span><strong class="dashboard-card-value">{{ counts.courses }}</strong></article><article class="dashboard-card"><span class="dashboard-card-label">Активные назначения</span><strong class="dashboard-card-value">{{ counts.active_enrollments }}</strong></article><article class="dashboard-card"><span class="dashboard-card-label">Активные документы</span><strong class="dashboard-card-value">{{ counts.active_documents }}</strong></article></section>
 {% endblock %}

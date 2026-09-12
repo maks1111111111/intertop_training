@@ -1105,6 +1105,7 @@ def _render_platform_companies_page(
         {
             "companies": CompanyRepository().list_all(db_path),
             "error_message": error_message,
+            "platform_nav": "companies",
         },
         status_code=400 if error_message else 200,
     )
@@ -1122,6 +1123,7 @@ def _render_platform_admins_page(
         {
             "admins": PlatformAdminRepository().list_all(db_path),
             "error_message": error_message,
+            "platform_nav": "admins",
         },
         status_code=400 if error_message else 200,
     )
@@ -1151,6 +1153,7 @@ def _render_platform_support_page(
             "companies": CompanyRepository().list_all(db_path) if is_owner else (),
             "admins": PlatformAdminRepository().list_all(db_path) if is_owner else (),
             "error_message": error_message,
+            "platform_nav": "support",
         },
         status_code=400 if error_message else 200,
     )
@@ -1161,6 +1164,26 @@ def _secure_session_cookie(request: Request) -> bool:
     return bool(
         getattr(deployment_config, "force_secure_session_cookie", False)
         or request.url.scheme == "https"
+    )
+
+
+def _render_platform_usage_page(
+    request: Request,
+    *,
+    db_path: Path,
+    usage_service: PlatformUsageService,
+    error_message: str = "",
+) -> HTMLResponse:
+    """Render the owner usage page with friendly inline validation feedback."""
+    return templates.TemplateResponse(
+        request,
+        "platform_usage.html",
+        {
+            "usage": usage_service.get_overview(db_path),
+            "error_message": error_message,
+            "platform_nav": "usage",
+        },
+        status_code=400 if error_message else 200,
     )
 
 
@@ -1326,6 +1349,7 @@ def platform_admin_dashboard(
             "platform_admin": context,
             "active_companies": companies,
             "audit_events": audit_events,
+            "platform_nav": "overview",
         },
     )
 
@@ -1344,7 +1368,13 @@ def platform_audit_page(
     return templates.TemplateResponse(
         request,
         "platform_audit.html",
-        {"audit_events": PlatformAdminRepository().list_audit_events(db_path, limit=500)},
+        {
+            "audit_events": PlatformAdminRepository().list_audit_events(
+                db_path,
+                limit=500,
+            ),
+            "platform_nav": "audit",
+        },
     )
 
 
@@ -1360,24 +1390,61 @@ def platform_usage_page(
     usage_service: PlatformUsageService = Depends(get_platform_usage_service),
 ) -> HTMLResponse:
     """Show owner-only aggregate utilization across every company."""
-    return templates.TemplateResponse(
+    return _render_platform_usage_page(
         request,
-        "platform_usage.html",
-        {"usage": usage_service.get_overview(db_path)},
+        db_path=db_path,
+        usage_service=usage_service,
     )
 
-@router.post("/platform-admin/usage/{company_id}/limits", response_class=HTMLResponse, include_in_schema=False)
-async def platform_usage_limits_update(company_id: str, request: Request, db_path: Path = Depends(get_db_path), owner: PlatformAdminContext = Depends(require_platform_owner), limit_service: PlatformUsageLimitService = Depends(get_platform_usage_limit_service), confirmation_service: PlatformOwnerConfirmationService = Depends(get_platform_owner_confirmation_service)) -> HTMLResponse:
+@router.post(
+    "/platform-admin/usage/{company_id}/limits",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def platform_usage_limits_update(
+    company_id: str,
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    owner: PlatformAdminContext = Depends(require_platform_owner),
+    limit_service: PlatformUsageLimitService = Depends(get_platform_usage_limit_service),
+    usage_service: PlatformUsageService = Depends(get_platform_usage_service),
+    confirmation_service: PlatformOwnerConfirmationService = Depends(
+        get_platform_owner_confirmation_service
+    ),
+) -> HTMLResponse:
     form = await request.form()
-    if not confirmation_service.confirm(db_path, owner_user_id=owner.user_id, password=str(form.get("current_password") or "")):
-        raise HTTPException(status_code=403, detail="Owner password confirmation required")
-    def number(name: str):
+    if not confirmation_service.confirm(
+        db_path,
+        owner_user_id=owner.user_id,
+        password=str(form.get("current_password") or ""),
+    ):
+        return _render_platform_usage_page(
+            request,
+            db_path=db_path,
+            usage_service=usage_service,
+            error_message="Не удалось подтвердить текущий пароль.",
+        )
+
+    def number(name: str) -> int | None:
         value = str(form.get(name) or "").strip()
         return int(value) if value else None
+
     try:
-        limit_service.set(db_path, actor_user_id=owner.user_id, company_id=company_id, max_active_members=number("max_active_members"), max_courses=number("max_courses"), reason=str(form.get("reason") or ""))
+        limit_service.set(
+            db_path,
+            actor_user_id=owner.user_id,
+            company_id=company_id,
+            max_active_members=number("max_active_members"),
+            max_courses=number("max_courses"),
+            reason=str(form.get("reason") or ""),
+        )
     except (PlatformUsageLimitError, ValueError) as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+        return _render_platform_usage_page(
+            request,
+            db_path=db_path,
+            usage_service=usage_service,
+            error_message=str(error),
+        )
     return RedirectResponse(url="/platform-admin/usage", status_code=303)
 
 
@@ -1733,6 +1800,7 @@ def platform_support_diagnostics(
             "access": access,
             "company": company,
             "counts": counts,
+            "platform_nav": "support",
         },
     )
 

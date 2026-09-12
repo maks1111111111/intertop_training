@@ -1,0 +1,28 @@
+<nav class="platform-subnav" aria-label="Разделы Platform Admin">
+    <a
+        href="/platform-admin"
+        class="platform-subnav-link{% if platform_nav == 'overview' %} is-active{% endif %}"
+    >Обзор</a>
+    <a
+        href="/platform-admin/support"
+        class="platform-subnav-link{% if platform_nav == 'support' %} is-active{% endif %}"
+    >Support</a>
+    {% if platform_admin and platform_admin.is_owner %}
+    <a
+        href="/platform-admin/companies"
+        class="platform-subnav-link{% if platform_nav == 'companies' %} is-active{% endif %}"
+    >Компании</a>
+    <a
+        href="/platform-admin/usage"
+        class="platform-subnav-link{% if platform_nav == 'usage' %} is-active{% endif %}"
+    >Лимиты</a>
+    <a
+        href="/platform-admin/admins"
+        class="platform-subnav-link{% if platform_nav == 'admins' %} is-active{% endif %}"
+    >Администраторы</a>
+    <a
+        href="/platform-admin/audit"
+        class="platform-subnav-link{% if platform_nav == 'audit' %} is-active{% endif %}"
+    >Журнал</a>
+    {% endif %}
+</nav>

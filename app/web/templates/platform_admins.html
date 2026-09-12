@@ -2,6 +2,7 @@
 {% block title %}Администраторы · Platform Admin{% endblock %}
 {% block content %}
 <section class="page-header"><div><p class="page-eyebrow">Platform Admin</p><h1>Администраторы платформы</h1><p class="page-subtitle">Доступ предоставляется только владельцем и фиксируется в журнале.</p></div><a class="button button-secondary" href="/platform-admin">Обзор</a></section>
+{% include "_platform_admin_nav.html" %}
 {% if error_message %}<div class="auth-error" role="alert">{{ error_message }}</div>{% endif %}
 {% if platform_admin and platform_admin.is_owner %}
 <section class="content-section"><div class="section-heading"><h2>Добавить администратора</h2></div><form method="post" action="/platform-admin/admins" class="auth-form"><label class="auth-field"><span>ID пользователя</span><input name="user_id" type="number" min="1" required></label><label class="auth-field"><span>Причина</span><input name="reason" required></label><label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label><button type="submit" class="button button-primary">Выдать доступ</button></form></section>
