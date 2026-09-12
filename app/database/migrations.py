@@ -582,6 +582,23 @@ def migrate_company_usage_limits_table(connection: sqlite3.Connection) -> None:
                    WHERE company_id = NEW.company_id AND is_active = 1) >= max_active_members
         )
         BEGIN SELECT RAISE(ABORT, 'company active member limit reached'); END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_company_member_limit_update
+        BEFORE UPDATE OF company_id, is_active ON company_memberships
+        FOR EACH ROW
+        WHEN NEW.is_active = 1
+         AND (OLD.is_active != 1 OR OLD.company_id != NEW.company_id)
+         AND EXISTS (
+            SELECT 1 FROM company_usage_limits
+            WHERE company_id = NEW.company_id
+              AND max_active_members IS NOT NULL
+              AND (SELECT COUNT(*) FROM company_memberships
+                   WHERE company_id = NEW.company_id
+                     AND is_active = 1
+                     AND id != OLD.id) >= max_active_members
+        )
+        BEGIN SELECT RAISE(ABORT, 'company active member limit reached'); END;
+
         CREATE TRIGGER IF NOT EXISTS enforce_company_course_limit_insert
         BEFORE INSERT ON courses
         FOR EACH ROW WHEN EXISTS (
@@ -589,6 +606,20 @@ def migrate_company_usage_limits_table(connection: sqlite3.Connection) -> None:
             WHERE company_id = NEW.company_id
               AND max_courses IS NOT NULL
               AND (SELECT COUNT(*) FROM courses WHERE company_id = NEW.company_id) >= max_courses
+        )
+        BEGIN SELECT RAISE(ABORT, 'company course limit reached'); END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_company_course_limit_update
+        BEFORE UPDATE OF company_id ON courses
+        FOR EACH ROW
+        WHEN NEW.company_id != OLD.company_id
+         AND EXISTS (
+            SELECT 1 FROM company_usage_limits
+            WHERE company_id = NEW.company_id
+              AND max_courses IS NOT NULL
+              AND (SELECT COUNT(*) FROM courses
+                   WHERE company_id = NEW.company_id
+                     AND id != OLD.id) >= max_courses
         )
         BEGIN SELECT RAISE(ABORT, 'company course limit reached'); END;
         """
@@ -1061,8 +1092,11 @@ def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_companies_table(connection)
     migrate_platform_admins_table(connection)
     migrate_platform_support_accesses_table(connection)
-    migrate_company_usage_limits_table(connection)
     migrate_courses_tenant_scope(connection)
+    # Course-table migration can rebuild ``courses`` and therefore drops
+    # triggers attached to its legacy table. Install usage-limit triggers only
+    # after that migration so old installations receive the same enforcement.
+    migrate_company_usage_limits_table(connection)
     migrate_learning_progress_tenant_scope(connection)
     migrate_learning_tenant_integrity(connection)
     migrate_knowledge_tenant_integrity(connection)

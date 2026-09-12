@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 from app.database.db import get_connection
 
@@ -17,6 +18,8 @@ class CompanyUsage:
     courses: int
     active_enrollments: int
     active_documents: int
+    max_active_members: Optional[int]
+    max_courses: Optional[int]
 
 
 @dataclass(frozen=True)
@@ -50,8 +53,12 @@ class PlatformUsageService:
                        AND enrollments.status != 'completed') AS active_enrollments,
                     (SELECT COUNT(*) FROM knowledge_documents
                      WHERE knowledge_documents.company_id = companies.id
-                       AND knowledge_documents.status = 'active') AS active_documents
+                       AND knowledge_documents.status = 'active') AS active_documents,
+                    company_usage_limits.max_active_members AS max_active_members,
+                    company_usage_limits.max_courses AS max_courses
                 FROM companies
+                LEFT JOIN company_usage_limits
+                  ON company_usage_limits.company_id = companies.id
                 ORDER BY companies.is_active DESC, companies.id ASC
                 """
             ).fetchall()
@@ -65,6 +72,16 @@ class PlatformUsageService:
                 courses=int(row["courses"]),
                 active_enrollments=int(row["active_enrollments"]),
                 active_documents=int(row["active_documents"]),
+                max_active_members=(
+                    int(row["max_active_members"])
+                    if row["max_active_members"] is not None
+                    else None
+                ),
+                max_courses=(
+                    int(row["max_courses"])
+                    if row["max_courses"] is not None
+                    else None
+                ),
             )
             for row in rows
         )

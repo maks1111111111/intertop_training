@@ -120,6 +120,9 @@ class PlatformAdminRouteTests(unittest.TestCase):
             follow_redirects=False,
         )
         self.assertEqual(updated.status_code, 303)
+        refreshed = self.client.get("/platform-admin/usage")
+        self.assertIn('value="10"', refreshed.text)
+        self.assertIn('value="2"', refreshed.text)
 
     def test_platform_session_is_not_accepted_by_tenant_routes(self) -> None:
         self._login()

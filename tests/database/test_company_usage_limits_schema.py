@@ -13,6 +13,7 @@ class CompanyUsageLimitsSchemaTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.db_path = Path(self.tmp.name) / "test.db"; initialize_database(self.db_path)
         CompanyRepository().create(self.db_path, "company-a", "Company A")
+        CompanyRepository().create(self.db_path, "company-b", "Company B")
         with get_connection(self.db_path) as c:
             self.first = int(c.execute("INSERT INTO users (username) VALUES ('one')").lastrowid)
             self.second = int(c.execute("INSERT INTO users (username) VALUES ('two')").lastrowid)
@@ -30,5 +31,23 @@ class CompanyUsageLimitsSchemaTests(unittest.TestCase):
         CompanyUsageLimitRepository().set(self.db_path, "company-a", None, None)
         CompanyMembershipRepository().add(self.db_path, "company-a", self.first)
         CompanyMembershipRepository().add(self.db_path, "company-a", self.second)
+
+    def test_member_limit_is_enforced_when_an_inactive_membership_is_reactivated(self):
+        limits = CompanyUsageLimitRepository(); limits.set(self.db_path, "company-a", 1, None)
+        memberships = CompanyMembershipRepository()
+        memberships.add(self.db_path, "company-a", self.first)
+        self.assertTrue(memberships.set_active(self.db_path, "company-a", self.first, False))
+        memberships.add(self.db_path, "company-a", self.second)
+
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "member limit"):
+            memberships.set_active(self.db_path, "company-a", self.first, True)
+
+    def test_course_limit_is_enforced_when_a_course_moves_into_a_company(self):
+        CompanyUsageLimitRepository().set(self.db_path, "company-a", None, 1)
+        with get_connection(self.db_path) as c:
+            c.execute("INSERT INTO courses (company_id, slug, title) VALUES ('company-a', 'one', 'One')")
+            c.execute("INSERT INTO courses (company_id, slug, title) VALUES ('company-b', 'two', 'Two')")
+            with self.assertRaisesRegex(sqlite3.IntegrityError, "course limit"):
+                c.execute("UPDATE courses SET company_id = 'company-a' WHERE slug = 'two'")
 
 if __name__ == "__main__": unittest.main()

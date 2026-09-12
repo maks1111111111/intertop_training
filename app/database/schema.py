@@ -326,6 +326,22 @@ def create_tables(connection: sqlite3.Connection) -> None:
         )
         BEGIN SELECT RAISE(ABORT, 'company active member limit reached'); END;
 
+        CREATE TRIGGER IF NOT EXISTS enforce_company_member_limit_update
+        BEFORE UPDATE OF company_id, is_active ON company_memberships
+        FOR EACH ROW
+        WHEN NEW.is_active = 1
+         AND (OLD.is_active != 1 OR OLD.company_id != NEW.company_id)
+         AND EXISTS (
+            SELECT 1 FROM company_usage_limits
+            WHERE company_id = NEW.company_id
+              AND max_active_members IS NOT NULL
+              AND (SELECT COUNT(*) FROM company_memberships
+                   WHERE company_id = NEW.company_id
+                     AND is_active = 1
+                     AND id != OLD.id) >= max_active_members
+        )
+        BEGIN SELECT RAISE(ABORT, 'company active member limit reached'); END;
+
         CREATE TRIGGER IF NOT EXISTS enforce_company_course_limit_insert
         BEFORE INSERT ON courses
         FOR EACH ROW WHEN EXISTS (
@@ -333,6 +349,20 @@ def create_tables(connection: sqlite3.Connection) -> None:
             WHERE company_id = NEW.company_id
               AND max_courses IS NOT NULL
               AND (SELECT COUNT(*) FROM courses WHERE company_id = NEW.company_id) >= max_courses
+        )
+        BEGIN SELECT RAISE(ABORT, 'company course limit reached'); END;
+
+        CREATE TRIGGER IF NOT EXISTS enforce_company_course_limit_update
+        BEFORE UPDATE OF company_id ON courses
+        FOR EACH ROW
+        WHEN NEW.company_id != OLD.company_id
+         AND EXISTS (
+            SELECT 1 FROM company_usage_limits
+            WHERE company_id = NEW.company_id
+              AND max_courses IS NOT NULL
+              AND (SELECT COUNT(*) FROM courses
+                   WHERE company_id = NEW.company_id
+                     AND id != OLD.id) >= max_courses
         )
         BEGIN SELECT RAISE(ABORT, 'company course limit reached'); END;
 
