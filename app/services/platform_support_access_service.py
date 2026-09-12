@@ -55,6 +55,8 @@ class PlatformSupportAccessService:
         company = self._companies.get_by_id(db_path, company_id)
         if company is None:
             raise PlatformSupportAccessError("company not found")
+        if not company.is_active:
+            raise PlatformSupportAccessError("company must be active")
         normalized_reason = _validate_reason(reason)
         duration = _validate_duration(duration_minutes)
         now = self._now()
@@ -90,15 +92,19 @@ class PlatformSupportAccessService:
             operator_user_id=operator_user_id,
             now=self._now(),
         )
-        if access is not None:
-            self._admins.append_audit_event(
-                db_path,
-                actor_user_id=operator_user_id,
-                action="support_access.read_only_diagnostics_viewed",
-                target_type="support_access",
-                target_id=str(access.id),
-                reason=access.reason,
-            )
+        if access is None:
+            return None
+        company = self._companies.get_by_id(db_path, access.company_id)
+        if company is None or not company.is_active:
+            return None
+        self._admins.append_audit_event(
+            db_path,
+            actor_user_id=operator_user_id,
+            action="support_access.read_only_diagnostics_viewed",
+            target_type="support_access",
+            target_id=str(access.id),
+            reason=access.reason,
+        )
         return access
 
     def list_active(self, db_path: Path) -> tuple[PlatformSupportAccess, ...]:
@@ -114,10 +120,17 @@ class PlatformSupportAccessService:
         """List only the grants assigned to one active platform operator."""
         if self._admins.get_active_by_user_id(db_path, operator_user_id) is None:
             return ()
-        return self._support.list_active_for_operator(
+        accesses = self._support.list_active_for_operator(
             db_path,
             operator_user_id=operator_user_id,
             now=self._now(),
+        )
+        return tuple(
+            access
+            for access in accesses
+            if (company := self._companies.get_by_id(db_path, access.company_id))
+            is not None
+            and company.is_active
         )
 
     def revoke(

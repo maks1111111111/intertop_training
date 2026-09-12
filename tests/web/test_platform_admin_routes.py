@@ -332,6 +332,36 @@ class PlatformAdminRouteTests(unittest.TestCase):
         self.assertIn("Не удалось подтвердить текущий пароль", response.text)
         self.assertNotIn("INC-43", response.text)
 
+    def test_deactivating_company_invalidates_existing_support_diagnostics(self) -> None:
+        CompanyRepository().create(self.db_path, "support-company", "Support Co")
+        self._login()
+        granted = self.client.post(
+            "/platform-admin/support",
+            data={
+                "operator_user_id": str(self.owner_id),
+                "company_id": "support-company",
+                "duration_minutes": "15",
+                "reason": "Investigate ticket INC-44",
+                "current_password": "Strong-password-123!",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(granted.status_code, 303)
+        deactivated = self.client.post(
+            "/platform-admin/companies/support-company/status",
+            data={
+                "state": "inactive",
+                "reason": "Contract ended",
+                "current_password": "Strong-password-123!",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(deactivated.status_code, 303)
+
+        diagnostics = self.client.get("/platform-admin/support/1")
+
+        self.assertEqual(diagnostics.status_code, 404)
+
     def test_operator_cannot_see_other_operators_support_metadata(self) -> None:
         CompanyRepository().create(self.db_path, "operator-company", "Operator Co")
         CompanyRepository().create(self.db_path, "other-company", "Other Co")

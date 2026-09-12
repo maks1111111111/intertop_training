@@ -92,6 +92,41 @@ class PlatformSupportAccessServiceTests(unittest.TestCase):
             (mine,),
         )
 
+    def test_deactivated_company_cannot_receive_or_use_support_access(self) -> None:
+        access = self.service.grant(
+            self.db_path,
+            actor_user_id=self.owner_id,
+            operator_user_id=self.operator_id,
+            company_id="company-a",
+            reason="Active incident",
+            duration_minutes=15,
+        )
+        CompanyRepository().set_active(self.db_path, "company-a", False)
+
+        self.assertIsNone(
+            self.service.resolve_for_operator(
+                self.db_path,
+                access_id=access.id,
+                operator_user_id=self.operator_id,
+            )
+        )
+        self.assertEqual(
+            self.service.list_active_for_operator(
+                self.db_path,
+                operator_user_id=self.operator_id,
+            ),
+            (),
+        )
+        with self.assertRaisesRegex(PlatformSupportAccessError, "must be active"):
+            self.service.grant(
+                self.db_path,
+                actor_user_id=self.owner_id,
+                operator_user_id=self.operator_id,
+                company_id="company-a",
+                reason="Inactive incident",
+                duration_minutes=15,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
