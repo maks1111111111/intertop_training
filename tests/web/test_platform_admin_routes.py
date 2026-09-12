@@ -233,6 +233,29 @@ class PlatformAdminRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["detail"], "Platform owner required")
 
+    def test_cross_site_request_cannot_create_company_with_owner_session(self) -> None:
+        self._login()
+
+        response = self.client.post(
+            "/platform-admin/companies",
+            headers={
+                "Origin": "https://attacker.example",
+                "Sec-Fetch-Site": "cross-site",
+            },
+            data={
+                "company_id": "attacker-company",
+                "name": "Attacker Company",
+                "reason": "Cross-site request",
+                "current_password": "Strong-password-123!",
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.text, "Forbidden")
+        self.assertIsNone(
+            CompanyRepository().get_by_id(self.db_path, "attacker-company")
+        )
+
     def test_owner_can_issue_read_only_support_and_open_diagnostics(self) -> None:
         CompanyRepository().create(self.db_path, "support-company", "Support Co")
         self._login()
