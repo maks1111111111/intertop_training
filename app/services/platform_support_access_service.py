@@ -105,6 +105,21 @@ class PlatformSupportAccessService:
         """List currently usable grants for the platform owner dashboard."""
         return self._support.list_active(db_path, now=self._now())
 
+    def list_active_for_operator(
+        self,
+        db_path: Path,
+        *,
+        operator_user_id: int,
+    ) -> tuple[PlatformSupportAccess, ...]:
+        """List only the grants assigned to one active platform operator."""
+        if self._admins.get_active_by_user_id(db_path, operator_user_id) is None:
+            return ()
+        return self._support.list_active_for_operator(
+            db_path,
+            operator_user_id=operator_user_id,
+            now=self._now(),
+        )
+
     def revoke(
         self,
         db_path: Path,

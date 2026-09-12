@@ -28,9 +28,12 @@ class PlatformSupportAccessServiceTests(unittest.TestCase):
         self.admins = PlatformAdminRepository()
         self.owner_id = self._create_user("owner")
         self.operator_id = self._create_user("operator")
+        self.other_operator_id = self._create_user("other-operator")
         self.admins.bootstrap_owner(self.db_path, self.owner_id)
         self.admins.grant_admin(self.db_path, self.operator_id)
+        self.admins.grant_admin(self.db_path, self.other_operator_id)
         CompanyRepository().create(self.db_path, "company-a", "Company A")
+        CompanyRepository().create(self.db_path, "company-b", "Company B")
         self.service = PlatformSupportAccessService(
             PlatformSupportAccessRepository(),
             self.admins,
@@ -76,6 +79,18 @@ class PlatformSupportAccessServiceTests(unittest.TestCase):
             self.service.grant(self.db_path, actor_user_id=self.operator_id, operator_user_id=self.operator_id, company_id="company-a", reason="Unauthorized", duration_minutes=5)
         with self.assertRaisesRegex(PlatformSupportAccessError, "between 5 and 60"):
             self.service.grant(self.db_path, actor_user_id=self.owner_id, operator_user_id=self.operator_id, company_id="company-a", reason="Too long", duration_minutes=61)
+
+    def test_operator_lists_only_its_own_active_support_windows(self) -> None:
+        mine = self.service.grant(self.db_path, actor_user_id=self.owner_id, operator_user_id=self.operator_id, company_id="company-a", reason="My ticket", duration_minutes=15)
+        self.service.grant(self.db_path, actor_user_id=self.owner_id, operator_user_id=self.other_operator_id, company_id="company-b", reason="Other ticket", duration_minutes=15)
+
+        self.assertEqual(
+            self.service.list_active_for_operator(
+                self.db_path,
+                operator_user_id=self.operator_id,
+            ),
+            (mine,),
+        )
 
 
 if __name__ == "__main__":

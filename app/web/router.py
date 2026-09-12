@@ -1131,16 +1131,25 @@ def _render_platform_support_page(
     request: Request,
     *,
     db_path: Path,
+    context: PlatformAdminContext,
     support_service: PlatformSupportAccessService,
     error_message: str = "",
 ) -> HTMLResponse:
+    is_owner = context.is_owner
     return templates.TemplateResponse(
         request,
         "platform_support.html",
         {
-            "accesses": support_service.list_active(db_path),
-            "companies": CompanyRepository().list_all(db_path),
-            "admins": PlatformAdminRepository().list_all(db_path),
+            "accesses": (
+                support_service.list_active(db_path)
+                if is_owner
+                else support_service.list_active_for_operator(
+                    db_path,
+                    operator_user_id=context.user_id,
+                )
+            ),
+            "companies": CompanyRepository().list_all(db_path) if is_owner else (),
+            "admins": PlatformAdminRepository().list_all(db_path) if is_owner else (),
             "error_message": error_message,
         },
         status_code=400 if error_message else 200,
@@ -1570,7 +1579,7 @@ async def platform_admin_revoke(
 def platform_support_page(
     request: Request,
     db_path: Path = Depends(get_db_path),
-    _: PlatformAdminContext = Depends(require_platform_admin),
+    context: PlatformAdminContext = Depends(require_platform_admin),
     support_service: PlatformSupportAccessService = Depends(
         get_platform_support_access_service
     ),
@@ -1579,6 +1588,7 @@ def platform_support_page(
     return _render_platform_support_page(
         request,
         db_path=db_path,
+        context=context,
         support_service=support_service,
     )
 
@@ -1604,6 +1614,7 @@ async def platform_support_grant(
         return _render_platform_support_page(
             request,
             db_path=db_path,
+            context=owner,
             support_service=support_service,
             error_message="Не удалось подтвердить текущий пароль.",
         )
@@ -1620,6 +1631,7 @@ async def platform_support_grant(
         return _render_platform_support_page(
             request,
             db_path=db_path,
+            context=owner,
             support_service=support_service,
             error_message=str(error),
         )
@@ -1652,6 +1664,7 @@ async def platform_support_revoke(
         return _render_platform_support_page(
             request,
             db_path=db_path,
+            context=owner,
             support_service=support_service,
             error_message="Не удалось подтвердить текущий пароль.",
         )
@@ -1666,6 +1679,7 @@ async def platform_support_revoke(
         return _render_platform_support_page(
             request,
             db_path=db_path,
+            context=owner,
             support_service=support_service,
             error_message=str(error),
         )

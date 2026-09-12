@@ -115,6 +115,27 @@ class PlatformSupportAccessRepository:
                 ORDER BY expires_at ASC, id ASC
                 """,
                 (_serialize_timestamp(now),),
+        ).fetchall()
+        return tuple(_row_to_access(row) for row in rows)
+
+    def list_active_for_operator(
+        self,
+        db_path: Path,
+        *,
+        operator_user_id: int,
+        now: datetime,
+    ) -> tuple[PlatformSupportAccess, ...]:
+        """List only the active grants explicitly issued to one operator."""
+        with get_connection(db_path) as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM platform_support_accesses
+                WHERE operator_user_id = ?
+                  AND revoked_at IS NULL
+                  AND expires_at > ?
+                ORDER BY expires_at ASC, id ASC
+                """,
+                (operator_user_id, _serialize_timestamp(now)),
             ).fetchall()
         return tuple(_row_to_access(row) for row in rows)
 

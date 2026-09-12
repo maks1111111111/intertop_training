@@ -278,6 +278,59 @@ class PlatformAdminRouteTests(unittest.TestCase):
         self.assertIn("Не удалось подтвердить текущий пароль", response.text)
         self.assertNotIn("INC-43", response.text)
 
+    def test_operator_cannot_see_other_operators_support_metadata(self) -> None:
+        CompanyRepository().create(self.db_path, "operator-company", "Operator Co")
+        CompanyRepository().create(self.db_path, "other-company", "Other Co")
+        with get_connection(self.db_path) as connection:
+            operator_id = int(
+                connection.execute(
+                    "INSERT INTO users (username) VALUES ('support-operator')"
+                ).lastrowid
+            )
+            other_operator_id = int(
+                connection.execute(
+                    "INSERT INTO users (username) VALUES ('other-operator')"
+                ).lastrowid
+            )
+            connection.executemany(
+                "INSERT INTO platform_admins (user_id) VALUES (?)",
+                ((operator_id,), (other_operator_id,)),
+            )
+        self._login()
+        for operator_id_value, company_id, reason in (
+            (operator_id, "operator-company", "My support ticket"),
+            (other_operator_id, "other-company", "Other support ticket"),
+        ):
+            granted = self.client.post(
+                "/platform-admin/support",
+                data={
+                    "operator_user_id": str(operator_id_value),
+                    "company_id": company_id,
+                    "duration_minutes": "15",
+                    "reason": reason,
+                    "current_password": "Strong-password-123!",
+                },
+                follow_redirects=False,
+            )
+            self.assertEqual(granted.status_code, 303)
+
+        token = self.session_service.create_token(
+            user_id=operator_id,
+            company_id="__platform_admin__",
+            scope=PLATFORM_SESSION_SCOPE,
+        )
+        response = self.client.get(
+            "/platform-admin/support",
+            headers={"Cookie": f"intertop_session={token}"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("operator-company", response.text)
+        self.assertIn("My support ticket", response.text)
+        self.assertNotIn("other-company", response.text)
+        self.assertNotIn("Other support ticket", response.text)
+        self.assertNotIn("Пользователь #", response.text)
+
     def test_company_lifecycle_requires_fresh_owner_password_confirmation(self) -> None:
         self._login()
 
