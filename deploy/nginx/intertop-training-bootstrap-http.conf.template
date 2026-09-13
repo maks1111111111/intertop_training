@@ -1,0 +1,16 @@
+# Initial HTTP-only configuration used only to obtain the first TLS certificate.
+# Replace __INTERTOP_HOSTNAME__ before enabling this file.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __INTERTOP_HOSTNAME__;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type "text/plain";
+    }
+
+    location / {
+        return 404;
+    }
+}

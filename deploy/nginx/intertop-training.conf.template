@@ -1,0 +1,47 @@
+# TLS reverse proxy for the Intertop Training web process.
+# Replace __INTERTOP_HOSTNAME__ before enabling this file.
+upstream intertop_training_web {
+    server 127.0.0.1:8000;
+    keepalive 16;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __INTERTOP_HOSTNAME__;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type "text/plain";
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name __INTERTOP_HOSTNAME__;
+
+    ssl_certificate /etc/letsencrypt/live/__INTERTOP_HOSTNAME__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__INTERTOP_HOSTNAME__/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m;
+
+    client_max_body_size 25m;
+
+    location / {
+        proxy_pass http://intertop_training_web;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 90s;
+        proxy_send_timeout 90s;
+    }
+}

@@ -184,6 +184,11 @@ read-only support-диагностику с обязательной причи�
 Все ответы получают базовые browser security headers. В `staging` и `production`
 дополнительно включается HSTS; эти окружения должны быть доступны только по HTTPS.
 
+Готовый шаблон развёртывания одного Web-процесса через systemd и Nginx находится
+в [`deploy/README.md`](deploy/README.md). Он создаёт изолированные runtime-пути,
+настраивает TLS, health/readiness smoke checks, backup, preflight и rollback без
+хранения секретов или доменов в репозитории.
+
 ## Резервная копия SQLite
 
 Для консистентной копии работающей базы используйте встроенную команду. Она
