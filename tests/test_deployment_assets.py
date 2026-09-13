@@ -49,6 +49,14 @@ class DeploymentAssetTests(unittest.TestCase):
         self.assertIn("INTERTOP_UPLOAD_DIR=/srv/intertop-training/uploads", environment)
         self.assertNotIn("OPENAI_API_KEY=sk-", environment)
 
+    def test_runbook_uses_versioned_health_and_readiness_endpoints(self) -> None:
+        runbook = _read("deploy/README.md")
+
+        self.assertIn("/api/v1/health", runbook)
+        self.assertIn("/api/v1/ready", runbook)
+        self.assertNotIn("127.0.0.1:8000/health", runbook)
+        self.assertNotIn("127.0.0.1:8000/ready", runbook)
+
 
 def _read(relative_path: str) -> str:
     return (_PROJECT_ROOT / relative_path).read_text(encoding="utf-8")

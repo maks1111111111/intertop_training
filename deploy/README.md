@@ -143,8 +143,8 @@ sudo install -o root -g root -m 0644 \
 sudo systemctl daemon-reload
 sudo systemctl enable --now intertop-training-web
 sudo systemctl status intertop-training-web --no-pager
-curl --fail http://127.0.0.1:8000/health
-curl --fail http://127.0.0.1:8000/ready
+curl --fail http://127.0.0.1:8000/api/v1/health
+curl --fail http://127.0.0.1:8000/api/v1/ready
 ```
 
 If either health check fails, stop here and inspect
@@ -174,8 +174,8 @@ sudo sed 's/__INTERTOP_HOSTNAME__/staging.example.com/g' \
   /opt/intertop-training/deploy/nginx/intertop-training.conf.template \
   | sudo tee /etc/nginx/sites-available/intertop-training >/dev/null
 sudo nginx -t && sudo systemctl reload nginx
-curl --fail --location https://staging.example.com/health
-curl --fail --location https://staging.example.com/ready
+curl --fail --location https://staging.example.com/api/v1/health
+curl --fail --location https://staging.example.com/api/v1/ready
 ```
 
 Use the provider's managed TLS equivalent when Nginx is not the public proxy;
@@ -185,9 +185,9 @@ still preserve the `Host` and `X-Forwarded-Proto` headers and set
 ## 7. Release and rollback
 
 For every release: take a backup, run both audits, update to an approved commit,
-install dependencies if required, restart the service, then run `/health` and
-`/ready` through HTTPS. Complete the real platform-owner acceptance flow only
-after these checks pass.
+install dependencies if required, restart the service, then run
+`/api/v1/health` and `/api/v1/ready` through HTTPS. Complete the real
+platform-owner acceptance flow only after these checks pass.
 
 To restore, first stop the Web and Telegram processes. The restore command
 creates a safety backup before replacing the database:
@@ -202,5 +202,5 @@ sudo -u intertop .venv/bin/python -m app.database.restore \
 sudo systemctl start intertop-training-web
 ```
 
-Run `/ready` after the restart and keep the safety backup until the smoke test is
-complete.
+Run `/api/v1/ready` after the restart and keep the safety backup until the
+smoke test is complete.
