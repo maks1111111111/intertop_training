@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from app.deployment_config import DeploymentConfig
+from app.runtime_paths_config import RuntimePathsConfig
 
 
 _SECURE_SECRET = "test-deployment-session-secret-at-least-32-bytes"
@@ -116,6 +118,53 @@ class DeploymentConfigTests(unittest.TestCase):
                 ):
                     with self.assertRaisesRegex(RuntimeError, "invalid host"):
                         DeploymentConfig.from_environment()
+
+    def test_staging_rejects_runtime_state_inside_application_checkout(self) -> None:
+        checkout = Path("/tmp/intertop-checkout")
+        config = DeploymentConfig(
+            environment="staging",
+            allowed_hosts=("staging.example.com",),
+            force_secure_session_cookie=True,
+        )
+        runtime_paths = RuntimePathsConfig(
+            db_path=checkout / "data" / "training.db",
+            courses_dir=checkout / "courses",
+            upload_dir=checkout / "data" / "uploads",
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "INTERTOP_DB_PATH"):
+            config.validate_runtime_paths(runtime_paths, project_root=checkout)
+
+    def test_staging_accepts_runtime_state_outside_application_checkout(self) -> None:
+        checkout = Path("/tmp/intertop-checkout")
+        state_root = Path("/srv/intertop-training")
+        config = DeploymentConfig(
+            environment="staging",
+            allowed_hosts=("staging.example.com",),
+            force_secure_session_cookie=True,
+        )
+        runtime_paths = RuntimePathsConfig(
+            db_path=state_root / "data" / "training.db",
+            courses_dir=state_root / "courses",
+            upload_dir=state_root / "uploads",
+        )
+
+        config.validate_runtime_paths(runtime_paths, project_root=checkout)
+
+    def test_development_keeps_runtime_paths_inside_checkout_available(self) -> None:
+        checkout = Path("/tmp/intertop-checkout")
+        config = DeploymentConfig(
+            environment="development",
+            allowed_hosts=("*",),
+            force_secure_session_cookie=False,
+        )
+        runtime_paths = RuntimePathsConfig(
+            db_path=checkout / "data" / "training.db",
+            courses_dir=checkout / "courses",
+            upload_dir=checkout / "data" / "uploads",
+        )
+
+        config.validate_runtime_paths(runtime_paths, project_root=checkout)
 
 
 if __name__ == "__main__":

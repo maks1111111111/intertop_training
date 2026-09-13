@@ -141,6 +141,10 @@ export INTERTOP_COURSES_DIR=/srv/intertop-training/courses
 export INTERTOP_UPLOAD_DIR=/srv/intertop-training/uploads
 ```
 
+В `staging` и `production` приложение также проверяет это при старте и
+отказывается запускаться, если БД, курсы или загрузки разрешаются внутри
+checkout приложения.
+
 Относительные значения разрешаются от корня проекта; если переменные не заданы,
 локальный запуск продолжает использовать `data/training.db`, `courses/` и
 `data/uploads/`.

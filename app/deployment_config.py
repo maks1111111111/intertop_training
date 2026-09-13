@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
+from app.runtime_paths_config import RuntimePathsConfig
 from app.web.web_session_config import WebSessionConfig
 
 
@@ -15,6 +17,7 @@ _DEVELOPMENT = "development"
 _REMOTE_ENVIRONMENTS = frozenset({"staging", "production"})
 _VALID_ENVIRONMENTS = frozenset({_DEVELOPMENT, *_REMOTE_ENVIRONMENTS})
 _EXAMPLE_SESSION_SECRET = "replace-with-a-random-secret-at-least-32-bytes"
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,29 @@ class DeploymentConfig:
             force_secure_session_cookie=environment in _REMOTE_ENVIRONMENTS,
         )
 
+    def validate_runtime_paths(
+        self,
+        runtime_paths: RuntimePathsConfig,
+        *,
+        project_root: Path = _PROJECT_ROOT,
+    ) -> None:
+        """Reject remote state stored inside a mutable application checkout."""
+        if self.environment not in _REMOTE_ENVIRONMENTS:
+            return
+
+        normalized_root = Path(project_root).resolve()
+        configured_paths = (
+            ("INTERTOP_DB_PATH", runtime_paths.db_path),
+            ("INTERTOP_COURSES_DIR", runtime_paths.courses_dir),
+            ("INTERTOP_UPLOAD_DIR", runtime_paths.upload_dir),
+        )
+        for variable_name, configured_path in configured_paths:
+            if _is_within(configured_path, normalized_root):
+                raise RuntimeError(
+                    f"{variable_name} must resolve outside the application "
+                    f"checkout in {self.environment}."
+                )
+
 
 def _parse_required_hosts(raw_value: str | None) -> tuple[str, ...]:
     if raw_value is None:
@@ -65,6 +91,14 @@ def _parse_required_hosts(raw_value: str | None) -> tuple[str, ...]:
             f"{ALLOWED_HOSTS_ENV} must not contain '*' in staging or production."
         )
     return hosts
+
+
+def _is_within(candidate: Path, directory: Path) -> bool:
+    try:
+        candidate.resolve().relative_to(directory)
+    except ValueError:
+        return False
+    return True
 
 
 def _parse_hosts(raw_value: str) -> tuple[str, ...]:

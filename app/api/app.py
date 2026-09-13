@@ -28,6 +28,7 @@ def create_app() -> FastAPI:
     load_project_env()
     deployment_config = DeploymentConfig.from_environment()
     runtime_paths = RuntimePathsConfig.from_environment()
+    deployment_config.validate_runtime_paths(runtime_paths)
     application = FastAPI(title="Intertop Training API")
     application.add_middleware(SameOriginCSRFMiddleware)
     application.add_middleware(
