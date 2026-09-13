@@ -70,8 +70,18 @@ it into `/srv/intertop-training/data/training.db`, then set ownership to
 
 ## 3. Validate data before a release
 
-Run these commands against a backup or an offline database. They are read-only
-and return non-zero when manual review is needed:
+Run the combined preflight against a backup or an offline database after the
+database has been initialized and its platform owner bootstrapped. It checks the
+remote environment, external runtime paths, loopback Web listener and both tenant
+and platform database audits. It is read-only and returns non-zero when manual
+review is needed:
+
+```bash
+cd /opt/intertop-training
+sudo -u intertop /opt/intertop-training/.venv/bin/python -m app.deployment_audit
+```
+
+For a detailed diagnostic of one audit category, use these read-only commands:
 
 ```bash
 cd /opt/intertop-training

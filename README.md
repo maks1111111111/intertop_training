@@ -171,6 +171,13 @@ python -m app.database.tenant_audit --db "$INTERTOP_DB_PATH"
 python -m app.database.platform_audit --db "$INTERTOP_DB_PATH"
 ```
 
+При deployment через готовый VPS package можно выполнить объединённую проверку
+environment, runtime-путей, loopback Web listener и обеих DB-проверок:
+
+```bash
+python -m app.deployment_audit
+```
+
 После создания первой активной учётной записи платформенного оператора назначьте
 единственного владельца отдельной операторской командой. Она не принимает и не
 выводит пароль; `user-id` должен принадлежать существующему активному пользователю:
