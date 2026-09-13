@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily verified SQLite backup for Intertop Training
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+RandomizedDelaySec=30m
+Persistent=true
+Unit=intertop-training-backup.service
+
+[Install]
+WantedBy=timers.target

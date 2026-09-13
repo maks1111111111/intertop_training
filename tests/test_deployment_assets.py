@@ -28,6 +28,18 @@ class DeploymentAssetTests(unittest.TestCase):
         self.assertIn("proxy_set_header X-Forwarded-Proto $scheme", nginx)
         self.assertIn("return 301 https://$host$request_uri", nginx)
 
+    def test_backup_timer_uses_a_restricted_verified_backup_service(self) -> None:
+        service = _read("deploy/systemd/intertop-training-backup.service")
+        timer = _read("deploy/systemd/intertop-training-backup.timer")
+
+        self.assertIn("User=intertop", service)
+        self.assertIn("-m app.database.backup", service)
+        self.assertIn("--output-dir /var/backups/intertop-training", service)
+        self.assertIn("ReadWritePaths=/var/backups/intertop-training", service)
+        self.assertIn("UMask=0077", service)
+        self.assertIn("OnCalendar=*-*-* 03:15:00", timer)
+        self.assertIn("Persistent=true", timer)
+
     def test_staging_environment_keeps_state_outside_the_checkout(self) -> None:
         environment = _read("deploy/staging.env.example")
 

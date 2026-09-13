@@ -24,6 +24,7 @@ sudo install -d -o intertop -g intertop -m 0750 \
   /srv/intertop-training/uploads
 sudo install -d -o root -g intertop -m 0750 /etc/intertop-training
 sudo install -d -o root -g root -m 0755 /var/www/certbot
+sudo install -d -o intertop -g intertop -m 0750 /var/backups/intertop-training
 ```
 
 Clone only the reviewed Git repository into `/opt/intertop-training`, create a
@@ -97,7 +98,32 @@ sudo -u intertop .venv/bin/python -m app.database.backup \
 Store backups on separate durable storage. A backup on the same VPS is not a
 disaster-recovery backup.
 
-## 4. Install the Web service
+## 4. Enable verified daily backups
+
+The timer starts a consistent SQLite backup once each day at 03:15 server time,
+with a random delay of up to 30 minutes. It keeps the newest 14 local snapshots.
+This is a recovery layer, not an offsite backup strategy: replicate the resulting
+files to separate durable storage using the organisation's approved backup tool.
+
+```bash
+cd /opt/intertop-training
+sudo install -o root -g root -m 0644 \
+  deploy/systemd/intertop-training-backup.service \
+  /etc/systemd/system/intertop-training-backup.service
+sudo install -o root -g root -m 0644 \
+  deploy/systemd/intertop-training-backup.timer \
+  /etc/systemd/system/intertop-training-backup.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now intertop-training-backup.timer
+sudo systemctl start intertop-training-backup.service
+sudo systemctl status intertop-training-backup.timer --no-pager
+ls -l /var/backups/intertop-training
+```
+
+The manual backup command in the prior section remains mandatory immediately
+before a release or a database-changing operation.
+
+## 5. Install the Web service
 
 ```bash
 cd /opt/intertop-training
@@ -115,7 +141,7 @@ If either health check fails, stop here and inspect
 `sudo journalctl -u intertop-training-web -n 100 --no-pager`. Do not expose Nginx
 until the loopback readiness check is green.
 
-## 5. Obtain TLS and configure Nginx
+## 6. Obtain TLS and configure Nginx
 
 Point the future hostname's DNS record to this VPS before requesting a
 certificate. First install the HTTP bootstrap template, replacing the placeholder
@@ -146,7 +172,7 @@ Use the provider's managed TLS equivalent when Nginx is not the public proxy;
 still preserve the `Host` and `X-Forwarded-Proto` headers and set
 `INTERTOP_FORWARDED_ALLOW_IPS` to the proxy's real, specific IP addresses.
 
-## 6. Release and rollback
+## 7. Release and rollback
 
 For every release: take a backup, run both audits, update to an approved commit,
 install dependencies if required, restart the service, then run `/health` and

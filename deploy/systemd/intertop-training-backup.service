@@ -1,0 +1,27 @@
+[Unit]
+Description=Verified daily SQLite backup for Intertop Training
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=intertop
+Group=intertop
+WorkingDirectory=/opt/intertop-training
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/intertop-training/.venv/bin/python -m app.database.backup --db /srv/intertop-training/data/training.db --output-dir /var/backups/intertop-training --keep-last 14
+UMask=0077
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/backups/intertop-training
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
