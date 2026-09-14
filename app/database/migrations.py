@@ -861,10 +861,18 @@ def migrate_courses_tenant_scope(connection: sqlite3.Connection) -> None:
     foreign_keys_enabled = bool(
         connection.execute("PRAGMA foreign_keys").fetchone()[0]
     )
+    legacy_alter_table_enabled = bool(
+        connection.execute("PRAGMA legacy_alter_table").fetchone()[0]
+    )
     if connection.in_transaction:
         connection.commit()
     if foreign_keys_enabled:
         connection.execute("PRAGMA foreign_keys = OFF")
+    if not legacy_alter_table_enabled:
+        # Tenant triggers on enrollment and attempt tables can refer to the
+        # old ``courses`` table during this swap.  Avoid validating those
+        # temporary references until the renamed table is back in place.
+        connection.execute("PRAGMA legacy_alter_table = ON")
     try:
         connection.execute("BEGIN")
         connection.executescript(
@@ -911,6 +919,8 @@ def migrate_courses_tenant_scope(connection: sqlite3.Connection) -> None:
         connection.rollback()
         raise
     finally:
+        if not legacy_alter_table_enabled:
+            connection.execute("PRAGMA legacy_alter_table = OFF")
         if foreign_keys_enabled:
             connection.execute("PRAGMA foreign_keys = ON")
 

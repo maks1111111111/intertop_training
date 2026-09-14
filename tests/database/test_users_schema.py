@@ -8,7 +8,10 @@ import unittest
 from pathlib import Path
 
 from app.database.db import get_connection, initialize_database
-from app.database.migrations import migrate_users_table
+from app.database.migrations import (
+    migrate_courses_tenant_scope,
+    migrate_users_table,
+)
 from app.database.schema import create_tables
 
 
@@ -253,6 +256,61 @@ class UsersSchemaTests(unittest.TestCase):
         connection.set_trace_callback(statements.append)
 
         migrate_users_table(connection)
+
+        self.assertTrue(
+            any(
+                "PRAGMA legacy_alter_table = ON" in statement
+                for statement in statements
+            )
+        )
+        self.assertEqual(
+            connection.execute("PRAGMA legacy_alter_table").fetchone()[0],
+            0,
+        )
+        connection.close()
+
+    def test_legacy_courses_rebuild_tolerates_preinstalled_tenant_triggers(
+        self,
+    ) -> None:
+        """A strict SQLite rename must not validate stale course references."""
+        connection = sqlite3.connect(":memory:")
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.executescript(
+            """
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER UNIQUE
+            );
+
+            CREATE TABLE courses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug TEXT NOT NULL UNIQUE,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'draft',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE enrollments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                course_id INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'assigned',
+                progress_percent INTEGER NOT NULL DEFAULT 0,
+                assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
+            );
+            """
+        )
+        create_tables(connection)
+        connection.execute("PRAGMA legacy_alter_table = OFF")
+        statements: list[str] = []
+        connection.set_trace_callback(statements.append)
+
+        migrate_courses_tenant_scope(connection)
 
         self.assertTrue(
             any(
