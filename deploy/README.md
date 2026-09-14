@@ -68,7 +68,24 @@ first start. For an existing database, create and verify a backup before copying
 it into `/srv/intertop-training/data/training.db`, then set ownership to
 `intertop:intertop` and mode `0640`.
 
-## 3. Validate data before a release
+## 3. Bootstrap the first platform owner
+
+For a new Web-only installation, run this command exactly once after the Web
+service has created the database. It prompts on the VPS for the owner email and
+password; the password is not echoed or placed in shell history. It atomically
+creates the user, Argon2 password credential, sole platform-owner role, and
+audit event. It refuses to run when any platform administrator already exists.
+
+```bash
+cd /opt/intertop-training
+sudo -u intertop .venv/bin/python -m app.platform_owner_setup \
+  --db /srv/intertop-training/data/training.db
+```
+
+Use `/platform-admin/login` through HTTPS to sign in. Create tenant companies
+and their administrators only from the platform-owner interface.
+
+## 4. Validate data before a release
 
 Run the combined preflight against a backup or an offline database after the
 database has been initialized and its platform owner bootstrapped. It checks the

@@ -58,6 +58,12 @@ class DeploymentAssetTests(unittest.TestCase):
         self.assertNotIn("127.0.0.1:8000/health", runbook)
         self.assertNotIn("127.0.0.1:8000/ready", runbook)
 
+    def test_runbook_has_interactive_initial_platform_owner_setup(self) -> None:
+        runbook = _read("deploy/README.md")
+
+        self.assertIn("-m app.platform_owner_setup", runbook)
+        self.assertIn("/platform-admin/login", runbook)
+
 
 def _read(relative_path: str) -> str:
     return (_PROJECT_ROOT / relative_path).read_text(encoding="utf-8")
