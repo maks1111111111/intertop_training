@@ -42,11 +42,21 @@ def _rebuild_users_with_optional_telegram_id(
     foreign_keys_enabled = bool(
         connection.execute("PRAGMA foreign_keys").fetchone()[0]
     )
+    legacy_alter_table_enabled = bool(
+        connection.execute("PRAGMA legacy_alter_table").fetchone()[0]
+    )
     if connection.in_transaction:
         raise RuntimeError("users migration requires no active transaction")
 
     if foreign_keys_enabled:
         connection.execute("PRAGMA foreign_keys = OFF")
+    if not legacy_alter_table_enabled:
+        # ``create_tables`` may have already installed tenant triggers on
+        # tables which are still legacy-shaped.  Newer SQLite validates every
+        # trigger while renaming ``users_new`` and rejects those unrelated,
+        # temporarily invalid triggers.  Their SQL does not refer to users,
+        # so retain the pre-3.25 rename behaviour for this one internal swap.
+        connection.execute("PRAGMA legacy_alter_table = ON")
 
     def source(
         column_name: str,
@@ -123,6 +133,8 @@ def _rebuild_users_with_optional_telegram_id(
         connection.rollback()
         raise
     finally:
+        if not legacy_alter_table_enabled:
+            connection.execute("PRAGMA legacy_alter_table = OFF")
         if foreign_keys_enabled:
             connection.execute("PRAGMA foreign_keys = ON")
 

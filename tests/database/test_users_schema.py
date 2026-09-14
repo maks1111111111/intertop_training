@@ -9,6 +9,7 @@ from pathlib import Path
 
 from app.database.db import get_connection, initialize_database
 from app.database.migrations import migrate_users_table
+from app.database.schema import create_tables
 
 
 class UsersSchemaTests(unittest.TestCase):
@@ -216,6 +217,53 @@ class UsersSchemaTests(unittest.TestCase):
         self.assertEqual(row["is_active"], 1)
         self.assertIsNotNone(row["updated_at"])
         self.assertEqual(int(telegram_column["notnull"]), 0)
+        connection.close()
+
+    def test_legacy_users_rebuild_tolerates_preinstalled_tenant_triggers(
+        self,
+    ) -> None:
+        """A strict SQLite rename must not validate unmigrated quiz triggers."""
+        connection = sqlite3.connect(":memory:")
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.executescript(
+            """
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL UNIQUE,
+                username TEXT,
+                first_name TEXT,
+                last_name TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE quiz_attempts (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                course_slug TEXT NOT NULL,
+                quiz_version INTEGER NOT NULL,
+                started_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            """
+        )
+        create_tables(connection)
+        connection.execute("PRAGMA legacy_alter_table = OFF")
+        statements: list[str] = []
+        connection.set_trace_callback(statements.append)
+
+        migrate_users_table(connection)
+
+        self.assertTrue(
+            any(
+                "PRAGMA legacy_alter_table = ON" in statement
+                for statement in statements
+            )
+        )
+        self.assertEqual(
+            connection.execute("PRAGMA legacy_alter_table").fetchone()[0],
+            0,
+        )
         connection.close()
 
     def test_legacy_null_updated_at_is_normalized_during_rebuild(self) -> None:
