@@ -18,6 +18,8 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectHome=yes
 ProtectSystem=strict
+# SQLite's online backup API must see the live database, but never write it.
+ReadOnlyPaths=/srv/intertop-training/data
 ReadWritePaths=/var/backups/intertop-training
 ProtectKernelTunables=yes
 ProtectKernelModules=yes

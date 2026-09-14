@@ -35,6 +35,7 @@ class DeploymentAssetTests(unittest.TestCase):
         self.assertIn("User=intertop", service)
         self.assertIn("-m app.database.backup", service)
         self.assertIn("--output-dir /var/backups/intertop-training", service)
+        self.assertIn("ReadOnlyPaths=/srv/intertop-training/data", service)
         self.assertIn("ReadWritePaths=/var/backups/intertop-training", service)
         self.assertIn("UMask=0077", service)
         self.assertIn("OnCalendar=*-*-* 03:15:00", timer)
