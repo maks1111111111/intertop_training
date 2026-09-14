@@ -150,6 +150,13 @@ def _map_generation_exception(exc: Exception) -> AdminGenerationError:
         return AdminGenerationError(
             "Некорректные параметры генерации. Проверьте форму и попробуйте снова."
         )
+    if isinstance(exc, RuntimeError) and str(exc) == (
+        "OPENAI_API_KEY environment variable is not set."
+    ):
+        return AdminGenerationError(
+            "ИИ-генерация пока не настроена на этом сервере. "
+            "Обратитесь к владельцу платформы."
+        )
     _logger.exception("Admin course generation failed")
     return AdminGenerationError(
         "Не удалось создать курс. Проверьте исходный файл и параметры и попробуйте снова."

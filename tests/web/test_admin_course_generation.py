@@ -19,6 +19,7 @@ from app.web.admin_generation_service import (
     AdminGenerationRequest,
     AdminGenerationService,
     AdminGenerationSuccess,
+    _map_generation_exception,
 )
 from app.web.admin_upload_service import (
     AdminCourseFormValues,
@@ -543,6 +544,17 @@ class AdminGenerationServiceUnitTests(unittest.TestCase):
             )
 
         self.assertIn("идентификатор", ctx.exception.message)
+
+    def test_missing_openai_configuration_has_actionable_error(self) -> None:
+        error = _map_generation_exception(
+            RuntimeError("OPENAI_API_KEY environment variable is not set.")
+        )
+
+        self.assertEqual(
+            error.message,
+            "ИИ-генерация пока не настроена на этом сервере. "
+            "Обратитесь к владельцу платформы.",
+        )
 
 
 if __name__ == "__main__":
