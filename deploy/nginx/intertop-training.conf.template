@@ -41,7 +41,9 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_connect_timeout 5s;
-        proxy_read_timeout 90s;
-        proxy_send_timeout 90s;
+        # AI generation is synchronous during the staging rollout and can
+        # legitimately take a few minutes for a multi-lesson source file.
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
     }
 }

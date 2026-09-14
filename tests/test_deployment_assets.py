@@ -27,6 +27,8 @@ class DeploymentAssetTests(unittest.TestCase):
         self.assertIn("proxy_set_header Host $host", nginx)
         self.assertIn("proxy_set_header X-Forwarded-Proto $scheme", nginx)
         self.assertIn("return 301 https://$host$request_uri", nginx)
+        self.assertIn("proxy_read_timeout 300s", nginx)
+        self.assertIn("proxy_send_timeout 300s", nginx)
 
     def test_backup_timer_uses_a_restricted_verified_backup_service(self) -> None:
         service = _read("deploy/systemd/intertop-training-backup.service")
