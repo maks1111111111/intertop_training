@@ -49,6 +49,10 @@ from app.services.platform_owner_confirmation_service import (
 )
 from app.services.platform_usage_service import PlatformUsageService
 from app.services.platform_usage_limit_service import PlatformUsageLimitError, PlatformUsageLimitService
+from app.services.company_user_provisioning_service import (
+    CompanyUserProvisioningError,
+    CompanyUserProvisioningService,
+)
 from app.repositories.company_usage_limit_repository import CompanyUsageLimitRepository
 from app.services.tenant_content_runtime_registry import (
     TenantContentRuntimeRegistry,
@@ -299,6 +303,11 @@ def get_platform_company_service() -> PlatformCompanyService:
         CompanyRepository(),
         PlatformAdminRepository(),
     )
+
+
+def get_company_user_provisioning_service() -> CompanyUserProvisioningService:
+    """Return the atomic Web provisioning service for tenant users."""
+    return CompanyUserProvisioningService()
 
 
 def get_platform_admin_management_service() -> PlatformAdminManagementService:
@@ -1497,6 +1506,54 @@ async def platform_company_create(
             reason=str(form.get("reason") or ""),
         )
     except PlatformCompanyError as error:
+        return _render_platform_companies_page(
+            request,
+            db_path=db_path,
+            error_message=str(error),
+        )
+    return RedirectResponse(url="/platform-admin/companies", status_code=303)
+
+
+@router.post(
+    "/platform-admin/companies/{company_id}/users",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def platform_company_user_provision(
+    company_id: str,
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    owner: PlatformAdminContext = Depends(require_platform_owner),
+    confirmation_service: PlatformOwnerConfirmationService = Depends(
+        get_platform_owner_confirmation_service
+    ),
+    provisioning_service: CompanyUserProvisioningService = Depends(
+        get_company_user_provisioning_service
+    ),
+) -> HTMLResponse:
+    """Create a credential-backed user only inside the selected tenant."""
+    form = await request.form()
+    if not confirmation_service.confirm(
+        db_path,
+        owner_user_id=owner.user_id,
+        password=str(form.get("current_password") or ""),
+    ):
+        return _render_platform_companies_page(
+            request,
+            db_path=db_path,
+            error_message="Не удалось подтвердить текущий пароль.",
+        )
+    try:
+        provisioning_service.provision(
+            db_path,
+            company_id=company_id,
+            first_name=str(form.get("first_name") or ""),
+            last_name=str(form.get("last_name") or ""),
+            email=str(form.get("email") or ""),
+            password=str(form.get("password") or ""),
+            role=str(form.get("role") or ""),
+        )
+    except CompanyUserProvisioningError as error:
         return _render_platform_companies_page(
             request,
             db_path=db_path,
