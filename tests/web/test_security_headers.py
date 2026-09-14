@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -30,19 +31,23 @@ class SecurityHeadersTests(unittest.TestCase):
         self.assertNotIn("strict-transport-security", response.headers)
 
     def test_production_response_enables_hsts(self) -> None:
-        with patch.dict(
-            os.environ,
-            {
-                "INTERTOP_ENV": "production",
-                "INTERTOP_ALLOWED_HOSTS": "training.example.com",
-                "WEB_SESSION_SECRET": "a-production-secret-that-is-long-enough",
-            },
-            clear=True,
-        ):
-            response = TestClient(create_app()).get(
-                "/api/v1/health",
-                headers={"host": "training.example.com"},
-            )
+        with TemporaryDirectory() as runtime_root:
+            with patch.dict(
+                os.environ,
+                {
+                    "INTERTOP_ENV": "production",
+                    "INTERTOP_ALLOWED_HOSTS": "training.example.com",
+                    "WEB_SESSION_SECRET": "a-production-secret-that-is-long-enough",
+                    "INTERTOP_DB_PATH": f"{runtime_root}/data/training.db",
+                    "INTERTOP_COURSES_DIR": f"{runtime_root}/courses",
+                    "INTERTOP_UPLOAD_DIR": f"{runtime_root}/uploads",
+                },
+                clear=True,
+            ):
+                response = TestClient(create_app()).get(
+                    "/api/v1/health",
+                    headers={"host": "training.example.com"},
+                )
 
         self.assertEqual(
             response.headers["strict-transport-security"],
@@ -50,19 +55,23 @@ class SecurityHeadersTests(unittest.TestCase):
         )
 
     def test_rejected_host_response_still_has_security_headers(self) -> None:
-        with patch.dict(
-            os.environ,
-            {
-                "INTERTOP_ENV": "staging",
-                "INTERTOP_ALLOWED_HOSTS": "training.example.com",
-                "WEB_SESSION_SECRET": "a-staging-secret-that-is-long-enough",
-            },
-            clear=True,
-        ):
-            response = TestClient(create_app()).get(
-                "/api/v1/health",
-                headers={"host": "attacker.example"},
-            )
+        with TemporaryDirectory() as runtime_root:
+            with patch.dict(
+                os.environ,
+                {
+                    "INTERTOP_ENV": "staging",
+                    "INTERTOP_ALLOWED_HOSTS": "training.example.com",
+                    "WEB_SESSION_SECRET": "a-staging-secret-that-is-long-enough",
+                    "INTERTOP_DB_PATH": f"{runtime_root}/data/training.db",
+                    "INTERTOP_COURSES_DIR": f"{runtime_root}/courses",
+                    "INTERTOP_UPLOAD_DIR": f"{runtime_root}/uploads",
+                },
+                clear=True,
+            ):
+                response = TestClient(create_app()).get(
+                    "/api/v1/health",
+                    headers={"host": "attacker.example"},
+                )
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
