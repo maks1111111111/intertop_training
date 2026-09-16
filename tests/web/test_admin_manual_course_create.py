@@ -11,6 +11,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app.content.runtime import ContentRuntime
+from app.database.db import get_connection, initialize_database
 from app.web.admin_manual_course_create_service import (
     AdminManualCourseCreateError,
     AdminManualCourseCreateRequest,
@@ -104,6 +105,31 @@ class AdminManualCourseCreateServiceTests(unittest.TestCase):
         course = self.runtime.get_course(result.slug)
         self.assertIsNotNone(course)
         self.assertEqual(course.title, "Preloaded Course")
+
+    def test_create_course_syncs_tenant_catalog_when_database_is_configured(self) -> None:
+        db_path = Path(self.tmp.name) / "tenant.db"
+        initialize_database(db_path)
+        service = AdminManualCourseCreateService(
+            self.courses_dir,
+            self.runtime,
+            db_path=db_path,
+            company_id="intertop",
+        )
+
+        result = service.create_course(
+            AdminManualCourseCreateRequest(
+                title="Catalog Course",
+                description="",
+                language="ru",
+            )
+        )
+
+        with get_connection(db_path) as connection:
+            row = connection.execute(
+                "SELECT slug FROM courses WHERE company_id = ? AND slug = ?",
+                ("intertop", result.slug),
+            ).fetchone()
+        self.assertIsNotNone(row)
 
     def test_write_failure_removes_partial_course_directory(self) -> None:
         with patch(

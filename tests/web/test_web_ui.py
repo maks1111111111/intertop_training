@@ -6,6 +6,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi import Request
 from fastapi.testclient import TestClient
@@ -752,6 +753,20 @@ class WebQuizUiTests(unittest.TestCase):
         self.assertIn("1 из 2", html)
         self.assertIn("Тест не пройден", html)
         self.assertIn("Ответ не выбран", html)
+
+    def test_quiz_submission_persistence_failure_renders_inline_error(self) -> None:
+        with patch(
+            "app.web.router.quiz_repository.create_attempt_for_user",
+            return_value=None,
+        ):
+            response = self.client.post(
+                "/courses/quiz-course/quiz",
+                data={"answer_q1": "b", "answer_q2": "d"},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("Не удалось сохранить результат теста", response.text)
+        self.assertIn("quiz-submit-btn", response.text)
 
     def test_quiz_submission_persists_canonical_user_attempt(self) -> None:
         response = self.client.post(

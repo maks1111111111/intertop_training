@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from app.ai.interfaces import GeneratedCourseMetadata, LessonGenerationResult
 from app.content.lesson_builder import LessonCandidate
+from app.database.db import get_connection
 from app.web.admin_generation_service import (
     AdminGenerationError,
     AdminGenerationRequest,
@@ -530,6 +531,47 @@ class AdminGenerationServiceUnitTests(unittest.TestCase):
 
         self.assertTrue(options.generate_quiz)
         self.assertEqual(options.questions_per_lesson, 0)
+
+    def test_successful_generation_syncs_tenant_catalog(self) -> None:
+        service = AdminGenerationService(
+            upload_service=self.upload_service,
+            courses_dir=self.courses_dir,
+            runtime=self.runtime,
+            db_path=self.db_path,
+            company_id="intertop",
+            importer=self.mock_importer,
+            text_generation_service=self.mock_text_service,
+            course_with_quiz_service=self.mock_course_with_quiz,
+        )
+        upload_id, form_values = self._saved_upload()
+        self.mock_importer.read_source.return_value = "Imported text"
+        self.mock_text_service.generate_from_text.return_value = LessonGenerationResult(
+            lessons=[LessonCandidate(title="Lesson one", content="Content.")],
+            course=GeneratedCourseMetadata(
+                language="ru", title="AI title", description="AI description"
+            ),
+        )
+        course_dir = self.courses_dir / "generated-course"
+        _write_generated_course(self.courses_dir)
+        workflow_result = MagicMock()
+        workflow_result.course_directory = course_dir
+        workflow_result.quiz_path = None
+        self.mock_course_with_quiz.generate_and_persist.return_value = workflow_result
+
+        service.generate_course(
+            AdminGenerationRequest(
+                upload_id=upload_id,
+                form_values=form_values,
+                original_filename="source.pdf",
+            )
+        )
+
+        with get_connection(self.db_path) as connection:
+            row = connection.execute(
+                "SELECT slug FROM courses WHERE company_id = ? AND slug = ?",
+                ("intertop", "generated-course"),
+            ).fetchone()
+        self.assertIsNotNone(row)
 
     def test_missing_upload_id_raises_safe_error(self) -> None:
         _upload_id, form_values = self._saved_upload()

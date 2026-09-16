@@ -210,7 +210,11 @@ from app.web.web_practical_task_service import (
 from app.web.web_authentication_service import WebAuthenticationService
 from app.web.web_authorization_service import WebAuthorizationService
 from app.web.web_identity_service import WebIdentity, WebIdentityService
-from app.web.web_session_config import WEB_SESSION_COOKIE_NAME, WebSessionConfig
+from app.web.web_session_config import (
+    PLATFORM_SESSION_COOKIE_NAME,
+    WEB_SESSION_COOKIE_NAME,
+    WebSessionConfig,
+)
 from app.web.web_session_service import (
     PLATFORM_SESSION_SCOPE,
     TENANT_SESSION_SCOPE,
@@ -351,7 +355,10 @@ def get_web_session_service_for_request(
     request: Request,
 ) -> Optional[WebSessionService]:
     """Return a session service only when the request includes a session cookie."""
-    if request.cookies.get(WEB_SESSION_COOKIE_NAME) is None:
+    if (
+        request.cookies.get(WEB_SESSION_COOKIE_NAME) is None
+        and request.cookies.get(PLATFORM_SESSION_COOKIE_NAME) is None
+    ):
         return None
 
     override = getattr(request.app.state, "web_session_service", None)
@@ -422,7 +429,7 @@ def get_current_platform_admin(
     ),
 ) -> Optional[PlatformAdminContext]:
     """Resolve only an active global admin from a platform-scoped session."""
-    token = request.cookies.get(WEB_SESSION_COOKIE_NAME)
+    token = request.cookies.get(PLATFORM_SESSION_COOKIE_NAME)
     if token is None or web_session_service is None:
         request.state.platform_admin = None
         return None
@@ -853,6 +860,8 @@ def get_admin_generation_service(
     request: Request,
     upload_service: AdminUploadService = Depends(get_upload_service),
     runtime: ContentRuntime = Depends(get_tenant_content_runtime),
+    db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_web_management_identity),
 ) -> AdminGenerationService:
     """Return the admin generation service for the current application."""
     override = getattr(request.app.state, "admin_generation_service", None)
@@ -862,6 +871,8 @@ def get_admin_generation_service(
         upload_service=upload_service,
         courses_dir=runtime.base_dir,
         runtime=runtime,
+        db_path=db_path,
+        company_id=identity.company_id,
     )
 
 
@@ -1043,9 +1054,16 @@ def get_admin_quiz_question_reorder_service(
 
 def get_admin_manual_course_create_service(
     runtime: ContentRuntime = Depends(get_tenant_content_runtime),
+    db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_web_management_identity),
 ) -> AdminManualCourseCreateService:
     """Return the admin manual course create service for the current application."""
-    return AdminManualCourseCreateService(runtime.base_dir, runtime)
+    return AdminManualCourseCreateService(
+        runtime.base_dir,
+        runtime,
+        db_path=db_path,
+        company_id=identity.company_id,
+    )
 
 
 def get_admin_quiz_create_service(
@@ -1313,7 +1331,7 @@ async def platform_login_submit(
     )
     response = RedirectResponse(url="/platform-admin", status_code=303)
     response.set_cookie(
-        key=WEB_SESSION_COOKIE_NAME,
+        key=PLATFORM_SESSION_COOKIE_NAME,
         value=token,
         httponly=True,
         secure=_secure_session_cookie(request),
@@ -1328,7 +1346,7 @@ def platform_logout_submit() -> RedirectResponse:
     """Clear a platform-only session without sending the user to tenant login."""
     response = RedirectResponse(url="/platform-admin/login", status_code=303)
     response.delete_cookie(
-        key=WEB_SESSION_COOKIE_NAME,
+        key=PLATFORM_SESSION_COOKIE_NAME,
         path="/",
     )
     return response
@@ -5163,7 +5181,19 @@ async def quiz_submit_page(
         company_id=identity.company_id,
     )
     if attempt_id is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
+        return templates.TemplateResponse(
+            request,
+            "quiz.html",
+            {
+                "course": course_mapper.to_detail(course),
+                "quiz": build_quiz_page_view(course.quiz),
+                "error_message": (
+                    "Не удалось сохранить результат теста. "
+                    "Попробуйте отправить ответы ещё раз."
+                ),
+            },
+            status_code=409,
+        )
 
     for review in result.reviews:
         if review.selected_option_id is None:

@@ -18,6 +18,7 @@ from app.web.web_session_service import (
     PLATFORM_SESSION_SCOPE,
     WebSessionService,
 )
+from app.web.web_session_config import PLATFORM_SESSION_COOKIE_NAME, WEB_SESSION_COOKIE_NAME
 from tests.web.test_web_ui import _create_test_app
 
 
@@ -101,7 +102,7 @@ class PlatformAdminRouteTests(unittest.TestCase):
         )
         other_response = self.client.get(
             "/platform-admin/audit",
-            headers={"Cookie": f"intertop_session={token}"},
+            headers={"Cookie": f"{PLATFORM_SESSION_COOKIE_NAME}={token}"},
         )
         self.assertEqual(other_response.status_code, 403)
 
@@ -173,7 +174,7 @@ class PlatformAdminRouteTests(unittest.TestCase):
 
         response = self.client.get(
             "/platform-admin",
-            headers={"Cookie": f"intertop_session={token}"},
+            headers={"Cookie": f"{WEB_SESSION_COOKIE_NAME}={token}"},
             follow_redirects=False,
         )
 
@@ -195,13 +196,30 @@ class PlatformAdminRouteTests(unittest.TestCase):
 
     def test_platform_cookie_contains_platform_scope(self) -> None:
         self._login()
-        token = self.client.cookies.get("intertop_session")
+        token = self.client.cookies.get(PLATFORM_SESSION_COOKIE_NAME)
         self.assertIsNotNone(token)
         assert token is not None
         session = self.session_service.resolve_token(token)
         self.assertIsNotNone(session)
         assert session is not None
         self.assertEqual(session.scope, PLATFORM_SESSION_SCOPE)
+
+    def test_platform_login_preserves_existing_tenant_session_cookie(self) -> None:
+        tenant_token = self.session_service.create_token(
+            user_id=self.owner_id,
+            company_id="some-tenant",
+        )
+        self.client.cookies.set(WEB_SESSION_COOKIE_NAME, tenant_token)
+
+        self._login()
+
+        self.assertEqual(
+            self.client.cookies.get(WEB_SESSION_COOKIE_NAME),
+            tenant_token,
+        )
+        self.assertIsNotNone(
+            self.client.cookies.get(PLATFORM_SESSION_COOKIE_NAME)
+        )
 
     def test_owner_can_create_and_deactivate_company_with_audit_reason(self) -> None:
         self._login()
@@ -255,7 +273,7 @@ class PlatformAdminRouteTests(unittest.TestCase):
 
         response = self.client.post(
             "/platform-admin/companies",
-            headers={"Cookie": f"intertop_session={token}"},
+            headers={"Cookie": f"{PLATFORM_SESSION_COOKIE_NAME}={token}"},
             data={
                 "company_id": "north-shop",
                 "name": "North Shop",
@@ -283,7 +301,7 @@ class PlatformAdminRouteTests(unittest.TestCase):
             company_id="__platform_admin__",
             scope=PLATFORM_SESSION_SCOPE,
         )
-        headers = {"Cookie": f"intertop_session={token}"}
+        headers = {"Cookie": f"{PLATFORM_SESSION_COOKIE_NAME}={token}"}
 
         dashboard = self.client.get("/platform-admin", headers=headers)
         self.assertEqual(dashboard.status_code, 200)
@@ -451,7 +469,7 @@ class PlatformAdminRouteTests(unittest.TestCase):
         )
         response = self.client.get(
             "/platform-admin/support",
-            headers={"Cookie": f"intertop_session={token}"},
+            headers={"Cookie": f"{PLATFORM_SESSION_COOKIE_NAME}={token}"},
         )
 
         self.assertEqual(response.status_code, 200)

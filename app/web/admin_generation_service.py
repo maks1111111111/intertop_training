@@ -27,6 +27,7 @@ from app.services.course_with_quiz_generation_service import (
 from app.services.imported_text_generation_service import (
     ImportedTextGenerationService,
 )
+from app.services.course_sync import sync_courses
 from app.services.runtime_refresh_service import RuntimeRefreshService
 from app.web.admin_upload_service import (
     AdminCourseFormValues,
@@ -172,6 +173,8 @@ class AdminGenerationService:
         courses_dir: Path,
         runtime: ContentRuntime,
         *,
+        db_path: Optional[Path] = None,
+        company_id: Optional[str] = None,
         importer: Optional[CourseImporter] = None,
         text_generation_service: Optional[ImportedTextGenerationService] = None,
         course_with_quiz_service: Optional[CourseWithQuizGenerationService] = None,
@@ -185,6 +188,8 @@ class AdminGenerationService:
         self._upload_service = upload_service
         self._courses_dir = courses_dir
         self._runtime = runtime
+        self._db_path = db_path
+        self._company_id = company_id
         self._importer = importer if importer is not None else CourseImporter()
         self._text_generation_service = text_generation_service
         self._course_with_quiz_service = course_with_quiz_service
@@ -244,6 +249,12 @@ class AdminGenerationService:
         )
 
         slug = _read_persisted_course_slug(workflow_result.course_directory)
+        if self._db_path is not None and self._company_id is not None:
+            sync_courses(
+                base_dir=self._courses_dir,
+                db_path=self._db_path,
+                company_id=self._company_id,
+            )
         refresh_service = RuntimeRefreshService(
             ContentRuntimeManager(self._runtime),
         )

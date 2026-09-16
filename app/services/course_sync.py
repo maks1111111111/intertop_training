@@ -1,15 +1,26 @@
 from pathlib import Path
 
+from app.repositories.company_repository import CompanyRepository
 from app.repositories.course_repository import CourseRepository
 from app.repositories.lesson_repository import LessonRepository
 from app.services.scanner import scan_courses
 
 
+_LEGACY_COMPANY_ID = "intertop"
+
+
 def sync_courses(
     base_dir: Path,
     db_path: Path,
-    company_id: str = "intertop",
+    company_id: str = _LEGACY_COMPANY_ID,
 ) -> None:
+    """Synchronize a course directory into the tenant-aware course catalog.
+
+    The legacy root is also the application startup entry point.  When it is
+    synchronized, include every active tenant's dedicated course directory so
+    courses generated through the Web UI become available to progress,
+    practical-task, and quiz persistence immediately after a restart.
+    """
     course_repository = CourseRepository()
     lesson_repository = LessonRepository()
 
@@ -36,3 +47,19 @@ def sync_courses(
                 narration_path=lesson.narration_path,
                 sort_order=lesson_sort_order,
             )
+
+    if company_id != _LEGACY_COMPANY_ID:
+        return
+
+    courses_root = base_dir.resolve()
+    for company in CompanyRepository().list_active(db_path):
+        if company.id == _LEGACY_COMPANY_ID:
+            continue
+        tenant_courses_dir = (courses_root / company.id).resolve()
+        if tenant_courses_dir.parent != courses_root:
+            raise ValueError("Company course directory must be a direct child")
+        sync_courses(
+            base_dir=tenant_courses_dir,
+            db_path=db_path,
+            company_id=company.id,
+        )

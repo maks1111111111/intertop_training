@@ -33,6 +33,10 @@
     </div>
 </header>
 
+{% if error_message %}
+<div class="alert alert-error" role="alert">{{ error_message }}</div>
+{% endif %}
+
 <form class="quiz-form" method="post" action="{% if preview %}{{ preview.quiz_url }}{% else %}/courses/{{ course.slug }}/quiz{% endif %}">
     {% for question in quiz.questions %}
     <section class="quiz-question-card" aria-labelledby="quiz-q-{{ question.id }}">

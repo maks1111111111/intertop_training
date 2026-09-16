@@ -12,6 +12,7 @@ from pathlib import Path
 from app.content.contract import COURSE_JSON_FILENAME
 from app.content.runtime import ContentRuntime
 from app.content.runtime_manager import ContentRuntimeManager
+from app.services.course_sync import sync_courses
 from app.services.runtime_refresh_service import RuntimeRefreshService
 from app.web.admin_course_edit_service import (
     AdminCourseEditError,
@@ -92,9 +93,18 @@ def _safe_remove_course_dir(courses_dir: Path, course_dir: Path) -> None:
 class AdminManualCourseCreateService:
     """Create an empty course directory and refresh runtime."""
 
-    def __init__(self, courses_dir: Path, runtime: ContentRuntime) -> None:
+    def __init__(
+        self,
+        courses_dir: Path,
+        runtime: ContentRuntime,
+        *,
+        db_path: Path | None = None,
+        company_id: str | None = None,
+    ) -> None:
         self._courses_dir = courses_dir
         self._runtime = runtime
+        self._db_path = db_path
+        self._company_id = company_id
 
     def get_create_view(self) -> AdminManualCourseCreateView:
         """Return the static view model for the manual course creation form."""
@@ -141,6 +151,13 @@ class AdminManualCourseCreateService:
             raise AdminManualCourseCreateError(
                 "Не удалось создать курс. Попробуйте ещё раз."
             ) from exc
+
+        if self._db_path is not None and self._company_id is not None:
+            sync_courses(
+                base_dir=self._courses_dir,
+                db_path=self._db_path,
+                company_id=self._company_id,
+            )
 
         RuntimeRefreshService(ContentRuntimeManager(self._runtime)).refresh()
 

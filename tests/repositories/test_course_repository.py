@@ -10,6 +10,7 @@ from app.database.db import initialize_database
 from app.repositories.company_membership_repository import (
     CompanyMembershipRepository,
 )
+from app.repositories.company_repository import CompanyRepository
 from app.repositories.course_repository import CourseRepository
 from app.repositories.progress_repository import ProgressRepository
 from app.services.course_sync import sync_courses
@@ -176,6 +177,23 @@ class CourseRepositoryLifecycleTests(unittest.TestCase):
             ),
             ("not_started", 0),
         )
+
+    def test_root_sync_includes_active_tenant_course_directories(self) -> None:
+        CompanyRepository().create(self.db_path, "north-shop", "North Shop")
+        tenant_courses_dir = self.courses_dir / "north-shop"
+        tenant_courses_dir.mkdir()
+        _write_course(tenant_courses_dir, "service", title="Service Standards")
+
+        sync_courses(self.courses_dir, self.db_path)
+
+        course = self.repository.get_by_slug(
+            self.db_path,
+            "service",
+            company_id="north-shop",
+        )
+        self.assertIsNotNone(course)
+        assert course is not None
+        self.assertEqual(course["title"], "Service Standards")
 
 
 class CourseRepositoryDeleteTests(unittest.TestCase):
