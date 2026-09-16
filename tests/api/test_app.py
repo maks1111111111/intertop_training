@@ -53,7 +53,7 @@ class CreateAppTests(unittest.TestCase):
             )
         )
 
-    @patch("app.api.app.ContentRuntime")
+    @patch("app.api.app.TenantContentRuntimeRegistry")
     @patch("app.api.app.sync_courses")
     @patch("app.api.app.initialize_database")
     @patch("app.api.app.RuntimePathsConfig.from_environment")
@@ -62,7 +62,7 @@ class CreateAppTests(unittest.TestCase):
         mock_from_environment,
         mock_initialize_database,
         mock_sync_courses,
-        mock_content_runtime,
+        mock_tenant_content_runtimes,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             staging_root = Path(tmp) / "staging"
@@ -72,6 +72,8 @@ class CreateAppTests(unittest.TestCase):
                 upload_dir=staging_root / "uploads",
             )
             mock_from_environment.return_value = runtime_paths
+            legacy_runtime = MagicMock()
+            mock_tenant_content_runtimes.return_value.legacy_runtime = legacy_runtime
 
             application = create_app()
 
@@ -80,7 +82,14 @@ class CreateAppTests(unittest.TestCase):
                 base_dir=runtime_paths.courses_dir,
                 db_path=runtime_paths.db_path,
             )
-            mock_content_runtime.assert_called_once_with(runtime_paths.courses_dir)
+            mock_tenant_content_runtimes.assert_called_once_with(
+                runtime_paths.courses_dir
+            )
+            self.assertIs(application.state.content_runtime, legacy_runtime)
+            self.assertIs(
+                application.state.tenant_content_runtimes,
+                mock_tenant_content_runtimes.return_value,
+            )
             self.assertEqual(application.state.db_path, runtime_paths.db_path)
             self.assertEqual(application.state.upload_dir, runtime_paths.upload_dir)
             self.assertIs(application.state.runtime_paths, runtime_paths)
@@ -90,7 +99,7 @@ class CreateAppTests(unittest.TestCase):
         create_app()
         mock_load_project_env.assert_called_once_with()
 
-    @patch("app.api.app.ContentRuntime")
+    @patch("app.api.app.TenantContentRuntimeRegistry")
     @patch("app.api.app.sync_courses")
     @patch("app.api.app.initialize_database")
     @patch("app.api.app.load_project_env")
@@ -99,12 +108,12 @@ class CreateAppTests(unittest.TestCase):
         mock_load_project_env,
         mock_initialize_database,
         mock_sync_courses,
-        mock_content_runtime,
+        mock_tenant_content_runtimes,
     ) -> None:
         lifecycle = MagicMock()
         lifecycle.attach_mock(mock_initialize_database, "initialize_database")
         lifecycle.attach_mock(mock_sync_courses, "sync_courses")
-        lifecycle.attach_mock(mock_content_runtime, "content_runtime")
+        lifecycle.attach_mock(mock_tenant_content_runtimes, "tenant_content_runtimes")
 
         create_app()
 
@@ -118,7 +127,7 @@ class CreateAppTests(unittest.TestCase):
             base_dir=courses_dir,
             db_path=db_path,
         )
-        mock_content_runtime.assert_called_once_with(courses_dir)
+        mock_tenant_content_runtimes.assert_called_once_with(courses_dir)
 
         self.assertLess(
             lifecycle.mock_calls.index(
@@ -139,6 +148,14 @@ class CreateAppTests(unittest.TestCase):
                 ),
             ),
             lifecycle.mock_calls.index(
-                call.content_runtime(courses_dir),
+                call.tenant_content_runtimes(courses_dir),
             ),
+        )
+
+    def test_create_app_uses_registry_legacy_runtime_for_default_content(self) -> None:
+        application = create_app()
+
+        self.assertIs(
+            application.state.content_runtime,
+            application.state.tenant_content_runtimes.legacy_runtime,
         )

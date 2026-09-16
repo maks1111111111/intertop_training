@@ -9,7 +9,6 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.router import router
-from app.content.runtime import ContentRuntime
 from app.database.db import initialize_database
 from app.deployment_config import DeploymentConfig
 from app.env import load_project_env
@@ -48,10 +47,13 @@ def create_app() -> FastAPI:
         db_path=db_path,
     )
     application.state.db_path = db_path
-    application.state.content_runtime = ContentRuntime(courses_dir)
-    application.state.tenant_content_runtimes = TenantContentRuntimeRegistry(
-        courses_dir
-    )
+    tenant_content_runtimes = TenantContentRuntimeRegistry(courses_dir)
+    application.state.tenant_content_runtimes = tenant_content_runtimes
+    # The legacy runtime must be the registry's exact instance. The Web
+    # tenant dependency uses this identity to distinguish production from
+    # test overrides; a separate runtime here would make authenticated
+    # tenants read the legacy shared course directory.
+    application.state.content_runtime = tenant_content_runtimes.legacy_runtime
     application.state.upload_dir = runtime_paths.upload_dir
     application.state.runtime_paths = runtime_paths
     application.state.deployment_config = deployment_config
