@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 from app.database.db import get_connection
 from app.web.password_hashing_service import PasswordHashingService
@@ -39,6 +40,8 @@ class CompanyUserProvisioningService:
         email: str,
         password: str,
         role: str,
+        department_id: Optional[int] = None,
+        manager_user_id: Optional[int] = None,
     ) -> ProvisionedCompanyUser:
         normalized_company_id = _required(company_id, "company_id")
         normalized_first_name = _required(first_name, "first_name")
@@ -51,6 +54,18 @@ class CompanyUserProvisioningService:
             raise CompanyUserProvisioningError(
                 "Пароль должен содержать не менее 12 символов."
             )
+        if department_id is not None and (
+            not isinstance(department_id, int)
+            or isinstance(department_id, bool)
+            or department_id <= 0
+        ):
+            raise CompanyUserProvisioningError("Некорректное подразделение.")
+        if manager_user_id is not None and (
+            not isinstance(manager_user_id, int)
+            or isinstance(manager_user_id, bool)
+            or manager_user_id <= 0
+        ):
+            raise CompanyUserProvisioningError("Некорректный менеджер.")
         password_hash = PasswordHashingService().hash_password(password)
 
         try:
@@ -61,6 +76,33 @@ class CompanyUserProvisioningService:
                 ).fetchone()
                 if company is None:
                     raise CompanyUserProvisioningError("Компания недоступна.")
+                if department_id is not None:
+                    department = connection.execute(
+                        """
+                        SELECT id FROM company_departments
+                        WHERE id = ? AND company_id = ? AND is_active = 1
+                        """,
+                        (department_id, normalized_company_id),
+                    ).fetchone()
+                    if department is None:
+                        raise CompanyUserProvisioningError("Подразделение недоступно.")
+                if manager_user_id is not None:
+                    manager = connection.execute(
+                        """
+                        SELECT company_memberships.user_id FROM company_memberships
+                        JOIN company_member_organizations AS organization
+                          ON organization.company_id = company_memberships.company_id
+                         AND organization.user_id = company_memberships.user_id
+                        WHERE company_memberships.company_id = ?
+                          AND company_memberships.user_id = ?
+                          AND company_memberships.role = 'manager'
+                          AND organization.department_id = ?
+                          AND company_memberships.is_active = 1
+                        """,
+                        (normalized_company_id, manager_user_id, department_id),
+                    ).fetchone()
+                    if manager is None:
+                        raise CompanyUserProvisioningError("Менеджер недоступен.")
                 user_id = int(
                     connection.execute(
                         """
@@ -84,6 +126,15 @@ class CompanyUserProvisioningService:
                     """,
                     (normalized_company_id, user_id, normalized_role),
                 )
+                if department_id is not None or manager_user_id is not None:
+                    connection.execute(
+                        """
+                        INSERT INTO company_member_organizations (
+                            company_id, user_id, department_id, manager_user_id
+                        ) VALUES (?, ?, ?, ?)
+                        """,
+                        (normalized_company_id, user_id, department_id, manager_user_id),
+                    )
         except sqlite3.IntegrityError as error:
             raise CompanyUserProvisioningError(
                 "Пользователь с таким email уже существует."

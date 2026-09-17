@@ -19,6 +19,7 @@ class WebIdentity:
     company_id: str
     company_name: str
     role: str
+    department_id: Optional[int] = None
 
 
 class WebIdentityService:
@@ -108,6 +109,7 @@ class WebIdentityService:
             company_id=context.company_id,
             company_name=context.company_name,
             role=context.role,
+            department_id=context.department_id,
         )
 
 

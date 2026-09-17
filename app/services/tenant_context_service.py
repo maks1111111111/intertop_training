@@ -19,6 +19,7 @@ class TenantUserContext:
     company_id: str
     company_name: str
     role: str
+    department_id: Optional[int] = None
 
 
 class TenantContextService:
@@ -59,6 +60,7 @@ class TenantContextService:
             company_id=company.id,
             company_name=company.name,
             role=membership.role,
+            department_id=membership.department_id,
         )
 
     def list_for_user(
@@ -85,6 +87,7 @@ class TenantContextService:
                     company_id=company.id,
                     company_name=company.name,
                     role=membership.role,
+                    department_id=membership.department_id,
                 )
             )
 

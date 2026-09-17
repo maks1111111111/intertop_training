@@ -20,6 +20,7 @@ from app.repositories import practical_task_attempt_repository, quiz_repository
 from app.repositories.company_membership_repository import CompanyMembershipRepository
 from app.repositories.company_repository import CompanyRepository
 from app.repositories.company_team_repository import CompanyTeamRepository
+from app.repositories.company_department_repository import CompanyDepartmentRepository
 from app.repositories.password_credential_repository import PasswordCredentialRepository
 from app.repositories.platform_admin_repository import PlatformAdminRepository
 from app.repositories.manager_course_assignment_repository import (
@@ -52,6 +53,10 @@ from app.services.platform_usage_limit_service import PlatformUsageLimitError, P
 from app.services.company_user_provisioning_service import (
     CompanyUserProvisioningError,
     CompanyUserProvisioningService,
+)
+from app.services.company_organization_service import (
+    CompanyOrganizationError,
+    CompanyOrganizationService,
 )
 from app.repositories.company_usage_limit_repository import CompanyUsageLimitRepository
 from app.services.tenant_content_runtime_registry import (
@@ -312,6 +317,11 @@ def get_platform_company_service() -> PlatformCompanyService:
 def get_company_user_provisioning_service() -> CompanyUserProvisioningService:
     """Return the atomic Web provisioning service for tenant users."""
     return CompanyUserProvisioningService()
+
+
+def get_company_organization_service() -> CompanyOrganizationService:
+    """Return the tenant team service enforcing the company role hierarchy."""
+    return CompanyOrganizationService()
 
 
 def get_platform_admin_management_service() -> PlatformAdminManagementService:
@@ -1562,6 +1572,11 @@ async def platform_company_user_provision(
             error_message="Не удалось подтвердить текущий пароль.",
         )
     try:
+        role = str(form.get("role") or "").strip().lower()
+        if role != "admin":
+            raise CompanyUserProvisioningError(
+                "Владелец платформы может назначать только администраторов компании."
+            )
         provisioning_service.provision(
             db_path,
             company_id=company_id,
@@ -1569,7 +1584,7 @@ async def platform_company_user_provision(
             last_name=str(form.get("last_name") or ""),
             email=str(form.get("email") or ""),
             password=str(form.get("password") or ""),
-            role=str(form.get("role") or ""),
+            role="admin",
         )
     except CompanyUserProvisioningError as error:
         return _render_platform_companies_page(
@@ -1929,15 +1944,37 @@ def dashboard_page(
 )
 def manager_team_page(
     request: Request,
+    db_path: Path = Depends(get_db_path),
     team_analytics_service: ManagerTeamAnalyticsService = Depends(
         get_manager_team_analytics_service
     ),
     identity: WebIdentity = Depends(require_web_management_identity),
 ) -> HTMLResponse:
     """Render tenant-scoped team learning progress for manager/admin."""
-    overview = team_analytics_service.get_team_overview(identity.company_id)
+    department_id = identity.department_id if identity.role == "manager" else None
+    overview = (
+        team_analytics_service.get_team_overview(identity.company_id)
+        if department_id is None
+        else team_analytics_service.get_team_overview(identity.company_id, department_id)
+    )
     team_filter = normalize_team_member_filter(request.query_params.get("filter"))
     filtered_member_rows = filter_team_member_rows(overview.members, team_filter)
+    organization_error = str(request.query_params.get("organization_error") or "").strip()
+    selected_department_id = _optional_positive_int(request.query_params.get("department_id"))
+    selected_manager_id = _optional_positive_int(request.query_params.get("manager_id"))
+    selected_employee_id = _optional_positive_int(request.query_params.get("employee_id"))
+    selected_role = str(request.query_params.get("role") or "").strip().lower()
+    selected_course_slug = str(request.query_params.get("course_slug") or "").strip()
+    selected_status = str(request.query_params.get("status") or "").strip().lower()
+    if identity.role == "admin":
+        filtered_member_rows = tuple(
+            row for row in filtered_member_rows
+            if _matches_admin_analytics_filter(
+                row, department_id=selected_department_id, manager_id=selected_manager_id,
+                employee_id=selected_employee_id, role=selected_role,
+                course_slug=selected_course_slug, status=selected_status,
+            )
+        )
     return templates.TemplateResponse(
         request,
         "manager_team.html",
@@ -1957,8 +1994,117 @@ def manager_team_page(
                 overview.analytics,
                 overview.recommendations,
             ),
+            "departments": CompanyDepartmentRepository().list_for_company(
+                db_path, identity.company_id
+            ),
+            "can_create_department": identity.role == "admin",
+            "can_create_manager": identity.role == "admin",
+            "can_create_employee": identity.role == "manager" and identity.department_id is not None,
+            "organization_error": organization_error,
+            "selected_department_id": selected_department_id,
+            "selected_manager_id": selected_manager_id,
+            "selected_employee_id": selected_employee_id,
+            "selected_role": selected_role,
+            "selected_course_slug": selected_course_slug,
+            "selected_status": selected_status,
+            "managers": tuple(row.member for row in overview.members if row.member.role == "manager"),
+            "employees": tuple(row.member for row in overview.members if row.member.role == "student"),
+            "course_slugs": tuple(sorted({assignment.course_slug for row in overview.members for assignment in row.assignment_history.assignments})),
         },
     )
+
+
+def _optional_positive_int(value: object) -> Optional[int]:
+    try:
+        parsed = int(str(value or "").strip())
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _matches_admin_analytics_filter(
+    row,
+    *,
+    department_id: Optional[int],
+    manager_id: Optional[int],
+    employee_id: Optional[int],
+    role: str,
+    course_slug: str,
+    status: str,
+) -> bool:
+    member = row.member
+    if department_id is not None and member.department_id != department_id:
+        return False
+    if manager_id is not None and member.manager_user_id != manager_id:
+        return False
+    if employee_id is not None and member.user_id != employee_id:
+        return False
+    if role in {"student", "manager", "admin"} and member.role != role:
+        return False
+    if course_slug or status:
+        return any(
+            (not course_slug or assignment.course_slug == course_slug)
+            and (not status or assignment.status == status)
+            for assignment in row.assignment_history.assignments
+        )
+    return True
+
+
+@router.post("/manager/team/departments", include_in_schema=False)
+async def company_department_create(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_web_management_identity),
+    organization_service: CompanyOrganizationService = Depends(get_company_organization_service),
+) -> RedirectResponse:
+    form = await request.form()
+    try:
+        organization_service.create_department(
+            db_path, actor_user_id=identity.user_id, company_id=identity.company_id,
+            name=str(form.get("name") or ""),
+        )
+    except CompanyOrganizationError as exc:
+        return RedirectResponse(url=f"/manager/team?organization_error={str(exc)}", status_code=303)
+    return RedirectResponse(url="/manager/team", status_code=303)
+
+
+@router.post("/manager/team/managers", include_in_schema=False)
+async def company_manager_create(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_web_management_identity),
+    organization_service: CompanyOrganizationService = Depends(get_company_organization_service),
+) -> RedirectResponse:
+    form = await request.form()
+    try:
+        organization_service.provision_manager(
+            db_path, actor_user_id=identity.user_id, company_id=identity.company_id,
+            department_id=int(str(form.get("department_id") or "")),
+            first_name=str(form.get("first_name") or ""), last_name=str(form.get("last_name") or ""),
+            email=str(form.get("email") or ""), password=str(form.get("password") or ""),
+        )
+    except (CompanyOrganizationError, ValueError) as exc:
+        return RedirectResponse(url=f"/manager/team?organization_error={str(exc)}", status_code=303)
+    return RedirectResponse(url="/manager/team", status_code=303)
+
+
+@router.post("/manager/team/employees", include_in_schema=False)
+async def company_employee_create(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_web_management_identity),
+    organization_service: CompanyOrganizationService = Depends(get_company_organization_service),
+) -> RedirectResponse:
+    form = await request.form()
+    try:
+        organization_service.provision_employee(
+            db_path, actor_user_id=identity.user_id, company_id=identity.company_id,
+            first_name=str(form.get("first_name") or ""), last_name=str(form.get("last_name") or ""),
+            email=str(form.get("email") or ""), password=str(form.get("password") or ""),
+        )
+    except CompanyOrganizationError as exc:
+        return RedirectResponse(url=f"/manager/team?organization_error={str(exc)}", status_code=303)
+    return RedirectResponse(url="/manager/team", status_code=303)
 
 
 
@@ -2012,12 +2158,16 @@ def manager_team_member_page(
     identity: WebIdentity = Depends(require_web_management_identity),
 ) -> HTMLResponse:
     """Render one tenant-scoped employee learning profile."""
-    member = team_service.get_member(
-        identity.company_id,
-        user_id,
+    department_id = identity.department_id if identity.role == "manager" else None
+    member = (
+        team_service.get_member(identity.company_id, user_id)
+        if department_id is None
+        else team_service.get_member(identity.company_id, user_id, department_id)
     )
     if member is None:
         raise HTTPException(status_code=404, detail="Employee not found")
+    if identity.role == "manager" and member.role != "student":
+        raise HTTPException(status_code=403, detail="Managers may manage employees only")
 
     courses = dashboard_service.get_courses_for_user(member.user_id)
     quiz_analytics = analytics_service.get_quiz_analytics(member.user_id)
@@ -2095,10 +2245,21 @@ async def manager_team_member_assign_course(
     assignment_service: ManagerCourseAssignmentService = Depends(
         get_manager_course_assignment_service
     ),
+    team_service: ManagerTeamService = Depends(get_manager_team_service),
     identity: WebIdentity = Depends(require_web_management_identity),
 ) -> RedirectResponse:
     """Assign one published course to one tenant-scoped employee."""
     form = await request.form()
+    if identity.role == "manager" and identity.department_id is not None:
+        member = (
+            team_service.get_member(identity.company_id, user_id, identity.department_id)
+            if identity.department_id is not None
+            else team_service.get_member(identity.company_id, user_id)
+        )
+        if member is None:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        if member.role != "student":
+            raise HTTPException(status_code=403, detail="Managers may manage employees only")
     course_slug = str(form.get("course_slug") or "")
 
     try:

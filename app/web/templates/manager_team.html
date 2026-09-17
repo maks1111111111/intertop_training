@@ -8,6 +8,59 @@
     <p class="page-lead">Прогресс обучения сотрудников вашей компании.</p>
 </section>
 
+{% if organization_error %}
+<div class="admin-form-error" role="alert">{{ organization_error }}</div>
+{% endif %}
+
+{% if can_create_department or can_create_manager or can_create_employee %}
+<section class="section">
+    <h2 class="section-title">Структура команды</h2>
+    {% if can_create_department %}
+    <form method="post" action="/manager/team/departments" class="platform-operation-form">
+        <h3>Создать подразделение</h3>
+        <label class="auth-field"><span>Название подразделения</span><input name="name" required></label>
+        <button type="submit" class="button button-secondary">Создать подразделение</button>
+    </form>
+    {% endif %}
+    {% if can_create_manager %}
+    <form method="post" action="/manager/team/managers" class="platform-operation-form">
+        <h3>Назначить менеджера подразделения</h3>
+        <label class="auth-field"><span>Подразделение</span><select name="department_id" required>{% for department in departments %}<option value="{{ department.id }}">{{ department.name }}</option>{% endfor %}</select></label>
+        <label class="auth-field"><span>Имя</span><input name="first_name" required></label>
+        <label class="auth-field"><span>Фамилия</span><input name="last_name"></label>
+        <label class="auth-field"><span>Email</span><input name="email" type="email" required></label>
+        <label class="auth-field"><span>Временный пароль (минимум 12 символов)</span><input name="password" type="password" required></label>
+        <button type="submit" class="button button-primary">Создать менеджера</button>
+    </form>
+    {% endif %}
+    {% if can_create_employee %}
+    <form method="post" action="/manager/team/employees" class="platform-operation-form">
+        <h3>Добавить сотрудника в своё подразделение</h3>
+        <label class="auth-field"><span>Имя</span><input name="first_name" required></label>
+        <label class="auth-field"><span>Фамилия</span><input name="last_name"></label>
+        <label class="auth-field"><span>Email</span><input name="email" type="email" required></label>
+        <label class="auth-field"><span>Временный пароль (минимум 12 символов)</span><input name="password" type="password" required></label>
+        <button type="submit" class="button button-primary">Создать сотрудника</button>
+    </form>
+    {% endif %}
+</section>
+{% endif %}
+
+{% if identity.role == "admin" %}
+<section class="section">
+    <h2 class="section-title">Фильтры аналитики</h2>
+    <form method="get" action="/manager/team" class="platform-operation-form">
+        <label class="auth-field"><span>Подразделение</span><select name="department_id"><option value="">Все</option>{% for department in departments %}<option value="{{ department.id }}"{% if selected_department_id == department.id %} selected{% endif %}>{{ department.name }}</option>{% endfor %}</select></label>
+        <label class="auth-field"><span>Менеджер</span><select name="manager_id"><option value="">Все</option>{% for manager in managers %}<option value="{{ manager.user_id }}"{% if selected_manager_id == manager.user_id %} selected{% endif %}>{{ manager.display_name }}</option>{% endfor %}</select></label>
+        <label class="auth-field"><span>Сотрудник</span><select name="employee_id"><option value="">Все</option>{% for employee in employees %}<option value="{{ employee.user_id }}"{% if selected_employee_id == employee.user_id %} selected{% endif %}>{{ employee.display_name }}</option>{% endfor %}</select></label>
+        <label class="auth-field"><span>Роль</span><select name="role"><option value="">Все</option><option value="admin"{% if selected_role == 'admin' %} selected{% endif %}>Администратор</option><option value="manager"{% if selected_role == 'manager' %} selected{% endif %}>Менеджер</option><option value="student"{% if selected_role == 'student' %} selected{% endif %}>Сотрудник</option></select></label>
+        <label class="auth-field"><span>Курс</span><select name="course_slug"><option value="">Все</option>{% for slug in course_slugs %}<option value="{{ slug }}"{% if selected_course_slug == slug %} selected{% endif %}>{{ slug }}</option>{% endfor %}</select></label>
+        <label class="auth-field"><span>Статус курса</span><select name="status"><option value="">Все</option><option value="assigned"{% if selected_status == 'assigned' %} selected{% endif %}>Назначен</option><option value="in_progress"{% if selected_status == 'in_progress' %} selected{% endif %}>В процессе</option><option value="completed"{% if selected_status == 'completed' %} selected{% endif %}>Завершён</option></select></label>
+        <button type="submit" class="button button-secondary">Применить</button>
+    </form>
+</section>
+{% endif %}
+
 <section class="section">
     <h2 class="section-title">Аналитика команды</h2>
     <div class="dashboard-metrics">
@@ -351,6 +404,9 @@
                 </header>
                 {% if member.username %}
                 <p class="page-meta">{{ member.username }}</p>
+                {% endif %}
+                {% if member.department_name %}
+                <p class="page-meta">Подразделение: {{ member.department_name }}{% if member.manager_name %} · менеджер: {{ member.manager_name }}{% endif %}</p>
                 {% endif %}
                 <div class="dashboard-metrics">
                     <div class="dashboard-metric">

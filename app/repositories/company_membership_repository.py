@@ -18,6 +18,7 @@ class CompanyMembership:
     company_id: str
     user_id: int
     role: str
+    department_id: Optional[int]
     is_active: bool
     created_at: str
     updated_at: str
@@ -29,6 +30,11 @@ def _row_to_membership(row: sqlite3.Row) -> CompanyMembership:
         company_id=str(row["company_id"]),
         user_id=int(row["user_id"]),
         role=str(row["role"]),
+        department_id=(
+            int(row["department_id"])
+            if "department_id" in row.keys() and row["department_id"] is not None
+            else None
+        ),
         is_active=bool(row["is_active"]),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
@@ -66,6 +72,7 @@ class CompanyMembershipRepository:
         company_id: str,
         user_id: int,
         role: str = "student",
+        department_id: Optional[int] = None,
     ) -> CompanyMembership:
         normalized_company_id = _validate_non_empty(company_id, "company_id")
         normalized_user_id = _validate_user_id(user_id)
@@ -74,20 +81,27 @@ class CompanyMembershipRepository:
         with get_connection(db_path) as connection:
             cursor = connection.execute(
                 """
-                INSERT INTO company_memberships (
-                    company_id,
-                    user_id,
-                    role
-                )
+                INSERT INTO company_memberships (company_id, user_id, role)
                 VALUES (?, ?, ?)
                 """,
                 (normalized_company_id, normalized_user_id, normalized_role),
             )
+            if department_id is not None:
+                connection.execute(
+                    """
+                    INSERT INTO company_member_organizations (company_id, user_id, department_id)
+                    VALUES (?, ?, ?)
+                    """,
+                    (normalized_company_id, normalized_user_id, department_id),
+                )
             row = connection.execute(
                 """
-                SELECT *
+                SELECT company_memberships.*, organization.department_id
                 FROM company_memberships
-                WHERE id = ?
+                LEFT JOIN company_member_organizations AS organization
+                  ON organization.company_id = company_memberships.company_id
+                 AND organization.user_id = company_memberships.user_id
+                WHERE company_memberships.id = ?
                 """,
                 (int(cursor.lastrowid),),
             ).fetchone()
@@ -108,10 +122,13 @@ class CompanyMembershipRepository:
         with get_connection(db_path) as connection:
             row = connection.execute(
                 """
-                SELECT *
+                SELECT company_memberships.*, organization.department_id
                 FROM company_memberships
-                WHERE company_id = ?
-                  AND user_id = ?
+                LEFT JOIN company_member_organizations AS organization
+                  ON organization.company_id = company_memberships.company_id
+                 AND organization.user_id = company_memberships.user_id
+                WHERE company_memberships.company_id = ?
+                  AND company_memberships.user_id = ?
                 """,
                 (normalized_company_id, normalized_user_id),
             ).fetchone()
@@ -129,14 +146,17 @@ class CompanyMembershipRepository:
         normalized_company_id = _validate_non_empty(company_id, "company_id")
 
         query = """
-            SELECT *
+            SELECT company_memberships.*, organization.department_id
             FROM company_memberships
-            WHERE company_id = ?
+            LEFT JOIN company_member_organizations AS organization
+              ON organization.company_id = company_memberships.company_id
+             AND organization.user_id = company_memberships.user_id
+            WHERE company_memberships.company_id = ?
         """
         params: list[object] = [normalized_company_id]
         if active_only:
-            query += " AND is_active = 1"
-        query += " ORDER BY id ASC"
+            query += " AND company_memberships.is_active = 1"
+        query += " ORDER BY company_memberships.id ASC"
 
         with get_connection(db_path) as connection:
             rows = connection.execute(query, params).fetchall()
@@ -152,14 +172,17 @@ class CompanyMembershipRepository:
         normalized_user_id = _validate_user_id(user_id)
 
         query = """
-            SELECT *
+            SELECT company_memberships.*, organization.department_id
             FROM company_memberships
-            WHERE user_id = ?
+            LEFT JOIN company_member_organizations AS organization
+              ON organization.company_id = company_memberships.company_id
+             AND organization.user_id = company_memberships.user_id
+            WHERE company_memberships.user_id = ?
         """
         params: list[object] = [normalized_user_id]
         if active_only:
-            query += " AND is_active = 1"
-        query += " ORDER BY id ASC"
+            query += " AND company_memberships.is_active = 1"
+        query += " ORDER BY company_memberships.id ASC"
 
         with get_connection(db_path) as connection:
             rows = connection.execute(query, params).fetchall()

@@ -277,6 +277,24 @@ def create_tables(connection: sqlite3.Connection) -> None:
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS company_departments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(company_id, name),
+            FOREIGN KEY (company_id)
+                REFERENCES companies(id)
+                ON DELETE CASCADE,
+            CHECK (length(trim(name)) > 0),
+            CHECK (is_active IN (0, 1))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_company_departments_company_id
+            ON company_departments(company_id, is_active, name);
+
         CREATE TABLE IF NOT EXISTS company_memberships (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             company_id TEXT NOT NULL,
@@ -304,6 +322,25 @@ def create_tables(connection: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_company_memberships_company_role
             ON company_memberships(company_id, role);
+
+        CREATE TABLE IF NOT EXISTS company_member_organizations (
+            company_id TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            department_id INTEGER,
+            manager_user_id INTEGER,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (company_id, user_id),
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (department_id) REFERENCES company_departments(id) ON DELETE SET NULL,
+            FOREIGN KEY (manager_user_id) REFERENCES users(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_company_member_organizations_department
+            ON company_member_organizations(company_id, department_id);
+
+        CREATE INDEX IF NOT EXISTS idx_company_member_organizations_manager
+            ON company_member_organizations(company_id, manager_user_id);
 
         CREATE TABLE IF NOT EXISTS company_usage_limits (
             company_id TEXT PRIMARY KEY,
