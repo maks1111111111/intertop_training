@@ -39,6 +39,7 @@ class CompanyUserProvisioningService:
         email: str,
         password: str,
         role: str,
+        department_id: int | None = None,
     ) -> ProvisionedCompanyUser:
         normalized_company_id = _required(company_id, "company_id")
         normalized_first_name = _required(first_name, "first_name")
@@ -47,6 +48,15 @@ class CompanyUserProvisioningService:
         normalized_role = _required(role, "role").lower()
         if normalized_role not in _ROLES:
             raise CompanyUserProvisioningError("Недопустимая роль пользователя.")
+        normalized_department_id = _normalize_department_id(department_id)
+        if normalized_role == "admin" and normalized_department_id is not None:
+            raise CompanyUserProvisioningError(
+                "Администратор компании не назначается в подразделение."
+            )
+        if normalized_role in {"manager", "student"} and normalized_department_id is None:
+            raise CompanyUserProvisioningError(
+                "Для менеджера и сотрудника выберите подразделение."
+            )
         if len(password) < _MINIMUM_PASSWORD_LENGTH:
             raise CompanyUserProvisioningError(
                 "Пароль должен содержать не менее 12 символов."
@@ -61,6 +71,18 @@ class CompanyUserProvisioningService:
                 ).fetchone()
                 if company is None:
                     raise CompanyUserProvisioningError("Компания недоступна.")
+                if normalized_department_id is not None:
+                    department = connection.execute(
+                        """
+                        SELECT id FROM departments
+                        WHERE id = ? AND company_id = ? AND is_active = 1
+                        """,
+                        (normalized_department_id, normalized_company_id),
+                    ).fetchone()
+                    if department is None:
+                        raise CompanyUserProvisioningError(
+                            "Подразделение недоступно для этой компании."
+                        )
                 user_id = int(
                     connection.execute(
                         """
@@ -79,10 +101,14 @@ class CompanyUserProvisioningService:
                 )
                 connection.execute(
                     """
-                    INSERT INTO company_memberships (company_id, user_id, role)
-                    VALUES (?, ?, ?)
+                    INSERT INTO company_memberships (
+                        company_id, user_id, role, department_id
+                    ) VALUES (?, ?, ?, ?)
                     """,
-                    (normalized_company_id, user_id, normalized_role),
+                    (
+                        normalized_company_id, user_id, normalized_role,
+                        normalized_department_id,
+                    ),
                 )
         except sqlite3.IntegrityError as error:
             raise CompanyUserProvisioningError(
@@ -104,3 +130,11 @@ def _required(value: str, field_name: str) -> str:
     if not normalized:
         raise CompanyUserProvisioningError("Заполните обязательные поля пользователя.")
     return normalized
+
+
+def _normalize_department_id(value: int | None) -> int | None:
+    if value is None or value == "":
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise CompanyUserProvisioningError("Некорректное подразделение.")
+    return value

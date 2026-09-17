@@ -47,6 +47,7 @@ class ManagerCourseAssignmentService:
         due_at: Optional[str] = None,
         development_source: Optional[str] = None,
         development_reason: Optional[str] = None,
+        department_id: Optional[int] = None,
     ) -> ManagerCourseAssignmentResult:
         """Assign one published course to one tenant member."""
         normalized_company_id = _validate_company_id(company_id)
@@ -56,10 +57,17 @@ class ManagerCourseAssignmentService:
             assigned_by_user_id
         )
 
-        member = self._team_service.get_member(
-            normalized_company_id,
-            normalized_user_id,
-        )
+        if department_id is None:
+            member = self._team_service.get_member(
+                normalized_company_id, normalized_user_id
+            )
+        else:
+            if not isinstance(department_id, int) or isinstance(department_id, bool) or department_id <= 0:
+                raise ValueError("department_id must be a positive integer")
+            member = self._team_service.get_member(
+                normalized_company_id, normalized_user_id,
+                department_id=department_id,
+            )
         if member is None:
             return ManagerCourseAssignmentResult(
                 success=False,

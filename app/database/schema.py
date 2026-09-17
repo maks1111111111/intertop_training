@@ -282,6 +282,7 @@ def create_tables(connection: sqlite3.Connection) -> None:
             company_id TEXT NOT NULL,
             user_id INTEGER NOT NULL,
             role TEXT NOT NULL DEFAULT 'student',
+            department_id INTEGER,
             is_active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -292,6 +293,9 @@ def create_tables(connection: sqlite3.Connection) -> None:
             FOREIGN KEY (user_id)
                 REFERENCES users(id)
                 ON DELETE CASCADE,
+            FOREIGN KEY (department_id)
+                REFERENCES departments(id)
+                ON DELETE SET NULL,
             CHECK (role IN ('student', 'manager', 'admin')),
             CHECK (is_active IN (0, 1))
         );
@@ -304,6 +308,27 @@ def create_tables(connection: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_company_memberships_company_role
             ON company_memberships(company_id, role);
+
+        CREATE INDEX IF NOT EXISTS idx_company_memberships_company_department
+            ON company_memberships(company_id, department_id);
+
+        CREATE TABLE IF NOT EXISTS departments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(company_id, name),
+            FOREIGN KEY (company_id)
+                REFERENCES companies(id)
+                ON DELETE CASCADE,
+            CHECK (length(trim(name)) > 0),
+            CHECK (is_active IN (0, 1))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_departments_company_id
+            ON departments(company_id);
 
         CREATE TABLE IF NOT EXISTS company_usage_limits (
             company_id TEXT PRIMARY KEY,

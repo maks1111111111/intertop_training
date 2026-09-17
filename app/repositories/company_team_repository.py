@@ -21,6 +21,8 @@ class CompanyTeamMemberRecord:
     started_courses_count: int
     completed_courses_count: int
     average_progress_percent: int
+    department_id: Optional[int] = None
+    department_name: Optional[str] = None
 
 
 def _validate_company_id(company_id: str) -> str:
@@ -41,11 +43,15 @@ class CompanyTeamRepository:
         self,
         db_path: Path,
         company_id: str,
+        department_id: Optional[int] = None,
     ) -> tuple[CompanyTeamMemberRecord, ...]:
         """Return active members and aggregate enrollment progress for one company."""
         normalized_company_id = _validate_company_id(company_id)
 
         with get_connection(db_path) as connection:
+            departments_available = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'departments'"
+            ).fetchone() is not None
             enrollment_columns = {
                 row["name"]
                 for row in connection.execute("PRAGMA table_info(enrollments)")
@@ -71,6 +77,24 @@ class CompanyTeamRepository:
                        AND courses.company_id = ?
                 """
                 course_tenant_params = (normalized_company_id,)
+            department_filter = ""
+            department_params: tuple[object, ...] = ()
+            if department_id is not None:
+                if not isinstance(department_id, int) or isinstance(department_id, bool) or department_id <= 0:
+                    raise ValueError("department_id must be a positive integer")
+                department_filter = " AND company_memberships.department_id = ?"
+                department_params = (department_id,)
+                if not departments_available:
+                    return ()
+            department_columns = (
+                "company_memberships.department_id, departments.name AS department_name,"
+                if departments_available
+                else "NULL AS department_id, NULL AS department_name,"
+            )
+            department_join = (
+                "LEFT JOIN departments ON departments.id = company_memberships.department_id"
+                if departments_available else ""
+            )
             rows = connection.execute(
                 f"""
                 WITH progress AS (
@@ -97,6 +121,7 @@ class CompanyTeamRepository:
                     users.first_name,
                     users.last_name,
                     company_memberships.role,
+                    {department_columns}
                     COALESCE(
                         progress.started_courses_count,
                         0
@@ -112,11 +137,13 @@ class CompanyTeamRepository:
                 FROM company_memberships
                 JOIN users
                     ON users.id = company_memberships.user_id
+                {department_join}
                 LEFT JOIN progress
                     ON progress.user_id = users.id
                 WHERE company_memberships.company_id = ?
                   AND company_memberships.is_active = 1
                   AND users.is_active = 1
+                  {department_filter}
                 ORDER BY
                     users.first_name COLLATE NOCASE,
                     users.last_name COLLATE NOCASE,
@@ -125,7 +152,8 @@ class CompanyTeamRepository:
                 """,
                 course_tenant_params
                 + ((normalized_company_id,) if tenant_filter else ())
-                + (normalized_company_id,),
+                + (normalized_company_id,)
+                + department_params,
             ).fetchall()
 
         return tuple(
@@ -147,6 +175,8 @@ class CompanyTeamRepository:
                     else None
                 ),
                 role=str(row["role"]),
+                department_id=(int(row["department_id"]) if row["department_id"] is not None else None),
+                department_name=(str(row["department_name"]) if row["department_name"] is not None else None),
                 started_courses_count=int(row["started_courses_count"]),
                 completed_courses_count=int(row["completed_courses_count"]),
                 average_progress_percent=int(
@@ -161,6 +191,7 @@ class CompanyTeamRepository:
         db_path: Path,
         company_id: str,
         user_id: int,
+        department_id: Optional[int] = None,
     ) -> Optional[CompanyTeamMemberRecord]:
         """Return one active member summary scoped to one company."""
         normalized_company_id = _validate_company_id(company_id)
@@ -168,6 +199,9 @@ class CompanyTeamRepository:
             raise ValueError("user_id must be a positive integer")
 
         with get_connection(db_path) as connection:
+            departments_available = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'departments'"
+            ).fetchone() is not None
             enrollment_columns = {
                 row["name"]
                 for row in connection.execute("PRAGMA table_info(enrollments)")
@@ -193,6 +227,24 @@ class CompanyTeamRepository:
                        AND courses.company_id = ?
                 """
                 course_tenant_params = (normalized_company_id,)
+            department_filter = ""
+            department_params: tuple[object, ...] = ()
+            if department_id is not None:
+                if not isinstance(department_id, int) or isinstance(department_id, bool) or department_id <= 0:
+                    raise ValueError("department_id must be a positive integer")
+                department_filter = " AND company_memberships.department_id = ?"
+                department_params = (department_id,)
+                if not departments_available:
+                    return None
+            department_columns = (
+                "company_memberships.department_id, departments.name AS department_name,"
+                if departments_available
+                else "NULL AS department_id, NULL AS department_name,"
+            )
+            department_join = (
+                "LEFT JOIN departments ON departments.id = company_memberships.department_id"
+                if departments_available else ""
+            )
             row = connection.execute(
                 f"""
                 WITH progress AS (
@@ -217,6 +269,7 @@ class CompanyTeamRepository:
                     users.first_name,
                     users.last_name,
                     company_memberships.role,
+                    {department_columns}
                     COALESCE(progress.started_courses_count, 0)
                         AS started_courses_count,
                     COALESCE(progress.completed_courses_count, 0)
@@ -226,17 +279,20 @@ class CompanyTeamRepository:
                 FROM company_memberships
                 JOIN users
                     ON users.id = company_memberships.user_id
+                {department_join}
                 LEFT JOIN progress
                     ON progress.user_id = users.id
                 WHERE company_memberships.company_id = ?
                   AND company_memberships.user_id = ?
                   AND company_memberships.is_active = 1
                   AND users.is_active = 1
+                  {department_filter}
                 LIMIT 1
                 """,
                 course_tenant_params
                 + ((normalized_company_id,) if tenant_filter else ())
-                + (normalized_company_id, user_id),
+                + (normalized_company_id, user_id)
+                + department_params,
             ).fetchone()
 
         if row is None:
@@ -248,6 +304,8 @@ class CompanyTeamRepository:
             first_name=str(row["first_name"]) if row["first_name"] is not None else None,
             last_name=str(row["last_name"]) if row["last_name"] is not None else None,
             role=str(row["role"]),
+            department_id=(int(row["department_id"]) if row["department_id"] is not None else None),
+            department_name=(str(row["department_name"]) if row["department_name"] is not None else None),
             started_courses_count=int(row["started_courses_count"]),
             completed_courses_count=int(row["completed_courses_count"]),
             average_progress_percent=int(row["average_progress_percent"]),

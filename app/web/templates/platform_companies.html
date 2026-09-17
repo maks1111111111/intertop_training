@@ -40,11 +40,11 @@
                 <div class="platform-usage-meta"><span class="platform-status {% if company.is_active %}is-active{% else %}is-inactive{% endif %}">{% if company.is_active %}Активна{% else %}Отключена{% endif %}</span></div>
             </div>
             <form method="post" action="/platform-admin/companies/{{ company.id }}/users" class="platform-operation-form">
-                <h4>Добавить пользователя компании</h4>
+                <h4>Назначить администратора компании</h4>
                 <label class="auth-field"><span>Имя</span><input name="first_name" required></label>
                 <label class="auth-field"><span>Фамилия</span><input name="last_name"></label>
                 <label class="auth-field"><span>Email для входа</span><input name="email" type="email" autocomplete="email" required></label>
-                <label class="auth-field"><span>Роль</span><select name="role" required><option value="student">Сотрудник</option><option value="manager">Менеджер</option><option value="admin">Администратор компании</option></select></label>
+                <p class="section-description">Владелец платформы назначает только администраторов компании. Менеджеров и сотрудников создают внутри компании.</p>
                 <label class="auth-field"><span>Временный пароль (минимум 12 символов)</span><input name="password" type="password" autocomplete="new-password" required></label>
                 <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
                 <button type="submit" class="button button-primary">Создать пользователя</button>

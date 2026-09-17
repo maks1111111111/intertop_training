@@ -167,8 +167,19 @@ class ManagerTeamAnalyticsService:
         self._employee_analytics_service = employee_analytics_service
         self._assignment_history_service = assignment_history_service
 
-    def get_team_overview(self, company_id: str) -> ManagerTeamOverview:
-        members = self._team_service.get_team(company_id)
+    def get_team_overview(
+        self,
+        company_id: str,
+        *,
+        department_id: Optional[int] = None,
+    ) -> ManagerTeamOverview:
+        """Return analytics for a company or one securely scoped department."""
+        if department_id is None:
+            members = self._team_service.get_team(company_id)
+        else:
+            members = self._team_service.get_team(
+                company_id, department_id=department_id
+            )
 
         if not members:
             return ManagerTeamOverview(
@@ -276,8 +287,12 @@ class ManagerTeamAnalyticsService:
         self,
         company_id: str,
         recommendation_code: str,
+        *,
+        department_id: Optional[int] = None,
     ) -> Optional[ManagerRecommendationDetail]:
-        overview = self.get_team_overview(company_id)
+        overview = self.get_team_overview(
+            company_id, department_id=department_id
+        )
         recommendation = next(
             (
                 item

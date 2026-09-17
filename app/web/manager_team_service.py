@@ -31,6 +31,8 @@ class ManagerTeamMember:
     started_courses_count: int
     completed_courses_count: int
     average_progress_percent: int
+    department_id: Optional[int] = None
+    department_name: Optional[str] = None
 
 
 class ManagerTeamService:
@@ -47,13 +49,16 @@ class ManagerTeamService:
     def get_team(
         self,
         company_id: str,
+        department_id: Optional[int] = None,
     ) -> tuple[ManagerTeamMember, ...]:
         """Return active members for one resolved tenant."""
         normalized_company_id = _validate_company_id(company_id)
-        records = self._repository.list_learning_summary(
-            self._db_path,
-            normalized_company_id,
-        )
+        if department_id is None:
+            records = self._repository.list_learning_summary(self._db_path, normalized_company_id)
+        else:
+            records = self._repository.list_learning_summary(
+                self._db_path, normalized_company_id, department_id=department_id
+            )
 
         return tuple(_to_view_model(record) for record in records)
 
@@ -62,17 +67,21 @@ class ManagerTeamService:
         self,
         company_id: str,
         user_id: int,
+        department_id: Optional[int] = None,
     ) -> Optional[ManagerTeamMember]:
         """Return one active member resolved inside one tenant."""
         normalized_company_id = _validate_company_id(company_id)
         if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:
             raise ValueError("user_id must be a positive integer")
 
-        record = self._repository.get_learning_summary(
-            self._db_path,
-            normalized_company_id,
-            user_id,
-        )
+        if department_id is None:
+            record = self._repository.get_learning_summary(
+                self._db_path, normalized_company_id, user_id
+            )
+        else:
+            record = self._repository.get_learning_summary(
+                self._db_path, normalized_company_id, user_id, department_id=department_id
+            )
         if record is None:
             return None
 
@@ -102,6 +111,8 @@ def _to_view_model(
         started_courses_count=record.started_courses_count,
         completed_courses_count=record.completed_courses_count,
         average_progress_percent=record.average_progress_percent,
+        department_id=record.department_id,
+        department_name=record.department_name,
     )
 
 

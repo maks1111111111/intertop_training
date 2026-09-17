@@ -3,6 +3,35 @@
 {% block title %}Команда — Intertop Training{% endblock %}
 
 {% block content %}
+{% if team_error_message %}
+<div class="admin-form-error" role="alert">{{ team_error_message }}</div>
+{% endif %}
+{% if identity.role == "manager" %}
+<section class="section">
+    <h2>Добавить сотрудника в своё подразделение</h2>
+    <form class="admin-create-form" method="post" action="/manager/team/employees">
+        <div class="admin-form-field"><label class="admin-form-label">Имя<input class="admin-form-input" name="first_name" required></label></div>
+        <div class="admin-form-field"><label class="admin-form-label">Фамилия<input class="admin-form-input" name="last_name"></label></div>
+        <div class="admin-form-field"><label class="admin-form-label">Email<input class="admin-form-input" name="email" type="email" required></label></div>
+        <div class="admin-form-field"><label class="admin-form-label">Временный пароль<input class="admin-form-input" name="password" type="password" minlength="12" required></label></div>
+        <div class="admin-form-actions"><button class="button button-primary" type="submit">Добавить сотрудника</button></div>
+    </form>
+</section>
+{% endif %}
+{% if identity.role == "admin" %}
+<section class="section">
+    <h2>Фильтры аналитики</h2>
+    <form class="admin-create-form" method="get" action="/manager/team">
+        <div class="admin-form-field"><label class="admin-form-label">Подразделение<select class="admin-form-select" name="department_id"><option value="">Все</option>{% for department in analytics_departments %}<option value="{{ department.id }}"{% if analytics_filters.department_id == department.id|string %} selected{% endif %}>{{ department.name }}</option>{% endfor %}</select></label></div>
+        <div class="admin-form-field"><label class="admin-form-label">Менеджер<select class="admin-form-select" name="manager_id"><option value="">Все</option>{% for manager in analytics_managers %}<option value="{{ manager.user_id }}">{{ manager.display_name }}</option>{% endfor %}</select></label></div>
+        <div class="admin-form-field"><label class="admin-form-label">Сотрудник<select class="admin-form-select" name="employee_id"><option value="">Все</option>{% for employee in analytics_employees %}<option value="{{ employee.user_id }}">{{ employee.display_name }}</option>{% endfor %}</select></label></div>
+        <div class="admin-form-field"><label class="admin-form-label">Роль<select class="admin-form-select" name="role"><option value="">Все</option><option value="admin">Администратор</option><option value="manager">Менеджер</option><option value="student">Сотрудник</option></select></label></div>
+        <div class="admin-form-field"><label class="admin-form-label">Курс<input class="admin-form-input" name="course" value="{{ analytics_filters.course }}" placeholder="slug курса"></label></div>
+        <div class="admin-form-field"><label class="admin-form-label">Статус<select class="admin-form-select" name="status"><option value="">Все</option><option value="assigned">Назначен</option><option value="in_progress">В процессе</option><option value="completed">Завершён</option></select></label></div>
+        <div class="admin-form-actions"><button class="button button-secondary" type="submit">Применить</button></div>
+    </form>
+</section>
+{% endif %}
 <section class="page-header">
     <h1 class="page-title">Команда</h1>
     <p class="page-lead">Прогресс обучения сотрудников вашей компании.</p>

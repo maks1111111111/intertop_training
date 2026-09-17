@@ -8,7 +8,10 @@ import unittest
 from pathlib import Path
 
 from app.database.db import get_connection, initialize_database
-from app.database.migrations import migrate_companies_table
+from app.database.migrations import (
+    migrate_companies_table,
+    migrate_departments_and_membership_scope,
+)
 
 COMPANIES_COLUMNS = (
     "id",
@@ -23,6 +26,7 @@ MEMBERSHIPS_COLUMNS = (
     "company_id",
     "user_id",
     "role",
+    "department_id",
     "is_active",
     "created_at",
     "updated_at",
@@ -32,6 +36,7 @@ EXPECTED_MEMBERSHIP_INDEXES = (
     "idx_company_memberships_company_id",
     "idx_company_memberships_user_id",
     "idx_company_memberships_company_role",
+    "idx_company_memberships_company_department",
 )
 
 
@@ -120,6 +125,7 @@ class CompanyMembershipsSchemaTests(unittest.TestCase):
         with get_connection(self.db_path) as connection:
             self.assertTrue(_table_exists(connection, "companies"))
             self.assertTrue(_table_exists(connection, "company_memberships"))
+            self.assertTrue(_table_exists(connection, "departments"))
 
     def test_companies_table_contains_expected_columns(self) -> None:
         with get_connection(self.db_path) as connection:
@@ -508,6 +514,7 @@ class CompanyMembershipsSchemaTests(unittest.TestCase):
             self.assertEqual(named_indexes, [])
 
             migrate_companies_table(connection)
+            migrate_departments_and_membership_scope(connection)
             connection.commit()
 
             index_names = _index_names(connection, "company_memberships")
@@ -528,6 +535,7 @@ class CompanyMembershipsSchemaTests(unittest.TestCase):
             self.assertEqual(row[2], "admin")
 
             migrate_companies_table(connection)
+            migrate_departments_and_membership_scope(connection)
             connection.commit()
 
             for expected_name in EXPECTED_MEMBERSHIP_INDEXES:

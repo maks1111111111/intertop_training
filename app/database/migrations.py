@@ -1108,6 +1108,83 @@ def migrate_knowledge_tenant_integrity(connection: sqlite3.Connection) -> None:
     )
 
 
+def migrate_departments_and_membership_scope(connection: sqlite3.Connection) -> None:
+    """Add tenant departments without discarding existing team memberships."""
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS departments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(company_id, name),
+            FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+            CHECK (length(trim(name)) > 0),
+            CHECK (is_active IN (0, 1))
+        );
+        CREATE INDEX IF NOT EXISTS idx_departments_company_id
+            ON departments(company_id);
+        """
+    )
+    membership_column_names = {
+        row[1] for row in connection.execute("PRAGMA table_info(company_memberships)")
+    }
+    if "department_id" not in membership_column_names:
+        connection.execute(
+            "ALTER TABLE company_memberships ADD COLUMN department_id INTEGER"
+        )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_company_memberships_company_department
+        ON company_memberships(company_id, department_id)
+        """
+    )
+
+    # Preserve the useful behaviour of pre-department installations: existing
+    # managers and employees remain mutually visible in a tenant's migration
+    # department until an administrator reorganises them.
+    company_rows = connection.execute(
+        """
+        SELECT DISTINCT company_id
+        FROM company_memberships
+        WHERE role IN ('manager', 'student')
+          AND department_id IS NULL
+        """
+    ).fetchall()
+    for row in company_rows:
+        company_id = str(row["company_id"] if isinstance(row, sqlite3.Row) else row[0])
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO departments (company_id, name)
+            VALUES (?, 'Общее')
+            """,
+            (company_id,),
+        )
+        department = connection.execute(
+            """
+            SELECT id FROM departments
+            WHERE company_id = ? AND name = 'Общее'
+            """,
+            (company_id,),
+        ).fetchone()
+        if department is not None:
+            connection.execute(
+                """
+                UPDATE company_memberships
+                SET department_id = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE company_id = ?
+                  AND role IN ('manager', 'student')
+                  AND department_id IS NULL
+                """,
+                (
+                    int(department["id"] if isinstance(department, sqlite3.Row) else department[0]),
+                    company_id,
+                ),
+            )
+
+
 def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_users_table(connection)
     migrate_enrollments_assignment_author(connection)
@@ -1129,3 +1206,4 @@ def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_learning_progress_tenant_scope(connection)
     migrate_learning_tenant_integrity(connection)
     migrate_knowledge_tenant_integrity(connection)
+    migrate_departments_and_membership_scope(connection)

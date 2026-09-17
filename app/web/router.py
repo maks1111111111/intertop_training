@@ -20,6 +20,7 @@ from app.repositories import practical_task_attempt_repository, quiz_repository
 from app.repositories.company_membership_repository import CompanyMembershipRepository
 from app.repositories.company_repository import CompanyRepository
 from app.repositories.company_team_repository import CompanyTeamRepository
+from app.repositories.department_repository import DepartmentRepository
 from app.repositories.password_credential_repository import PasswordCredentialRepository
 from app.repositories.platform_admin_repository import PlatformAdminRepository
 from app.repositories.manager_course_assignment_repository import (
@@ -193,6 +194,10 @@ from app.web.manager_team_development_actions import (
     build_team_topic_development_actions,
 )
 from app.web.manager_team_service import ManagerTeamService
+from app.web.company_team_management_service import (
+    CompanyTeamManagementError,
+    CompanyTeamManagementService,
+)
 from app.web.password_hashing_service import PasswordHashingService
 from app.web.platform_authentication_service import PlatformAuthenticationService
 from app.repositories.platform_support_access_repository import (
@@ -312,6 +317,16 @@ def get_platform_company_service() -> PlatformCompanyService:
 def get_company_user_provisioning_service() -> CompanyUserProvisioningService:
     """Return the atomic Web provisioning service for tenant users."""
     return CompanyUserProvisioningService()
+
+
+def get_department_repository() -> DepartmentRepository:
+    return DepartmentRepository()
+
+
+def get_company_team_management_service() -> CompanyTeamManagementService:
+    return CompanyTeamManagementService(
+        DepartmentRepository(), CompanyUserProvisioningService()
+    )
 
 
 def get_platform_admin_management_service() -> PlatformAdminManagementService:
@@ -498,6 +513,31 @@ def require_web_management_identity(
     if identity is None or not authorization_service.can_manage_learning(identity):
         raise HTTPException(status_code=403, detail="Forbidden")
     return identity
+
+
+def require_company_admin(
+    identity: WebIdentity = Depends(require_web_management_identity),
+) -> WebIdentity:
+    """Require the tenant administrator; platform identities are separate."""
+    if identity.role != "admin":
+        raise HTTPException(status_code=403, detail="Company admin required")
+    return identity
+
+
+def _manager_department_id(db_path: Path, identity: WebIdentity) -> Optional[int]:
+    """Return a manager's department, never accepting a client supplied id."""
+    if identity.role != "manager":
+        return None
+    with get_connection(db_path) as connection:
+        row = connection.execute(
+            """
+            SELECT department_id FROM company_memberships
+            WHERE company_id = ? AND user_id = ? AND role = 'manager'
+              AND is_active = 1
+            """,
+            (identity.company_id, identity.user_id),
+        ).fetchone()
+    return int(row["department_id"]) if row and row["department_id"] is not None else None
 
 
 admin_router = APIRouter(
@@ -1569,7 +1609,10 @@ async def platform_company_user_provision(
             last_name=str(form.get("last_name") or ""),
             email=str(form.get("email") or ""),
             password=str(form.get("password") or ""),
-            role=str(form.get("role") or ""),
+            # The platform owner establishes a tenant through its company
+            # administrator only.  Managers and employees are tenant-local
+            # responsibilities and cannot be escalated from this contour.
+            role="admin",
         )
     except CompanyUserProvisioningError as error:
         return _render_platform_companies_page(
@@ -1929,15 +1972,35 @@ def dashboard_page(
 )
 def manager_team_page(
     request: Request,
+    db_path: Path = Depends(get_db_path),
+    departments: DepartmentRepository = Depends(get_department_repository),
     team_analytics_service: ManagerTeamAnalyticsService = Depends(
         get_manager_team_analytics_service
     ),
     identity: WebIdentity = Depends(require_web_management_identity),
 ) -> HTMLResponse:
     """Render tenant-scoped team learning progress for manager/admin."""
-    overview = team_analytics_service.get_team_overview(identity.company_id)
+    department_id = _manager_department_id(db_path, identity)
+    if department_id is None:
+        overview = team_analytics_service.get_team_overview(identity.company_id)
+    else:
+        overview = team_analytics_service.get_team_overview(
+            identity.company_id, department_id=department_id
+        )
     team_filter = normalize_team_member_filter(request.query_params.get("filter"))
     filtered_member_rows = filter_team_member_rows(overview.members, team_filter)
+    filter_values = {
+        "department_id": request.query_params.get("department_id", "").strip(),
+        "manager_id": request.query_params.get("manager_id", "").strip(),
+        "employee_id": request.query_params.get("employee_id", "").strip(),
+        "role": request.query_params.get("role", "").strip(),
+        "course": request.query_params.get("course", "").strip(),
+        "status": request.query_params.get("status", "").strip(),
+    }
+    if identity.role == "admin":
+        filtered_member_rows = _filter_admin_analytics_rows(
+            filtered_member_rows, filter_values
+        )
     return templates.TemplateResponse(
         request,
         "manager_team.html",
@@ -1957,8 +2020,54 @@ def manager_team_page(
                 overview.analytics,
                 overview.recommendations,
             ),
+            "manager_department_id": department_id,
+            "team_error_message": request.query_params.get("error", ""),
+            "analytics_filters": filter_values,
+            "analytics_departments": departments.list_for_company(
+                db_path, identity.company_id
+            ) if identity.role == "admin" else (),
+            "analytics_managers": tuple(
+                row.member for row in overview.members if row.member.role == "manager"
+            ) if identity.role == "admin" else (),
+            "analytics_employees": tuple(
+                row.member for row in overview.members
+            ) if identity.role == "admin" else (),
         },
     )
+
+
+def _filter_admin_analytics_rows(rows, values):
+    """Apply admin-only analytics selectors after tenant-scoped aggregation."""
+    result = tuple(rows)
+    department_id = values["department_id"]
+    if department_id.isdigit():
+        result = tuple(row for row in result if row.member.department_id == int(department_id))
+    role = values["role"]
+    if role in {"admin", "manager", "student"}:
+        result = tuple(row for row in result if row.member.role == role)
+    employee_id = values["employee_id"]
+    if employee_id.isdigit():
+        result = tuple(row for row in result if row.member.user_id == int(employee_id))
+    manager_id = values["manager_id"]
+    if manager_id.isdigit():
+        result = tuple(
+            row for row in result
+            if any(item.assigned_by_user_id == int(manager_id) for item in row.assignment_history.assignments)
+        )
+    course = values["course"]
+    if course:
+        result = tuple(
+            row for row in result
+            if any(item.course_slug == course for item in row.assignment_history.assignments)
+            or any(item.slug == course for item in row.quiz_analytics.courses)
+        )
+    status = values["status"]
+    if status in {"assigned", "in_progress", "completed"}:
+        result = tuple(
+            row for row in result
+            if any(item.status == status for item in row.assignment_history.assignments)
+        )
+    return result
 
 
 
@@ -1970,16 +2079,22 @@ def manager_team_page(
 def manager_team_recommendation_page(
     request: Request,
     code: str,
+    db_path: Path = Depends(get_db_path),
     team_analytics_service: ManagerTeamAnalyticsService = Depends(
         get_manager_team_analytics_service
     ),
     identity: WebIdentity = Depends(require_web_management_identity),
 ) -> HTMLResponse:
     """Render tenant-scoped drill-down for one manager action recommendation."""
-    detail = team_analytics_service.get_recommendation_detail(
-        identity.company_id,
-        code,
-    )
+    department_id = _manager_department_id(db_path, identity)
+    if department_id is None:
+        detail = team_analytics_service.get_recommendation_detail(
+            identity.company_id, code
+        )
+    else:
+        detail = team_analytics_service.get_recommendation_detail(
+            identity.company_id, code, department_id=department_id
+        )
     if detail is None:
         raise HTTPException(status_code=404, detail="Recommendation not found")
     return templates.TemplateResponse(
@@ -2009,13 +2124,17 @@ def manager_team_member_page(
         get_manager_course_assignment_history_service
     ),
     runtime: ContentRuntime = Depends(get_tenant_content_runtime),
+    db_path: Path = Depends(get_db_path),
     identity: WebIdentity = Depends(require_web_management_identity),
 ) -> HTMLResponse:
     """Render one tenant-scoped employee learning profile."""
-    member = team_service.get_member(
-        identity.company_id,
-        user_id,
-    )
+    department_id = _manager_department_id(db_path, identity)
+    if department_id is None:
+        member = team_service.get_member(identity.company_id, user_id)
+    else:
+        member = team_service.get_member(
+            identity.company_id, user_id, department_id=department_id
+        )
     if member is None:
         raise HTTPException(status_code=404, detail="Employee not found")
 
@@ -2096,6 +2215,7 @@ async def manager_team_member_assign_course(
         get_manager_course_assignment_service
     ),
     identity: WebIdentity = Depends(require_web_management_identity),
+    db_path: Path = Depends(get_db_path),
 ) -> RedirectResponse:
     """Assign one published course to one tenant-scoped employee."""
     form = await request.form()
@@ -2123,14 +2243,16 @@ async def manager_team_member_assign_course(
         )
 
     try:
-        result = assignment_service.assign_course(
-            identity.company_id,
-            user_id,
-            course_slug,
-            identity.user_id,
-            due_at=due_at,
-            development_source=development_source,
+        assignment_kwargs = dict(
+            due_at=due_at, development_source=development_source,
             development_reason=development_reason,
+        )
+        department_id = _manager_department_id(db_path, identity)
+        if department_id is not None:
+            assignment_kwargs["department_id"] = department_id
+        result = assignment_service.assign_course(
+            identity.company_id, user_id, course_slug, identity.user_id,
+            **assignment_kwargs,
         )
     except ValueError:
         return RedirectResponse(
@@ -2146,6 +2268,86 @@ async def manager_team_member_assign_course(
         url=f"/manager/team/{user_id}?assignment={redirect_code}",
         status_code=303,
     )
+
+
+@router.get("/admin/team", response_class=HTMLResponse, include_in_schema=False)
+def admin_team_management_page(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_company_admin),
+    departments: DepartmentRepository = Depends(get_department_repository),
+    team_service: ManagerTeamService = Depends(get_manager_team_service),
+) -> HTMLResponse:
+    """Let a company administrator organise departments and managers."""
+    return templates.TemplateResponse(
+        request,
+        "admin_team.html",
+        {
+            "active_nav": "admin",
+            "departments": departments.list_for_company(db_path, identity.company_id),
+            "members": team_service.get_team(identity.company_id),
+            "error_message": request.query_params.get("error", ""),
+        },
+    )
+
+
+@router.post("/admin/team/departments", include_in_schema=False)
+async def admin_team_create_department(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_company_admin),
+    service: CompanyTeamManagementService = Depends(get_company_team_management_service),
+) -> RedirectResponse:
+    form = await request.form()
+    try:
+        service.create_department(
+            db_path, company_id=identity.company_id, actor_user_id=identity.user_id,
+            name=str(form.get("name") or ""),
+        )
+    except CompanyTeamManagementError as exc:
+        return RedirectResponse(url=f"/admin/team?error={str(exc)}", status_code=303)
+    return RedirectResponse(url="/admin/team", status_code=303)
+
+
+@router.post("/admin/team/managers", include_in_schema=False)
+async def admin_team_create_manager(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_company_admin),
+    service: CompanyTeamManagementService = Depends(get_company_team_management_service),
+) -> RedirectResponse:
+    form = await request.form()
+    try:
+        service.create_manager(
+            db_path, company_id=identity.company_id, actor_user_id=identity.user_id,
+            department_id=int(str(form.get("department_id") or "0")),
+            first_name=str(form.get("first_name") or ""), last_name=str(form.get("last_name") or ""),
+            email=str(form.get("email") or ""), password=str(form.get("password") or ""),
+        )
+    except (CompanyTeamManagementError, ValueError) as exc:
+        return RedirectResponse(url=f"/admin/team?error={str(exc)}", status_code=303)
+    return RedirectResponse(url="/admin/team", status_code=303)
+
+
+@router.post("/manager/team/employees", include_in_schema=False)
+async def manager_create_employee(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_web_management_identity),
+    service: CompanyTeamManagementService = Depends(get_company_team_management_service),
+) -> RedirectResponse:
+    if identity.role != "manager":
+        raise HTTPException(status_code=403, detail="Manager required")
+    form = await request.form()
+    try:
+        service.create_employee(
+            db_path, company_id=identity.company_id, actor_user_id=identity.user_id,
+            first_name=str(form.get("first_name") or ""), last_name=str(form.get("last_name") or ""),
+            email=str(form.get("email") or ""), password=str(form.get("password") or ""),
+        )
+    except CompanyTeamManagementError as exc:
+        return RedirectResponse(url=f"/manager/team?error={str(exc)}", status_code=303)
+    return RedirectResponse(url="/manager/team", status_code=303)
 
 
 @admin_router.get("/admin", response_class=HTMLResponse, include_in_schema=False)

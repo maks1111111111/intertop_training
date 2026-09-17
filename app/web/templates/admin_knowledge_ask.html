@@ -86,9 +86,11 @@
                         <span class="ai-chat-source-meta">
                             Использовано фрагментов: {{ group.fragment_count }}
                         </span>
+                        {% if not identity or identity.role != "student" %}
                         <a class="ai-chat-source-link" href="{{ group.view_url }}">
                             Открыть документ →
                         </a>
+                        {% endif %}
                     </div>
                 </div>
                 {% endfor %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}Команда — Intertop Training{% endblock %}
+
+{% block content %}
+<nav class="admin-subnav" aria-label="Разделы администратора">
+    <a href="/admin" class="admin-subnav-link">Курсы</a>
+    <a href="/admin/team" class="admin-subnav-link is-active">Команда</a>
+    <a href="/admin/knowledge" class="admin-subnav-link">База знаний</a>
+</nav>
+<section class="page-header admin-page-header"><div class="admin-page-header-body"><h1 class="page-title">Структура команды</h1><p class="page-lead">Создайте подразделения и назначьте в них менеджеров.</p></div></section>
+{% if error_message %}<div class="admin-form-error" role="alert">{{ error_message }}</div>{% endif %}
+<section class="section"><h2>Новое подразделение</h2><form class="admin-create-form" method="post" action="/admin/team/departments"><div class="admin-form-field"><label class="admin-form-label">Название<input class="admin-form-input" name="name" required></label></div><div class="admin-form-actions"><button class="button button-primary">Создать подразделение</button></div></form></section>
+<section class="section"><h2>Назначить менеджера</h2>{% if departments %}<form class="admin-create-form" method="post" action="/admin/team/managers"><div class="admin-form-field"><label class="admin-form-label">Подразделение<select class="admin-form-select" name="department_id" required>{% for department in departments %}<option value="{{ department.id }}">{{ department.name }}</option>{% endfor %}</select></label></div><div class="admin-form-field"><label class="admin-form-label">Имя<input class="admin-form-input" name="first_name" required></label></div><div class="admin-form-field"><label class="admin-form-label">Фамилия<input class="admin-form-input" name="last_name"></label></div><div class="admin-form-field"><label class="admin-form-label">Email<input class="admin-form-input" name="email" type="email" required></label></div><div class="admin-form-field"><label class="admin-form-label">Временный пароль<input class="admin-form-input" name="password" type="password" minlength="12" required></label></div><div class="admin-form-actions"><button class="button button-primary">Создать менеджера</button></div></form>{% else %}<p class="page-meta">Сначала создайте подразделение.</p>{% endif %}</section>
+<section class="section"><h2>Участники</h2><ul class="course-list">{% for member in members %}<li class="course-card"><strong>{{ member.display_name }}</strong> — {{ member.role_label }}{% if member.department_name %}, {{ member.department_name }}{% endif %}</li>{% else %}<li class="empty-state">Участников пока нет.</li>{% endfor %}</ul></section>
+{% endblock %}

@@ -21,6 +21,7 @@
 
 <nav class="admin-subnav" aria-label="Разделы администратора">
     <a href="/admin" class="admin-subnav-link">Курсы</a>
+    {% if identity.role == "admin" %}<a href="/admin/team" class="admin-subnav-link">Команда</a>{% endif %}
     <a href="/admin/knowledge" class="admin-subnav-link is-active">База знаний</a>
 </nav>
 
