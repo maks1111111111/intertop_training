@@ -41,7 +41,19 @@
     {% if assignment_is_error %}
     <div class="admin-form-error" role="alert">{{ assignment_message }}</div>
     {% else %}
-    <p class="page-meta" role="status">{{ assignment_message }}</p>
+    <div
+        class="assignment-success-notice"
+        id="assignment-result"
+        role="status"
+        tabindex="-1"
+    >
+        <span class="assignment-success-notice-icon" aria-hidden="true">✓</span>
+        <div>
+            <strong>Курс назначен</strong>
+            <p>{{ assignment_message }}</p>
+            <a href="#assignments">Перейти к назначенным курсам</a>
+        </div>
+    </div>
     {% endif %}
     {% endif %}
 

@@ -79,13 +79,13 @@ class WebSidebarIdentityTests(unittest.TestCase):
         self.assertIn("Сотрудник", response.text)
         self.assertIn('action="/logout"', response.text)
 
-    def test_manager_sees_admin_navigation(self) -> None:
+    def test_manager_sees_team_navigation_without_admin(self) -> None:
         self._set_identity("manager")
 
         response = self.client.get("/courses")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn('href="/admin"', response.text)
+        self.assertNotIn('href="/admin"', response.text)
         self.assertIn('href="/manager/team"', response.text)
         self.assertIn("Команда", response.text)
         self.assertIn("Менеджер", response.text)

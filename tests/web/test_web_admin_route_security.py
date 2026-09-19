@@ -24,7 +24,7 @@ def _identity(role: str) -> WebIdentity:
 
 
 class WebAdminRouteSecurityTests(unittest.TestCase):
-    """Verify the admin router enforces management authorization over HTTP."""
+    """Verify the admin router accepts only company administrators over HTTP."""
 
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -69,12 +69,13 @@ class WebAdminRouteSecurityTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["detail"], "Forbidden")
 
-    def test_manager_can_open_admin_dashboard(self) -> None:
+    def test_manager_cannot_open_admin_dashboard_by_direct_url(self) -> None:
         self._set_identity("manager")
 
         response = self.client.get("/admin")
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "Forbidden")
 
     def test_admin_can_open_admin_dashboard(self) -> None:
         self._set_identity("admin")
@@ -95,12 +96,13 @@ class WebAdminRouteSecurityTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 403)
 
-    def test_manager_can_open_nested_admin_route(self) -> None:
+    def test_manager_cannot_open_nested_admin_route_by_direct_url(self) -> None:
         self._set_identity("manager")
 
         response = self.client.get("/admin/courses/new")
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "Forbidden")
 
     def test_admin_can_open_nested_admin_route(self) -> None:
         self._set_identity("admin")

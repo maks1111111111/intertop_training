@@ -510,8 +510,20 @@ def require_web_management_identity(
     return identity
 
 
+def require_web_admin_identity(
+    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
+    authorization_service: WebAuthorizationService = Depends(
+        get_web_authorization_service
+    ),
+) -> WebIdentity:
+    """Require an administrator for course and Knowledge Base management."""
+    if identity is None or not authorization_service.is_admin(identity):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return identity
+
+
 admin_router = APIRouter(
-    dependencies=[Depends(require_web_management_identity)],
+    dependencies=[Depends(require_web_admin_identity)],
 )
 
 
@@ -2303,8 +2315,9 @@ async def manager_team_member_assign_course(
         raise HTTPException(status_code=404, detail="Employee not found")
 
     redirect_code = result.code if not result.success else "assigned"
+    redirect_anchor = "#assignment-result" if result.success else ""
     return RedirectResponse(
-        url=f"/manager/team/{user_id}?assignment={redirect_code}",
+        url=f"/manager/team/{user_id}?assignment={redirect_code}{redirect_anchor}",
         status_code=303,
     )
 

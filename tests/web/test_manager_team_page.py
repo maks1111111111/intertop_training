@@ -2356,6 +2356,9 @@ class ManagerTeamPageTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Курс назначен сотруднику.", response.text)
+        self.assertIn('class="assignment-success-notice"', response.text)
+        self.assertIn('id="assignment-result"', response.text)
+        self.assertIn('href="#assignments"', response.text)
 
     def test_team_member_page_renders_assignment_failure_messages(self) -> None:
         self._set_identity("manager")
@@ -2403,7 +2406,10 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 303)
-        self.assertEqual(response.headers["location"], "/manager/team/2?assignment=assigned")
+        self.assertEqual(
+            response.headers["location"],
+            "/manager/team/2?assignment=assigned#assignment-result",
+        )
         self.assertEqual(
             self.assignment_service.calls,
             [("intertop", 2, "alpha", 10, None, None, None)],
@@ -2539,7 +2545,10 @@ class ManagerTeamPageTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 303)
-        self.assertEqual(response.headers["location"], "/manager/team/2?assignment=assigned")
+        self.assertEqual(
+            response.headers["location"],
+            "/manager/team/2?assignment=assigned#assignment-result",
+        )
         self.assertEqual(
             self.assignment_service.calls,
             [("intertop", 2, "alpha", 10, "2026-09-15 18:00:00", None, None)],
