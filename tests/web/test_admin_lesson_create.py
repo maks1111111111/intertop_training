@@ -358,12 +358,14 @@ class AdminLessonCreatePageTests(unittest.TestCase):
         self.assertIn("Новый урок", response.text)
 
     def test_new_lesson_appears_on_student_course_page(self) -> None:
-        _authenticate_test_web_user(self.client.app)
+        _authenticate_test_web_user(self.client.app, role="admin")
         _write_course(self.courses_dir, "alpha", title="Alpha Course")
         self.app.state.content_runtime.refresh()
 
-        self.client.post("/admin/courses/alpha/lessons/create")
+        create_response = self.client.post("/admin/courses/alpha/lessons/create")
 
+        self.assertEqual(create_response.status_code, 200)
+        _authenticate_test_web_user(self.client.app)
         response = self.client.get("/courses/alpha")
         self.assertEqual(response.status_code, 200)
         self.assertIn("Новый урок", response.text)

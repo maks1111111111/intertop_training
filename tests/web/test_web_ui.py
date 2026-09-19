@@ -203,7 +203,7 @@ def _create_test_app(
     return app, db_tmp, db_path, upload_tmp
 
 
-def _authenticate_test_web_user(app) -> int:
+def _authenticate_test_web_user(app, *, role: str = "student") -> int:
     """Provide the canonical learner identity used by authenticated Web UI tests."""
     with get_connection(app.state.db_path) as connection:
         row = connection.execute(
@@ -219,7 +219,7 @@ def _authenticate_test_web_user(app) -> int:
         telegram_id=_WEB_TEST_TELEGRAM_ID,
         company_id="intertop",
         company_name="Intertop Retail",
-        role="student",
+        role=role,
     )
     def provide_identity(request: Request) -> WebIdentity:
         request.state.web_identity = identity

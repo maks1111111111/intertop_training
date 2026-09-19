@@ -2430,17 +2430,21 @@ def admin_knowledge_archive(
 def _render_admin_knowledge_ask_page(
     request: Request,
     *,
+    identity: WebIdentity,
     question: str = "",
     language: str = "ru",
     error_message: str = "",
     answer_view: Optional[AdminKnowledgeAnswerView] = None,
 ) -> HTMLResponse:
     """Render the Knowledge Base grounded question form and optional answer."""
+    request.state.web_identity = identity
     return templates.TemplateResponse(
         request,
         "admin_knowledge_ask.html",
         {
-            "active_nav": "admin",
+            "identity": identity,
+            "active_nav": "knowledge",
+            "ask_action": "/admin/knowledge/ask" if request.url.path.startswith("/admin/") else "/knowledge/ask",
             "question": question,
             "language": language,
             "error_message": error_message,
@@ -2449,16 +2453,23 @@ def _render_admin_knowledge_ask_page(
     )
 
 
+@router.get("/knowledge/ask", response_class=HTMLResponse, include_in_schema=False,
+            dependencies=[Depends(require_web_identity)])
 @admin_router.get(
     "/admin/knowledge/ask",
     response_class=HTMLResponse,
     include_in_schema=False,
 )
-def admin_knowledge_ask_page(request: Request) -> HTMLResponse:
+def admin_knowledge_ask_page(
+    request: Request,
+    identity: WebIdentity = Depends(require_web_identity),
+) -> HTMLResponse:
     """Render the Knowledge Base grounded question form."""
-    return _render_admin_knowledge_ask_page(request)
+    return _render_admin_knowledge_ask_page(request, identity=identity)
 
 
+@router.post("/knowledge/ask", response_class=HTMLResponse, include_in_schema=False,
+             dependencies=[Depends(require_web_identity)])
 @admin_router.post(
     "/admin/knowledge/ask",
     response_class=HTMLResponse,
@@ -2466,6 +2477,7 @@ def admin_knowledge_ask_page(request: Request) -> HTMLResponse:
 )
 async def admin_knowledge_ask_submit(
     request: Request,
+    identity: WebIdentity = Depends(require_web_identity),
     question_service: AdminKnowledgeQuestionService = Depends(
         get_admin_knowledge_question_service
     ),
@@ -2485,6 +2497,7 @@ async def admin_knowledge_ask_submit(
     except AdminKnowledgeQuestionError as exc:
         return _render_admin_knowledge_ask_page(
             request,
+            identity=identity,
             question=question,
             language=language,
             error_message=exc.message,
@@ -2492,6 +2505,7 @@ async def admin_knowledge_ask_submit(
 
     return _render_admin_knowledge_ask_page(
         request,
+        identity=identity,
         question=question,
         language=language,
         answer_view=answer_view,

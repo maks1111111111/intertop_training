@@ -169,14 +169,15 @@ class AdminCourseDeletePageTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertTrue((self.courses_dir / "alpha").exists())
 
-    def test_manager_can_delete_unused_course(self) -> None:
+    def test_manager_cannot_delete_unused_course(self) -> None:
         self._set_identity("manager")
         _write_course(self.courses_dir, "alpha", title="Alpha Course")
         self._sync_runtime()
 
         response = self.client.post("/admin/courses/alpha/delete", follow_redirects=False)
 
-        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue((self.courses_dir / "alpha").exists())
 
     def test_student_cannot_access_delete_page(self) -> None:
         self._set_identity("student")

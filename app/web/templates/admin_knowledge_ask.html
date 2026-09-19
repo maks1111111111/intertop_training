@@ -6,10 +6,12 @@
 <section class="page-header admin-page-header">
     <div class="admin-page-header-body">
         <nav class="admin-breadcrumb" aria-label="Навигация администратора">
+            {% if identity and identity.role == "admin" %}
             <a href="/admin">Админ</a>
             <span class="admin-breadcrumb-separator">/</span>
             <a href="/admin/knowledge">База знаний</a>
             <span class="admin-breadcrumb-separator">/</span>
+            {% endif %}
             <span>Задать вопрос</span>
         </nav>
         <h1 class="page-title">AI-помощник по базе знаний</h1>
@@ -20,10 +22,12 @@
     </div>
 </section>
 
+{% if identity and identity.role == "admin" %}
 <nav class="admin-subnav" aria-label="Разделы администратора">
     <a href="/admin" class="admin-subnav-link">Курсы</a>
     <a href="/admin/knowledge" class="admin-subnav-link is-active">База знаний</a>
 </nav>
+{% endif %}
 
 <section class="ai-chat" aria-label="Диалог с AI-помощником по базе знаний">
     {% if error_message %}
@@ -86,11 +90,6 @@
                         <span class="ai-chat-source-meta">
                             Использовано фрагментов: {{ group.fragment_count }}
                         </span>
-                        {% if identity and identity.role != "student" %}
-                            <a class="ai-chat-source-link" href="{{ group.view_url }}">
-                                Открыть документ →
-                            </a>
-                        {% endif %}
                     </div>
                 </div>
                 {% endfor %}
@@ -138,7 +137,7 @@
     <form
         class="ai-chat-composer"
         id="ai-chat-composer"
-        action="/admin/knowledge/ask"
+        action="{{ ask_action }}"
         method="post"
         aria-label="Форма вопроса к базе знаний"
     >
@@ -172,9 +171,11 @@
             </div>
         </div>
 
+        {% if identity and identity.role == "admin" %}
         <div class="ai-chat-composer-footer">
             <a class="button button-secondary button-small" href="/admin/knowledge">Назад к документам</a>
         </div>
+        {% endif %}
     </form>
 </section>
 

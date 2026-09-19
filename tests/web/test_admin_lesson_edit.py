@@ -682,11 +682,11 @@ class AdminLessonEditPageTests(unittest.TestCase):
         mock_refresh.assert_not_called()
 
     def test_student_lesson_reflects_updated_content(self) -> None:
-        _authenticate_test_web_user(self.client.app)
+        _authenticate_test_web_user(self.client.app, role="admin")
         _write_lesson_with_quality_fields(self.courses_dir)
         self.app.state.content_runtime.refresh()
 
-        self.client.post(
+        edit_response = self.client.post(
             "/admin/courses/quality-course/lessons/lesson_01/edit",
             data={
                 "title": "Student visible title",
@@ -698,6 +698,8 @@ class AdminLessonEditPageTests(unittest.TestCase):
             },
         )
 
+        self.assertEqual(edit_response.status_code, 200)
+        _authenticate_test_web_user(self.client.app)
         response = self.client.get("/courses/quality-course/lessons/lesson_01")
         html = response.text
 

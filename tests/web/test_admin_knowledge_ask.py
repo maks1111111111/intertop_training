@@ -138,6 +138,31 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_employee_and_manager_can_ask_without_document_access(self) -> None:
+        self.fake_service.result = _success_view()
+        for role in ("student", "manager"):
+            with self.subTest(role=role):
+                self.app.dependency_overrides[get_current_web_identity] = (
+                    lambda role=role: WebIdentity(
+                        user_id=10,
+                        telegram_id=None,
+                        company_id="intertop",
+                        company_name="Intertop Retail",
+                        role=role,
+                    )
+                )
+                page = self.client.get("/knowledge/ask")
+                self.assertEqual(page.status_code, 200)
+                self.assertIn('action="/knowledge/ask"', page.text)
+                answer = self.client.post(
+                    "/knowledge/ask",
+                    data={"question": "Как оформить возврат?", "language": "ru"},
+                )
+                self.assertEqual(answer.status_code, 200)
+                self.assertIn("Возврат оформляется", answer.text)
+                self.assertNotIn("Открыть документ", answer.text)
+                self.assertEqual(self.client.get("/admin/knowledge").status_code, 403)
+
     def test_ask_page_shows_ai_assistant_title(self) -> None:
         response = self.client.get("/admin/knowledge/ask")
 
@@ -189,7 +214,7 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
     def test_knowledge_page_links_to_ask_page(self) -> None:
         response = self.client.get("/admin/knowledge")
 
-        self.assertIn('href="/admin/knowledge/ask"', response.text)
+        self.assertIn('href="/knowledge/ask"', response.text)
         self.assertIn("Задать вопрос", response.text)
 
     def test_ask_page_marks_subnav_as_active(self) -> None:
@@ -399,7 +424,7 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
 
         self.assertNotIn('href="#"', response.text)
 
-    def test_post_success_renders_document_open_link(self) -> None:
+    def test_post_success_does_not_render_document_open_link(self) -> None:
         self.fake_service.result = _success_view()
 
         response = self.client.post(
@@ -407,8 +432,8 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
             data={"question": "Как оформить возврат?", "language": "ru"},
         )
 
-        self.assertIn('href="/admin/knowledge/doc-a"', response.text)
-        self.assertIn("Открыть документ →", response.text)
+        self.assertNotIn('href="/admin/knowledge/doc-a"', response.text)
+        self.assertNotIn("Открыть документ →", response.text)
 
     def test_post_success_renders_grouped_fragment_count(self) -> None:
         self.fake_service.result = _success_view(

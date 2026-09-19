@@ -209,11 +209,11 @@ class AdminCourseEditPageTests(unittest.TestCase):
         self.assertEqual(payload["language"], "en")
 
     def test_student_course_reflects_updated_values(self) -> None:
-        _authenticate_test_web_user(self.client.app)
+        _authenticate_test_web_user(self.client.app, role="admin")
         _write_course(self.courses_dir, "alpha", title="Alpha Course")
         self.app.state.content_runtime.refresh()
 
-        self.client.post(
+        edit_response = self.client.post(
             "/admin/courses/alpha/edit",
             data={
                 "title": "Student Visible Title",
@@ -222,6 +222,8 @@ class AdminCourseEditPageTests(unittest.TestCase):
             },
         )
 
+        self.assertEqual(edit_response.status_code, 200)
+        _authenticate_test_web_user(self.client.app)
         response = self.client.get("/courses/alpha")
 
         self.assertEqual(response.status_code, 200)

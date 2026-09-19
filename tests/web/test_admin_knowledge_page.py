@@ -133,7 +133,7 @@ class AdminKnowledgePageTests(unittest.TestCase):
         response = self.client.get("/admin/knowledge")
 
         self.assertIn("Задать вопрос", response.text)
-        self.assertIn('href="/admin/knowledge/ask"', response.text)
+        self.assertIn('href="/knowledge/ask"', response.text)
 
     def test_knowledge_page_marks_subnav_as_active(self) -> None:
         response = self.client.get("/admin/knowledge")
