@@ -370,7 +370,7 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         )
         self.assertNotIn("ai-chat-message--insufficient", response.text)
 
-    def test_post_success_renders_source_title(self) -> None:
+    def test_post_success_hides_source_title(self) -> None:
         self.fake_service.result = _success_view()
 
         response = self.client.post(
@@ -378,10 +378,10 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
             data={"question": "Как оформить возврат?", "language": "ru"},
         )
 
-        self.assertIn("Return Policy", response.text)
-        self.assertIn("Customer Service", response.text)
+        self.assertNotIn("Return Policy", response.text)
+        self.assertNotIn("Customer Service", response.text)
 
-    def test_post_success_renders_source_original_filename(self) -> None:
+    def test_post_success_hides_source_original_filename(self) -> None:
         self.fake_service.result = _success_view()
 
         response = self.client.post(
@@ -389,10 +389,10 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
             data={"question": "Как оформить возврат?", "language": "ru"},
         )
 
-        self.assertIn("returns.pdf", response.text)
-        self.assertIn("service.docx", response.text)
+        self.assertNotIn("returns.pdf", response.text)
+        self.assertNotIn("service.docx", response.text)
 
-    def test_post_success_renders_compact_source_cards(self) -> None:
+    def test_post_success_hides_source_cards(self) -> None:
         self.fake_service.result = _success_view()
 
         response = self.client.post(
@@ -401,8 +401,8 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         )
 
         html = response.text
-        self.assertIn("ai-chat-sources", html)
-        self.assertIn("ai-chat-source-card", html)
+        self.assertNotIn("ai-chat-sources", html)
+        self.assertNotIn("ai-chat-source-card", html)
 
     def test_post_success_does_not_show_source_number_as_primary_label(self) -> None:
         self.fake_service.result = _success_view()
@@ -435,7 +435,7 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         self.assertNotIn('href="/admin/knowledge/doc-a"', response.text)
         self.assertNotIn("Открыть документ →", response.text)
 
-    def test_post_success_renders_grouped_fragment_count(self) -> None:
+    def test_post_success_hides_grouped_fragment_count(self) -> None:
         self.fake_service.result = _success_view(
             source_groups=(
                 AdminKnowledgeAnswerSourceGroup(
@@ -454,9 +454,9 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
             data={"question": "Как оформить возврат?", "language": "ru"},
         )
 
-        self.assertIn("Использовано фрагментов: 2", response.text)
+        self.assertNotIn("Использовано фрагментов: 2", response.text)
 
-    def test_post_success_renders_chunk_excerpt(self) -> None:
+    def test_post_success_hides_chunk_excerpt(self) -> None:
         from app.web.admin_knowledge_question_service import (
             AdminKnowledgeAnswerChunkExcerpt,
         )
@@ -484,13 +484,13 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
             data={"question": "Как оформить возврат?", "language": "ru"},
         )
 
-        self.assertIn("ai-chat-source-excerpt", response.text)
-        self.assertIn(
+        self.assertNotIn("ai-chat-source-excerpt", response.text)
+        self.assertNotIn(
             "Активно слушай, проявляй интерес и понимание.",
             response.text,
         )
 
-    def test_post_success_groups_duplicate_document_citations(self) -> None:
+    def test_post_success_hides_duplicate_document_citations(self) -> None:
         self.fake_service.result = _success_view(
             sources=(
                 AdminKnowledgeAnswerSource(
@@ -526,10 +526,10 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         )
 
         html = response.text
-        self.assertEqual(html.count("ai-chat-source-card"), 1)
-        self.assertIn("Использовано фрагментов: 2", html)
+        self.assertEqual(html.count("ai-chat-source-card"), 0)
+        self.assertNotIn("Использовано фрагментов: 2", html)
 
-    def test_post_success_preserves_source_ordering(self) -> None:
+    def test_post_success_hides_all_source_titles(self) -> None:
         self.fake_service.result = _success_view()
 
         response = self.client.post(
@@ -538,9 +538,8 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         )
 
         html = response.text
-        first_index = html.index("Return Policy")
-        second_index = html.index("Customer Service")
-        self.assertLess(first_index, second_index)
+        self.assertNotIn("Return Policy", html)
+        self.assertNotIn("Customer Service", html)
 
     def test_post_success_preserves_submitted_question_in_textarea(self) -> None:
         self.fake_service.result = _success_view()

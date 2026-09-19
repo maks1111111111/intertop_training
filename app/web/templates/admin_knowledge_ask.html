@@ -69,33 +69,6 @@
 
             {% if answer_view.sufficient_context %}
             <div class="ai-chat-message-body">{{ answer_view.answer }}</div>
-
-            {% if answer_view.source_groups %}
-            <div class="ai-chat-sources" aria-label="Источники ответа">
-                {% for group in answer_view.source_groups %}
-                <div class="ai-chat-source-card">
-                    <span class="ai-chat-source-icon" aria-hidden="true">📄</span>
-                    <div class="ai-chat-source-content">
-                        {% if group.title %}
-                        <span class="ai-chat-source-title">{{ group.title }}</span>
-                        {% endif %}
-                        {% if group.original_filename %}
-                        <span class="ai-chat-source-filename">{{ group.original_filename }}</span>
-                        {% endif %}
-                        {% for excerpt in group.excerpts %}
-                        {% if excerpt.excerpt %}
-                        <blockquote class="ai-chat-source-excerpt">{{ excerpt.excerpt }}</blockquote>
-                        {% endif %}
-                        {% endfor %}
-                        <span class="ai-chat-source-meta">
-                            Использовано фрагментов: {{ group.fragment_count }}
-                        </span>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-            {% endif %}
-
             {% else %}
             <p class="ai-chat-insufficient-message" role="status">
                 Недостаточно информации в опубликованных документах.
