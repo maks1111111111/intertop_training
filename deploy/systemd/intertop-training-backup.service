@@ -18,8 +18,10 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectHome=yes
 ProtectSystem=strict
-# SQLite's online backup API must see the live database, but never write it.
-ReadOnlyPaths=/srv/intertop-training/data
+# A read-only SQLite connection may still create WAL/-shm sidecar files.
+# The backup code opens the database with mode=ro; limit filesystem writes to
+# the database directory and the backup destination.
+ReadWritePaths=/srv/intertop-training/data
 ReadWritePaths=/var/backups/intertop-training
 ProtectKernelTunables=yes
 ProtectKernelModules=yes

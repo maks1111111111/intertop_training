@@ -131,6 +131,9 @@ The timer starts a consistent SQLite backup once each day at 03:15 server time,
 with a random delay of up to 30 minutes. It keeps the newest 14 local snapshots.
 This is a recovery layer, not an offsite backup strategy: replicate the resulting
 files to separate durable storage using the organisation's approved backup tool.
+The SQLite backup connection uses `mode=ro`, but SQLite may need to create
+WAL/-shm sidecar files in the database directory. The systemd unit therefore
+allows the `intertop` user to write only there and to the backup directory.
 
 ```bash
 cd /opt/intertop-training
@@ -140,6 +143,10 @@ sudo install -o root -g root -m 0644 \
 sudo install -o root -g root -m 0644 \
   deploy/systemd/intertop-training-backup.timer \
   /etc/systemd/system/intertop-training-backup.timer
+# On hosts with the old source-db.conf drop-in, verify it contains only the
+# obsolete ReadOnlyPaths setting, then move it aside before reloading systemd.
+# sudo mv /etc/systemd/system/intertop-training-backup.service.d/source-db.conf \
+#   /etc/systemd/system/intertop-training-backup.service.d/source-db.conf.disabled
 sudo systemctl daemon-reload
 sudo systemctl enable --now intertop-training-backup.timer
 sudo systemctl start intertop-training-backup.service
