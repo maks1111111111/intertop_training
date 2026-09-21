@@ -241,13 +241,13 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         self.assertIn("Где найти инструкцию по открытию смены?", html)
         self.assertNotIn("найтиинструкцию", html)
 
-    def test_ask_page_title_uses_intertop_training_brand(self) -> None:
+    def test_ask_page_title_uses_mentor_connect_brand(self) -> None:
         response = self.client.get("/admin/knowledge/ask")
 
-        self.assertIn("Intertop Training", response.text)
-        self.assertNotIn("IntertopTraining", response.text)
+        self.assertIn("Mentor Connect", response.text)
+        self.assertNotIn("MentorConnect", response.text)
         self.assertIn(
-            "<title>AI-помощник — База знаний — Intertop Training</title>",
+            "<title>AI-помощник — База знаний — Mentor Connect</title>",
             response.text,
         )
 

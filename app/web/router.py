@@ -1921,13 +1921,16 @@ def logout_submit() -> RedirectResponse:
     return response
 
 
-@router.get("/", include_in_schema=False)
+@router.get("/", include_in_schema=False, response_model=None)
 def root(
+    request: Request,
     identity: Optional[WebIdentity] = Depends(get_current_web_identity),
-) -> RedirectResponse:
-    """Redirect the site root according to Web authentication state."""
-    target = "/dashboard" if identity is not None else "/login"
-    return RedirectResponse(url=target, status_code=302)
+):
+    """Show the public landing page or return a learner to their workspace."""
+    if identity is not None:
+        return RedirectResponse(url="/dashboard", status_code=302)
+
+    return templates.TemplateResponse(request, "landing.html")
 
 
 @router.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)

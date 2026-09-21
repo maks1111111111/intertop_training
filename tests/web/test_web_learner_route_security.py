@@ -79,14 +79,15 @@ class WebLearnerRouteSecurityTests(unittest.TestCase):
         self.assertEqual(response.status_code, 303)
         self.assertEqual(response.headers.get("location"), "/login")
 
-    def test_anonymous_root_redirects_to_login(self) -> None:
+    def test_anonymous_root_shows_public_landing_page(self) -> None:
         response = self.client.get(
             "/",
             follow_redirects=False,
         )
 
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers["location"], "/login")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Mentor Connect", response.text)
+        self.assertIn('href="/login"', response.text)
 
     def test_authenticated_root_redirects_to_dashboard(self) -> None:
         self._set_identity()
