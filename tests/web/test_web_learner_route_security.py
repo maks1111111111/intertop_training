@@ -88,6 +88,23 @@ class WebLearnerRouteSecurityTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Mentor Connect", response.text)
         self.assertIn('href="/login"', response.text)
+        self.assertIn('href="/privacy"', response.text)
+        self.assertIn('href="/terms"', response.text)
+        self.assertIn("support@mentorconnect.kz", response.text)
+
+    def test_privacy_page_is_public(self) -> None:
+        response = self.client.get("/privacy")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Политика конфиденциальности", response.text)
+        self.assertIn("support@mentorconnect.kz", response.text)
+
+    def test_terms_page_is_public(self) -> None:
+        response = self.client.get("/terms")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Условия использования", response.text)
+        self.assertIn("пилотной версии", response.text)
 
     def test_authenticated_root_redirects_to_dashboard(self) -> None:
         self._set_identity()

@@ -2018,6 +2018,18 @@ def root(
     return templates.TemplateResponse(request, "landing.html")
 
 
+@router.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
+def privacy_page(request: Request) -> HTMLResponse:
+    """Render the public personal-data and privacy notice."""
+    return templates.TemplateResponse(request, "privacy.html")
+
+
+@router.get("/terms", response_class=HTMLResponse, include_in_schema=False)
+def terms_page(request: Request) -> HTMLResponse:
+    """Render the public pilot terms of use."""
+    return templates.TemplateResponse(request, "terms.html")
+
+
 @router.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
 def dashboard_page(
     request: Request,

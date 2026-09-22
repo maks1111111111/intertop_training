@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="index,follow">
+    <title>{% block title %}Mentor Connect{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/app.css?v=20260923-1">
+</head>
+<body class="legal-body">
+    <header class="legal-header">
+        <a class="landing-brand" href="/" aria-label="Mentor Connect — главная">
+            <span class="landing-brand-mark" aria-hidden="true">M</span>
+            <span>Mentor Connect</span>
+        </a>
+        <a class="legal-back-link" href="/">На главную</a>
+    </header>
+    <main class="legal-shell">
+        <article class="legal-document">
+            {% block content %}{% endblock %}
+        </article>
+    </main>
+</body>
+</html>
