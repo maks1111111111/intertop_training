@@ -228,6 +228,23 @@ class WebLoginRouteTests(unittest.TestCase):
             response.cookies,
         )
 
+    def test_repeated_failed_logins_are_rate_limited(self) -> None:
+        invalid_data = {
+            "email": "user@example.com",
+            "password": "wrong-password",
+            "company_id": "login-company",
+        }
+        for _ in range(5):
+            response = self.client.post("/login", data=invalid_data)
+            self.assertEqual(response.status_code, 200)
+
+        blocked = self.client.post("/login", data=invalid_data)
+
+        self.assertEqual(blocked.status_code, 429)
+        self.assertIn("Слишком много попыток входа", blocked.text)
+        self.assertGreater(int(blocked.headers["retry-after"]), 0)
+        self.assertNotIn(WEB_SESSION_COOKIE_NAME, blocked.cookies)
+
     def test_unknown_email_returns_same_generic_error(self) -> None:
         response = self.client.post(
             "/login",

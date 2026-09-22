@@ -85,6 +85,27 @@ class PlatformAdminRouteTests(unittest.TestCase):
         self.assertIn("Управление платформой", dashboard.text)
         self.assertIn("Владелец", dashboard.text)
 
+    def test_repeated_platform_login_failures_are_rate_limited(self) -> None:
+        invalid_data = {
+            "email": "owner@example.com",
+            "password": "wrong-password",
+        }
+        for _ in range(5):
+            response = self.client.post(
+                "/platform-admin/login",
+                data=invalid_data,
+            )
+            self.assertEqual(response.status_code, 200)
+
+        blocked = self.client.post(
+            "/platform-admin/login",
+            data=invalid_data,
+        )
+
+        self.assertEqual(blocked.status_code, 429)
+        self.assertIn("Слишком много попыток входа", blocked.text)
+        self.assertGreater(int(blocked.headers["retry-after"]), 0)
+
     def test_audit_history_is_visible_to_owner_only(self) -> None:
         self._login()
 

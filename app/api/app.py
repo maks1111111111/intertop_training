@@ -18,6 +18,7 @@ from app.services.tenant_content_runtime_registry import (
     TenantContentRuntimeRegistry,
 )
 from app.web.csrf import SameOriginCSRFMiddleware
+from app.web.login_attempt_guard import LoginAttemptGuard
 from app.web.router import router as web_router
 from app.web.security_headers import SecurityHeadersMiddleware
 
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
     application.state.upload_dir = runtime_paths.upload_dir
     application.state.runtime_paths = runtime_paths
     application.state.deployment_config = deployment_config
+    application.state.login_attempt_guard = LoginAttemptGuard()
     application.include_router(router)
     application.include_router(web_router)
     static_dir = Path(__file__).resolve().parents[1] / "web" / "static"

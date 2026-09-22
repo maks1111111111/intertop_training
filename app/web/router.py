@@ -177,6 +177,7 @@ from app.web.admin_knowledge_upload_service import (
     AdminKnowledgeUploadService,
 )
 from app.web.dashboard_service import DashboardService
+from app.web.login_attempt_guard import LoginAttemptGuard
 from app.web.manager_course_assignment_history_service import (
     ManagerCourseAssignmentHistoryService,
 )
@@ -262,6 +263,11 @@ def get_content_runtime(request: Request) -> ContentRuntime:
 def get_db_path(request: Request) -> Path:
     """Return the SQLite database path attached to the application."""
     return request.app.state.db_path
+
+
+def get_login_attempt_guard(request: Request) -> LoginAttemptGuard:
+    """Return the process-local guard shared by both password login routes."""
+    return request.app.state.login_attempt_guard
 
 
 # Temporary web identity placeholders until authentication is implemented.
@@ -1111,6 +1117,8 @@ def _render_login_page(
     email: str = "",
     company_id: str = "",
     error_message: str = "",
+    status_code: int = 200,
+    headers: Optional[dict[str, str]] = None,
 ) -> HTMLResponse:
     """Render the password login form."""
     return templates.TemplateResponse(
@@ -1121,6 +1129,8 @@ def _render_login_page(
             "company_id": company_id,
             "error_message": error_message,
         },
+        status_code=status_code,
+        headers=headers,
     )
 
 
@@ -1129,6 +1139,8 @@ def _render_platform_login_page(
     *,
     email: str = "",
     error_message: str = "",
+    status_code: int = 200,
+    headers: Optional[dict[str, str]] = None,
 ) -> HTMLResponse:
     """Render the platform-only login form without a tenant selector."""
     return templates.TemplateResponse(
@@ -1138,7 +1150,14 @@ def _render_platform_login_page(
             "email": email,
             "error_message": error_message,
         },
+        status_code=status_code,
+        headers=headers,
     )
+
+
+def _login_client_address(request: Request) -> str:
+    """Return the proxy-validated client address exposed by Uvicorn."""
+    return request.client.host if request.client is not None else "unknown"
 
 
 def _render_platform_companies_page(
@@ -1256,6 +1275,7 @@ async def login_submit(
         get_web_authentication_service
     ),
     session_service: WebSessionService = Depends(get_web_session_service),
+    attempt_guard: LoginAttemptGuard = Depends(get_login_attempt_guard),
 ) -> HTMLResponse:
     """Authenticate credentials and create a signed Web session."""
     form = await request.form()
@@ -1263,6 +1283,22 @@ async def login_submit(
     email = str(form.get("email") or "").strip()
     password = str(form.get("password") or "")
     company_id = str(form.get("company_id") or "").strip()
+    client_address = _login_client_address(request)
+    account_identifier = f"{company_id}\n{email}"
+    decision = attempt_guard.check(
+        scope="tenant",
+        client_address=client_address,
+        account_identifier=account_identifier,
+    )
+    if not decision.allowed:
+        return _render_login_page(
+            request,
+            email=email,
+            company_id=company_id,
+            error_message="Слишком много попыток входа. Повторите позже.",
+            status_code=429,
+            headers={"Retry-After": str(decision.retry_after_seconds)},
+        )
 
     try:
         identity = authentication_service.authenticate(
@@ -1275,12 +1311,23 @@ async def login_submit(
         identity = None
 
     if identity is None:
+        attempt_guard.record_failure(
+            scope="tenant",
+            client_address=client_address,
+            account_identifier=account_identifier,
+        )
         return _render_login_page(
             request,
             email=email,
             company_id=company_id,
             error_message="Неверные данные для входа.",
         )
+
+    attempt_guard.record_success(
+        scope="tenant",
+        client_address=client_address,
+        account_identifier=account_identifier,
+    )
 
     token = session_service.create_token(
         user_id=identity.user_id,
@@ -1329,22 +1376,48 @@ async def platform_login_submit(
         get_platform_authentication_service
     ),
     session_service: WebSessionService = Depends(get_web_session_service),
+    attempt_guard: LoginAttemptGuard = Depends(get_login_attempt_guard),
 ) -> HTMLResponse:
     """Authenticate an explicit platform admin into a platform-only session."""
     form = await request.form()
     email = str(form.get("email") or "").strip()
     password = str(form.get("password") or "")
+    client_address = _login_client_address(request)
+    decision = attempt_guard.check(
+        scope="platform",
+        client_address=client_address,
+        account_identifier=email,
+    )
+    if not decision.allowed:
+        return _render_platform_login_page(
+            request,
+            email=email,
+            error_message="Слишком много попыток входа. Повторите позже.",
+            status_code=429,
+            headers={"Retry-After": str(decision.retry_after_seconds)},
+        )
     context = authentication_service.authenticate(
         db_path,
         email=email,
         password=password,
     )
     if context is None:
+        attempt_guard.record_failure(
+            scope="platform",
+            client_address=client_address,
+            account_identifier=email,
+        )
         return _render_platform_login_page(
             request,
             email=email,
             error_message="Неверные данные для входа.",
         )
+
+    attempt_guard.record_success(
+        scope="platform",
+        client_address=client_address,
+        account_identifier=email,
+    )
 
     token = session_service.create_token(
         user_id=context.user_id,
