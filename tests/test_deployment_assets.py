@@ -51,6 +51,7 @@ class DeploymentAssetTests(unittest.TestCase):
         self.assertIn("INTERTOP_DB_PATH=/srv/intertop-training/data/training.db", environment)
         self.assertIn("INTERTOP_COURSES_DIR=/srv/intertop-training/courses", environment)
         self.assertIn("INTERTOP_UPLOAD_DIR=/srv/intertop-training/uploads", environment)
+        self.assertIn("INTERTOP_PLATFORM_OWNER_TOTP_SECRET", environment)
         self.assertNotIn("OPENAI_API_KEY=sk-", environment)
 
     def test_runbook_uses_versioned_health_and_readiness_endpoints(self) -> None:

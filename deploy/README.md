@@ -85,6 +85,31 @@ sudo -u intertop .venv/bin/python -m app.platform_owner_setup \
 Use `/platform-admin/login` through HTTPS to sign in. Create tenant companies
 and their administrators only from the platform-owner interface.
 
+### Enable two-step protection for the owner
+
+Generate a Base32 setup key on the VPS. Add that key manually to Google
+Authenticator, Microsoft Authenticator, 1Password, or another TOTP application.
+Do not paste the key into chat or commit it to Git.
+
+```bash
+cd /opt/intertop-training
+sudo -u intertop .venv/bin/python -m app.platform_owner_mfa_setup
+sudoedit /etc/intertop-training/staging.env
+```
+
+Add the displayed key to the protected environment file:
+
+```text
+INTERTOP_PLATFORM_OWNER_TOTP_SECRET=THE_DISPLAYED_SETUP_KEY
+```
+
+Restart the Web service and confirm that the owner login rejects a missing code
+and accepts the current six-digit code from the authenticator application:
+
+```bash
+sudo systemctl restart intertop-training-web
+```
+
 ## 4. Validate data before a release
 
 Run the combined preflight against a backup or an offline database after the

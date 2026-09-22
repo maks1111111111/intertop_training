@@ -13,6 +13,7 @@ from app.repositories.password_credential_repository import PasswordCredentialRe
 from app.repositories.platform_admin_repository import PlatformAdminRepository
 from app.repositories.company_repository import CompanyRepository
 from app.web.password_hashing_service import PasswordHashingService
+from app.web.router import get_platform_owner_totp
 from app.web.router import get_web_session_service
 from app.web.web_session_service import (
     PLATFORM_SESSION_SCOPE,
@@ -109,6 +110,32 @@ class PlatformAdminRouteTests(unittest.TestCase):
         self.assertEqual(blocked.status_code, 429)
         self.assertIn("Слишком много попыток входа", blocked.text)
         self.assertGreater(int(blocked.headers["retry-after"]), 0)
+
+    def test_owner_must_supply_authenticator_code_when_configured(self) -> None:
+        class ConfiguredTOTP:
+            is_configured = True
+
+            def verify(self, code: str) -> bool:
+                return code == "287082"
+
+        totp = ConfiguredTOTP()
+        self.app.dependency_overrides[get_platform_owner_totp] = lambda: totp
+
+        missing = self._login()
+        self.assertEqual(missing.status_code, 200)
+        self.assertIn("Неверные данные для входа", missing.text)
+
+        accepted = self.client.post(
+            "/platform-admin/login",
+            data={
+                "email": "owner@example.com",
+                "password": "Strong-password-123!",
+                "otp_code": "287082",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(accepted.status_code, 303)
+        self.assertEqual(accepted.headers["location"], "/platform-admin")
 
     def test_audit_history_is_visible_to_owner_only(self) -> None:
         self._login()

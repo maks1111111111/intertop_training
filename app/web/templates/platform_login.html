@@ -24,6 +24,19 @@
                 <span>Пароль</span>
                 <input type="password" name="password" autocomplete="current-password" required>
             </label>
+            <label class="auth-field">
+                <span>Код подтверждения</span>
+                <input
+                    type="text"
+                    name="otp_code"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    pattern="[0-9 ]{6,8}"
+                    maxlength="8"
+                    placeholder="6 цифр из приложения"
+                >
+                <small class="auth-field-hint">Требуется для входа владельца, если двухэтапная защита подключена.</small>
+            </label>
             <button type="submit" class="button button-primary auth-submit">Войти</button>
         </form>
     </div>

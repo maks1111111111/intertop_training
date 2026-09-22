@@ -4905,6 +4905,12 @@ a:focus-visible,
     outline-offset: 2px;
 }
 
+.auth-field-hint {
+    color: #6b7280;
+    font-size: 0.75rem;
+    line-height: 1.45;
+}
+
 .auth-submit {
     width: 100%;
     margin-top: 0.25rem;
@@ -4914,6 +4920,43 @@ a:focus-visible,
 }
 
 /* Platform administration */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: 0.85rem;
+    margin-bottom: 2rem;
+}
+
+.dashboard-card {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 0;
+    padding: 1.15rem 1.25rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.85rem;
+    background: #ffffff;
+}
+
+.dashboard-card-label,
+.dashboard-card-value {
+    display: block;
+}
+
+.dashboard-card-label {
+    color: #64748b;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.045em;
+    line-height: 1.35;
+    text-transform: uppercase;
+}
+
+.dashboard-card-value {
+    color: #0f172a;
+    font-size: 1.65rem;
+    line-height: 1.1;
+}
+
 .platform-subnav {
     display: flex;
     flex-wrap: wrap;

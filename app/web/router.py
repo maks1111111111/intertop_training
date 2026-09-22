@@ -200,6 +200,7 @@ from app.web.manager_team_development_actions import (
 )
 from app.web.manager_team_service import ManagerTeamService
 from app.web.password_hashing_service import PasswordHashingService
+from app.web.platform_owner_totp import PlatformOwnerTOTP
 from app.web.platform_authentication_service import PlatformAuthenticationService
 from app.repositories.platform_support_access_repository import (
     PlatformSupportAccessRepository,
@@ -310,6 +311,11 @@ def get_platform_authentication_service() -> PlatformAuthenticationService:
         PasswordHashingService(),
         get_platform_admin_context_service(),
     )
+
+
+def get_platform_owner_totp() -> PlatformOwnerTOTP:
+    """Return optional owner-only authenticator verification from the environment."""
+    return PlatformOwnerTOTP.from_environment()
 
 
 def get_platform_company_service() -> PlatformCompanyService:
@@ -1377,11 +1383,13 @@ async def platform_login_submit(
     ),
     session_service: WebSessionService = Depends(get_web_session_service),
     attempt_guard: LoginAttemptGuard = Depends(get_login_attempt_guard),
+    owner_totp: PlatformOwnerTOTP = Depends(get_platform_owner_totp),
 ) -> HTMLResponse:
     """Authenticate an explicit platform admin into a platform-only session."""
     form = await request.form()
     email = str(form.get("email") or "").strip()
     password = str(form.get("password") or "")
+    otp_code = str(form.get("otp_code") or "")
     client_address = _login_client_address(request)
     decision = attempt_guard.check(
         scope="platform",
@@ -1401,7 +1409,11 @@ async def platform_login_submit(
         email=email,
         password=password,
     )
-    if context is None:
+    if context is None or (
+        context.is_owner
+        and owner_totp.is_configured
+        and not owner_totp.verify(otp_code)
+    ):
         attempt_guard.record_failure(
             scope="platform",
             client_address=client_address,
