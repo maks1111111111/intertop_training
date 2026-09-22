@@ -3,7 +3,7 @@
 {% block title %}Platform Admin · Mentor Connect{% endblock %}
 
 {% block content %}
-<section class="page-header">
+<section class="page-header platform-overview-page-header">
     <div>
         <p class="page-eyebrow">Platform Admin</p>
         <h1>Управление платформой</h1>
@@ -16,26 +16,41 @@
 
 {% include "_platform_admin_nav.html" %}
 
-<section class="dashboard-grid" aria-label="Статус платформы">
+<section class="platform-overview-metrics" aria-label="Статус платформы">
     {% if platform_admin.is_owner %}
-    <article class="dashboard-card">
-        <span class="dashboard-card-label">Активные компании</span>
-        <strong class="dashboard-card-value">{{ active_companies|length }}</strong>
+    <article class="platform-overview-metric">
+        <span class="platform-overview-metric-label">Активные компании</span>
+        <strong class="platform-overview-metric-value">{{ active_companies|length }}</strong>
+        <span class="platform-overview-metric-caption">Подключены к платформе</span>
     </article>
     {% endif %}
-    <article class="dashboard-card">
-        <span class="dashboard-card-label">Уровень доступа</span>
-        <strong class="dashboard-card-value">{% if platform_admin.is_owner %}Владелец{% else %}Администратор{% endif %}</strong>
+    <article class="platform-overview-metric">
+        <span class="platform-overview-metric-label">Уровень доступа</span>
+        <strong class="platform-overview-metric-value platform-overview-metric-value--text">{% if platform_admin.is_owner %}Владелец{% else %}Администратор{% endif %}</strong>
+        <span class="platform-overview-metric-caption">Текущая роль в системе</span>
     </article>
 </section>
 
+<div class="platform-overview-columns">
 {% if platform_admin.is_owner %}
-<section class="content-section">
-    <div class="section-heading"><h2>Компании</h2><a href="/platform-admin/companies">Управлять</a></div>
+<section class="platform-overview-section">
+    <div class="platform-overview-section-heading">
+        <div>
+            <p class="platform-overview-section-eyebrow">Рабочие пространства</p>
+            <h2>Компании</h2>
+        </div>
+        <a class="platform-overview-heading-link" href="/platform-admin/companies">Управлять</a>
+    </div>
     {% if active_companies %}
-    <ul class="simple-list">
+    <ul class="platform-overview-company-list">
         {% for company in active_companies %}
-        <li><strong>{{ company.name }}</strong><span>{{ company.id }}</span></li>
+        <li>
+            <span class="platform-overview-company-mark" aria-hidden="true">{{ company.name[:1]|upper }}</span>
+            <span class="platform-overview-company-copy">
+                <strong>{{ company.name }}</strong>
+                <span>Идентификатор: {{ company.id }}</span>
+            </span>
+        </li>
         {% endfor %}
     </ul>
     {% else %}
@@ -44,19 +59,62 @@
 </section>
 {% endif %}
 
-<section class="content-section">
-    <div class="section-heading"><h2>{% if platform_admin.is_owner %}Доступ к платформе{% else %}Поддержка{% endif %}</h2>{% if platform_admin.is_owner %}<a href="/platform-admin/admins">Администраторы</a>{% endif %}</div>
-    <a href="/platform-admin/support">Временный support-доступ</a>
-    {% if platform_admin.is_owner %}<a href="/platform-admin/usage">Использование платформы</a>{% endif %}
+<section class="platform-overview-section">
+    <div class="platform-overview-section-heading">
+        <div>
+            <p class="platform-overview-section-eyebrow">Управление</p>
+            <h2>{% if platform_admin.is_owner %}Доступ к платформе{% else %}Поддержка{% endif %}</h2>
+        </div>
+        {% if platform_admin.is_owner %}<a class="platform-overview-heading-link" href="/platform-admin/admins">Администраторы</a>{% endif %}
+    </div>
+    <div class="platform-overview-actions">
+        <a class="platform-overview-action" href="/platform-admin/support">
+            <span>
+                <strong>Временный support-доступ</strong>
+                <small>Безопасное подключение к компании для помощи</small>
+            </span>
+            <span aria-hidden="true">→</span>
+        </a>
+        {% if platform_admin.is_owner %}
+        <a class="platform-overview-action" href="/platform-admin/usage">
+            <span>
+                <strong>Использование платформы</strong>
+                <small>Лимиты компаний и потребление ресурсов</small>
+            </span>
+            <span aria-hidden="true">→</span>
+        </a>
+        {% endif %}
+    </div>
 </section>
+</div>
 
 {% if platform_admin.is_owner %}
-<section class="content-section">
-    <div class="section-heading"><h2>Последние действия</h2><a href="/platform-admin/audit">Весь журнал</a></div>
+<section class="platform-overview-section platform-overview-audit">
+    <div class="platform-overview-section-heading">
+        <div>
+            <p class="platform-overview-section-eyebrow">Контроль</p>
+            <h2>Последние действия</h2>
+        </div>
+        <a class="platform-overview-heading-link" href="/platform-admin/audit">Весь журнал</a>
+    </div>
     {% if audit_events %}
-    <ul class="simple-list">
+    <ul class="platform-overview-audit-list">
         {% for event in audit_events %}
-        <li><strong>{{ event.action }}</strong><span>{{ event.created_at }} · {{ event.target_type }}: {{ event.target_id }}</span></li>
+        <li>
+            <span class="platform-overview-audit-icon" aria-hidden="true">✓</span>
+            <span class="platform-overview-audit-copy">
+                <strong>
+                    {% if event.action == 'company.created' %}Компания создана
+                    {% elif event.action == 'platform_admin.bootstrap_owner' %}Создан владелец платформы
+                    {% else %}{{ event.action }}{% endif %}
+                </strong>
+                <span>
+                    {% if event.target_type == 'company' %}Компания{% elif event.target_type == 'user' %}Пользователь{% else %}{{ event.target_type }}{% endif %}:
+                    {{ event.target_id }}
+                </span>
+            </span>
+            <time class="platform-overview-audit-time">{{ event.created_at }}</time>
+        </li>
         {% endfor %}
     </ul>
     {% else %}

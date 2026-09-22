@@ -84,6 +84,10 @@ class PlatformAdminRouteTests(unittest.TestCase):
         self.assertEqual(dashboard.status_code, 200)
         self.assertIn("Управление платформой", dashboard.text)
         self.assertIn("Владелец", dashboard.text)
+        self.assertIn("platform-overview-metrics", dashboard.text)
+        self.assertIn("platform-overview-actions", dashboard.text)
+        self.assertIn("Создан владелец платформы", dashboard.text)
+        self.assertNotIn(">platform_admin.bootstrap_owner<", dashboard.text)
 
     def test_repeated_platform_login_failures_are_rate_limited(self) -> None:
         invalid_data = {
