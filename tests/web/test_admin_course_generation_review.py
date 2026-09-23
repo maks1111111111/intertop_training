@@ -268,7 +268,8 @@ class AdminCourseGenerationReviewTests(unittest.TestCase):
 
     def test_review_resolves_upload_by_upload_id(self) -> None:
         _confirm_html, review_data = self._upload_and_extract_state()
-        stored_files = list(self.upload_dir.iterdir())
+        tenant_upload_dir = self.upload_dir / "intertop"
+        stored_files = list(tenant_upload_dir.iterdir())
         self.assertEqual(len(stored_files), 1)
         stored_name = stored_files[0].name
         self.assertTrue(stored_name.startswith(review_data["upload_id"]))
@@ -379,6 +380,26 @@ class AdminCourseGenerationReviewTests(unittest.TestCase):
         saved.stored_path.unlink()
         with self.assertRaises(AdminReviewError):
             service.resolve_upload(saved.upload_id)
+
+    def test_upload_id_cannot_be_resolved_by_another_company(self) -> None:
+        company_a = AdminUploadService(self.upload_dir, company_id="company-a")
+        company_b = AdminUploadService(self.upload_dir, company_id="company-b")
+
+        saved = company_a.save_upload("private.pdf", b"%PDF tenant A")
+
+        self.assertEqual(
+            saved.stored_path.parent,
+            (self.upload_dir / "company-a").resolve(),
+        )
+        self.assertFalse((self.upload_dir / "company-b").exists())
+        with self.assertRaises(AdminReviewError):
+            company_b.resolve_upload(saved.upload_id)
+
+    def test_company_id_cannot_escape_upload_root(self) -> None:
+        for company_id in ("../company-a", "company/a", "company\\a", ".."):
+            with self.subTest(company_id=company_id):
+                with self.assertRaises(ValueError):
+                    AdminUploadService(self.upload_dir, company_id=company_id)
 
 
 if __name__ == "__main__":

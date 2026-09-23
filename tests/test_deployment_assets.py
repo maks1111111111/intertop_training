@@ -15,6 +15,7 @@ class DeploymentAssetTests(unittest.TestCase):
 
         self.assertIn("User=intertop", service)
         self.assertIn("EnvironmentFile=/etc/intertop-training/staging.env", service)
+        self.assertIn("ExecStartPre=/opt/intertop-training/.venv/bin/python -m app.deployment_audit", service)
         self.assertIn("ExecStart=/opt/intertop-training/.venv/bin/python -m app.web_server", service)
         self.assertIn("ProtectSystem=strict", service)
         self.assertIn("ReadWritePaths=/srv/intertop-training", service)
@@ -42,6 +43,18 @@ class DeploymentAssetTests(unittest.TestCase):
         self.assertIn("ReadWritePaths=/var/backups/intertop-training", service)
         self.assertIn("UMask=0077", service)
         self.assertIn("OnCalendar=*-*-* 03:15:00", timer)
+        self.assertIn("Persistent=true", timer)
+
+    def test_integrity_audit_blocks_startup_and_runs_daily(self) -> None:
+        service = _read("deploy/systemd/intertop-training-audit.service")
+        timer = _read("deploy/systemd/intertop-training-audit.timer")
+
+        self.assertIn("User=intertop", service)
+        self.assertIn("EnvironmentFile=/etc/intertop-training/staging.env", service)
+        self.assertIn("-m app.deployment_audit", service)
+        self.assertIn("ReadWritePaths=/srv/intertop-training/data", service)
+        self.assertIn("ProtectSystem=strict", service)
+        self.assertIn("OnCalendar=*-*-* 04:00:00", timer)
         self.assertIn("Persistent=true", timer)
 
     def test_staging_environment_keeps_state_outside_the_checkout(self) -> None:

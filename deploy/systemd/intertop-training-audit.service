@@ -1,36 +1,29 @@
 [Unit]
-Description=Intertop Training web application
+Description=Tenant and platform integrity audit for Mentor Connect
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=oneshot
 User=intertop
 Group=intertop
 WorkingDirectory=/opt/intertop-training
 EnvironmentFile=/etc/intertop-training/staging.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
-ExecStartPre=/opt/intertop-training/.venv/bin/python -m app.deployment_audit
-ExecStart=/opt/intertop-training/.venv/bin/python -m app.web_server
-Restart=on-failure
-RestartSec=5
-TimeoutStartSec=60
+ExecStart=/opt/intertop-training/.venv/bin/python -m app.deployment_audit
 UMask=0077
 
-# The web process has no reason to write into code, home directories, or devices.
 NoNewPrivileges=yes
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectHome=yes
 ProtectSystem=strict
-ReadWritePaths=/srv/intertop-training
+# SQLite can create WAL/-shm sidecar files even for an audit connection.
+ReadWritePaths=/srv/intertop-training/data
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 LockPersonality=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SystemCallArchitectures=native
-
-[Install]
-WantedBy=multi-user.target

@@ -70,11 +70,12 @@ it into `/srv/intertop-training/data/training.db`, then set ownership to
 
 ## 3. Bootstrap the first platform owner
 
-For a new Web-only installation, run this command exactly once after the Web
-service has created the database. It prompts on the VPS for the owner email and
-password; the password is not echoed or placed in shell history. It atomically
-creates the user, Argon2 password credential, sole platform-owner role, and
-audit event. It refuses to run when any platform administrator already exists.
+For a new Web-only installation, run this command exactly once before enabling
+the Web service. The command initializes the database when needed, then prompts
+on the VPS for the owner email and password; the password is not echoed or
+placed in shell history. It atomically creates the user, Argon2 password
+credential, sole platform-owner role, and audit event. It refuses to run when
+any platform administrator already exists.
 
 ```bash
 cd /opt/intertop-training
@@ -149,6 +150,35 @@ sudo -u intertop .venv/bin/python -m app.database.backup \
 
 Store backups on separate durable storage. A backup on the same VPS is not a
 disaster-recovery backup.
+
+The checked-in Web unit also runs the combined deployment audit through
+`ExecStartPre`. A non-clean tenant or platform audit therefore blocks a restart
+instead of serving a release over inconsistent data.
+
+### Enable the daily integrity audit
+
+Install and enable the audit timer. It runs the same combined audit every day
+after the normal backup window. A failed audit makes the oneshot unit fail and
+records the exact findings in the system journal.
+
+```bash
+cd /opt/intertop-training
+sudo install -o root -g root -m 0644 \
+  deploy/systemd/intertop-training-audit.service \
+  /etc/systemd/system/intertop-training-audit.service
+sudo install -o root -g root -m 0644 \
+  deploy/systemd/intertop-training-audit.timer \
+  /etc/systemd/system/intertop-training-audit.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now intertop-training-audit.timer
+sudo systemctl start intertop-training-audit.service
+sudo systemctl status intertop-training-audit.service --no-pager -l
+sudo systemctl list-timers intertop-training-audit.timer --no-pager
+```
+
+Connect systemd failure notifications to the organisation's monitoring channel
+before relying on this as unattended alerting. Until then, inspect failed units
+and the journal as part of the daily operational checklist.
 
 ## 4. Enable verified daily backups
 

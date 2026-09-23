@@ -27,6 +27,7 @@ from app.web.admin_service import (
 
 
 _UPLOAD_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+_LEGACY_COMPANY_ID = "intertop"
 # Web generation uses adaptive quiz sizing (questions_per_lesson=0) when quiz
 # is enabled. Actual per-lesson counts are computed by quiz_coverage policy.
 _ADAPTIVE_QUESTIONS_PER_LESSON = 0
@@ -386,13 +387,41 @@ def build_generation_loading_view(
 class AdminUploadService:
     """Validate and persist admin course source uploads."""
 
-    def __init__(self, upload_dir: Path) -> None:
-        self._upload_dir = upload_dir
+    def __init__(
+        self,
+        upload_dir: Path,
+        company_id: str = _LEGACY_COMPANY_ID,
+    ) -> None:
+        self._upload_root = upload_dir.resolve()
+        self._company_id = self._validate_company_id(company_id)
+        self._upload_dir = (self._upload_root / self._company_id).resolve()
+        if self._upload_dir.parent != self._upload_root:
+            raise ValueError("company_id must be a single safe path component")
+
+    @staticmethod
+    def _validate_company_id(company_id: str) -> str:
+        if not isinstance(company_id, str):
+            raise ValueError("company_id must be a string")
+        normalized = company_id.strip()
+        if not normalized:
+            raise ValueError("company_id must not be empty")
+        if (
+            normalized in {".", ".."}
+            or "/" in normalized
+            or "\\" in normalized
+        ):
+            raise ValueError("company_id must be a single safe path component")
+        return normalized
 
     @property
     def upload_dir(self) -> Path:
-        """Return the configured upload storage directory."""
+        """Return the current tenant's isolated upload storage directory."""
         return self._upload_dir
+
+    @property
+    def company_id(self) -> str:
+        """Return the tenant that owns every upload resolved by this service."""
+        return self._company_id
 
     def save_upload(self, filename: Optional[str], content: bytes) -> SavedUpload:
         """Validate and persist one uploaded source file.

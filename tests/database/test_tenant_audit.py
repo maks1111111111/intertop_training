@@ -199,6 +199,32 @@ class TenantAuditTests(unittest.TestCase):
         self.assertIn("status=review_required", stdout.getvalue())
         self.assertIn("code=course_company_mismatch", stdout.getvalue())
 
+    def test_audit_reports_legacy_assessment_without_owned_course(self) -> None:
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                "DROP TRIGGER enforce_quiz_attempt_course_company_insert"
+            )
+            connection.execute(
+                """
+                INSERT INTO quiz_attempts (
+                    company_id, user_id, course_slug, quiz_version,
+                    started_at, questions_count
+                )
+                VALUES ('intertop', ?, 'missing-course', 1, CURRENT_TIMESTAMP, 1)
+                """,
+                (self.user_id,),
+            )
+
+        report = audit_tenant_data(self.db_path)
+
+        self.assertIn(
+            ("assessment_course_company_mismatch", "quiz_attempts", "intertop"),
+            {
+                (finding.code, finding.table_name, finding.company_id)
+                for finding in report.findings
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -160,11 +160,9 @@ def _find_cross_tenant_assessment_attempts(
             LEFT JOIN courses
                 ON courses.company_id = {table_name}.company_id
                AND courses.slug = {table_name}.course_slug
-            WHERE {table_name}.company_id != ?
-              AND courses.id IS NULL
+            WHERE courses.id IS NULL
             ORDER BY {table_name}.id ASC
-            """,
-            (LEGACY_COMPANY_ID,),
+            """
         ).fetchall()
         findings.extend(
             TenantAuditFinding(

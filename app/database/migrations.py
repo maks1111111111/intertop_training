@@ -929,6 +929,11 @@ def migrate_learning_tenant_integrity(connection: sqlite3.Connection) -> None:
     """Enforce that learning records belong to the owning course tenant."""
     connection.executescript(
         """
+        DROP TRIGGER IF EXISTS enforce_quiz_attempt_course_company_insert;
+        DROP TRIGGER IF EXISTS enforce_quiz_attempt_course_company_update;
+        DROP TRIGGER IF EXISTS enforce_practical_attempt_course_company_insert;
+        DROP TRIGGER IF EXISTS enforce_practical_attempt_course_company_update;
+
         CREATE TRIGGER IF NOT EXISTS prevent_course_company_reassignment
         BEFORE UPDATE OF company_id ON courses
         FOR EACH ROW WHEN NEW.company_id != OLD.company_id
@@ -993,8 +998,7 @@ def migrate_learning_tenant_integrity(connection: sqlite3.Connection) -> None:
         CREATE TRIGGER IF NOT EXISTS enforce_quiz_attempt_course_company_insert
         BEFORE INSERT ON quiz_attempts
         FOR EACH ROW
-        WHEN NEW.company_id != 'intertop'
-         AND NOT EXISTS (
+        WHEN NOT EXISTS (
             SELECT 1
             FROM courses
             WHERE courses.company_id = NEW.company_id
@@ -1007,8 +1011,7 @@ def migrate_learning_tenant_integrity(connection: sqlite3.Connection) -> None:
         CREATE TRIGGER IF NOT EXISTS enforce_quiz_attempt_course_company_update
         BEFORE UPDATE OF company_id, course_slug ON quiz_attempts
         FOR EACH ROW
-        WHEN NEW.company_id != 'intertop'
-         AND NOT EXISTS (
+        WHEN NOT EXISTS (
             SELECT 1
             FROM courses
             WHERE courses.company_id = NEW.company_id
@@ -1021,8 +1024,7 @@ def migrate_learning_tenant_integrity(connection: sqlite3.Connection) -> None:
         CREATE TRIGGER IF NOT EXISTS enforce_practical_attempt_course_company_insert
         BEFORE INSERT ON practical_task_attempts
         FOR EACH ROW
-        WHEN NEW.company_id != 'intertop'
-         AND NOT EXISTS (
+        WHEN NOT EXISTS (
             SELECT 1
             FROM courses
             WHERE courses.company_id = NEW.company_id
@@ -1035,8 +1037,7 @@ def migrate_learning_tenant_integrity(connection: sqlite3.Connection) -> None:
         CREATE TRIGGER IF NOT EXISTS enforce_practical_attempt_course_company_update
         BEFORE UPDATE OF company_id, course_slug ON practical_task_attempts
         FOR EACH ROW
-        WHEN NEW.company_id != 'intertop'
-         AND NOT EXISTS (
+        WHEN NOT EXISTS (
             SELECT 1
             FROM courses
             WHERE courses.company_id = NEW.company_id

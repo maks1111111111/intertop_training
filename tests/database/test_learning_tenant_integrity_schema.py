@@ -152,6 +152,7 @@ class LearningTenantIntegritySchemaTests(unittest.TestCase):
                     """,
                     (self.user_id,),
                 )
+
             with self.assertRaisesRegex(
                 sqlite3.IntegrityError,
                 "practical-task course belongs to another company",
@@ -210,6 +211,72 @@ class LearningTenantIntegritySchemaTests(unittest.TestCase):
                     "UPDATE practical_task_attempts SET company_id = 'company-b' WHERE id = ?",
                     (practical_id,),
                 )
+
+    def test_legacy_company_has_the_same_assessment_integrity_guards(self) -> None:
+        with get_connection(self.db_path) as connection:
+            with self.assertRaisesRegex(
+                sqlite3.IntegrityError,
+                "quiz course belongs to another company",
+            ):
+                connection.execute(
+                    """
+                    INSERT INTO quiz_attempts (
+                        company_id, user_id, course_slug, quiz_version,
+                        started_at, questions_count
+                    )
+                    VALUES ('intertop', ?, 'missing-course', 1, CURRENT_TIMESTAMP, 1)
+                    """,
+                    (self.user_id,),
+                )
+
+            with self.assertRaisesRegex(
+                sqlite3.IntegrityError,
+                "practical-task course belongs to another company",
+            ):
+                connection.execute(
+                    """
+                    INSERT INTO practical_task_attempts (
+                        company_id, user_id, course_slug, lesson_slug,
+                        task_title, task_description, expected_result, learner_answer
+                    )
+                    VALUES ('intertop', ?, 'missing-course', 'lesson',
+                            'Task', 'Description', 'Expected', 'Answer')
+                    """,
+                    (self.user_id,),
+                )
+
+    def test_reinitialization_replaces_legacy_bypass_trigger(self) -> None:
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                "DROP TRIGGER enforce_quiz_attempt_course_company_insert"
+            )
+            connection.executescript(
+                """
+                CREATE TRIGGER enforce_quiz_attempt_course_company_insert
+                BEFORE INSERT ON quiz_attempts
+                FOR EACH ROW
+                WHEN NEW.company_id != 'intertop'
+                BEGIN
+                    SELECT RAISE(ABORT, 'legacy trigger');
+                END;
+                """
+            )
+
+        initialize_database(self.db_path)
+
+        with get_connection(self.db_path) as connection:
+            trigger_sql = str(
+                connection.execute(
+                    """
+                    SELECT sql
+                    FROM sqlite_master
+                    WHERE type = 'trigger'
+                      AND name = 'enforce_quiz_attempt_course_company_insert'
+                    """
+                ).fetchone()["sql"]
+            )
+        self.assertNotIn("NEW.company_id != 'intertop'", trigger_sql)
+        self.assertIn("WHEN NOT EXISTS", trigger_sql)
 
     def test_legacy_web_progress_is_unique_per_company(self) -> None:
         with get_connection(self.db_path) as connection:

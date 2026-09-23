@@ -885,9 +885,15 @@ def get_admin_knowledge_question_service(
     )
 
 
-def get_upload_service(request: Request) -> AdminUploadService:
-    """Return the admin upload service for the configured upload directory."""
-    return AdminUploadService(request.app.state.upload_dir)
+def get_upload_service(
+    request: Request,
+    identity: WebIdentity = Depends(require_web_admin_identity),
+) -> AdminUploadService:
+    """Return an upload service confined to the authenticated tenant."""
+    return AdminUploadService(
+        request.app.state.upload_dir,
+        company_id=identity.company_id,
+    )
 
 
 def get_admin_generation_service(
