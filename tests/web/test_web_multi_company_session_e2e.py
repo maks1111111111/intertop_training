@@ -171,6 +171,30 @@ class WebMultiCompanySessionE2ETests(unittest.TestCase):
         self.assertEqual(company_a_profile.status_code, 404)
         self.assertEqual(company_b_profile.status_code, 200)
 
+    def test_direct_course_and_lesson_urls_cannot_cross_tenant_boundaries(
+        self,
+    ) -> None:
+        cases = (
+            ("company-a", "beta", "Beta B"),
+            ("company-b", "alpha", "Alpha A"),
+        )
+
+        for company_id, foreign_slug, foreign_title in cases:
+            headers = self._headers_for_company(company_id)
+            paths = (
+                f"/courses/{foreign_slug}",
+                f"/courses/{foreign_slug}/lessons/lesson_01",
+                f"/api/v1/courses/{foreign_slug}",
+                f"/api/v1/courses/{foreign_slug}/lessons/lesson_01",
+            )
+
+            for path in paths:
+                with self.subTest(company_id=company_id, path=path):
+                    response = self.client.get(path, headers=headers)
+
+                    self.assertEqual(response.status_code, 404)
+                    self.assertNotIn(foreign_title, response.text)
+
     def test_deactivated_membership_invalidates_existing_signed_session(self) -> None:
         headers = self._headers_for_company("company-a")
 
