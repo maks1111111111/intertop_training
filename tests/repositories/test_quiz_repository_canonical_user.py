@@ -8,6 +8,7 @@ from pathlib import Path
 
 from app.database.db import get_connection, initialize_database
 from app.repositories import quiz_repository
+from tests.tenant_fixtures import seed_company_courses
 
 
 class CanonicalUserQuizRepositoryTests(unittest.TestCase):
@@ -15,6 +16,7 @@ class CanonicalUserQuizRepositoryTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "test.db"
         initialize_database(self.db_path)
+        seed_company_courses(self.db_path, ("alpha",))
 
         with get_connection(self.db_path) as connection:
             self.user_id = int(

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.database.db import get_connection, initialize_database
+from tests.tenant_fixtures import seed_company_courses
 
 EXPECTED_COLUMNS = (
     "id",
@@ -132,6 +133,7 @@ class PracticalTaskAttemptsSchemaTests(unittest.TestCase):
         self._tmpdir = tempfile.TemporaryDirectory()
         self.db_path = Path(self._tmpdir.name) / "test.db"
         initialize_database(self.db_path)
+        seed_company_courses(self.db_path, ("safety",))
 
     def tearDown(self) -> None:
         self._tmpdir.cleanup()

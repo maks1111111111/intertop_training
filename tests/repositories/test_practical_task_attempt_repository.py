@@ -10,6 +10,7 @@ from pathlib import Path
 from app.ai.review_interfaces import ReviewFeedback, ReviewResult
 from app.database.db import get_connection, initialize_database, upsert_telegram_user
 from app.repositories import practical_task_attempt_repository as repository
+from tests.tenant_fixtures import seed_company_courses
 
 
 def _sample_review_result(
@@ -38,6 +39,10 @@ class PracticalTaskAttemptRepositoryTests(unittest.TestCase):
         self._tmpdir = tempfile.TemporaryDirectory()
         self.db_path = Path(self._tmpdir.name) / "test.db"
         initialize_database(self.db_path)
+        seed_company_courses(
+            self.db_path,
+            ("safety", "other-course", "web-course"),
+        )
         upsert_telegram_user(
             self.db_path,
             telegram_id=1001,

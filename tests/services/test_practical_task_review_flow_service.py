@@ -16,6 +16,7 @@ from app.services.practical_task_review_flow_service import (
     PracticalTaskReviewCompletionError,
     PracticalTaskReviewFlowService,
 )
+from tests.tenant_fixtures import seed_company_courses
 
 
 def _sample_request(
@@ -78,6 +79,7 @@ class PracticalTaskReviewFlowServiceTests(unittest.TestCase):
         self._tmpdir = tempfile.TemporaryDirectory()
         self.db_path = Path(self._tmpdir.name) / "test.db"
         initialize_database(self.db_path)
+        seed_company_courses(self.db_path, ("safety",))
         upsert_telegram_user(
             self.db_path,
             telegram_id=1001,
@@ -256,6 +258,7 @@ class PracticalTaskReviewFlowServiceErrorTests(unittest.TestCase):
         self._tmpdir = tempfile.TemporaryDirectory()
         self.db_path = Path(self._tmpdir.name) / "test.db"
         initialize_database(self.db_path)
+        seed_company_courses(self.db_path, ("safety",))
         upsert_telegram_user(
             self.db_path,
             telegram_id=1001,

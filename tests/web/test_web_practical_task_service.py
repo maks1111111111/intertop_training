@@ -64,6 +64,24 @@ class WebPracticalTaskServiceTests(unittest.TestCase):
                 "UPDATE users SET telegram_id = NULL WHERE id = ?",
                 (self.user_id,),
             )
+            connection.execute(
+                "INSERT INTO companies (id, name) VALUES (?, ?)",
+                ("company-a", "Company A"),
+            )
+            connection.execute(
+                """
+                INSERT INTO company_memberships (company_id, user_id, role)
+                VALUES (?, ?, 'student')
+                """,
+                ("company-a", self.user_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO courses (company_id, slug, title, status)
+                VALUES (?, ?, ?, 'published')
+                """,
+                ("company-a", "safety", "Safety"),
+            )
 
         task = PracticalTask(
             title="Проверка рабочей зоны",
@@ -91,6 +109,7 @@ class WebPracticalTaskServiceTests(unittest.TestCase):
             self.runtime,
             self.reviewer,
             self.db_path,
+            company_id="company-a",
         )
 
     def tearDown(self) -> None:
@@ -107,6 +126,7 @@ class WebPracticalTaskServiceTests(unittest.TestCase):
         attempt = practical_task_attempt_repository.get_attempt(
             self.db_path,
             result.attempt_id,
+            company_id="company-a",
         )
         assert attempt is not None
 
@@ -138,6 +158,7 @@ class WebPracticalTaskServiceTests(unittest.TestCase):
             self.runtime,
             reviewer,
             self.db_path,
+            company_id="company-a",
         )
 
         with self.assertRaises(RuntimeError):
@@ -151,6 +172,7 @@ class WebPracticalTaskServiceTests(unittest.TestCase):
                 self.user_id,
                 "safety",
                 "lesson_01",
+                company_id="company-a",
             )
         )
         self.assertEqual(len(attempts), 1)
@@ -161,6 +183,7 @@ class WebPracticalTaskServiceTests(unittest.TestCase):
             self.runtime,
             None,
             self.db_path,
+            company_id="company-a",
         )
 
         with self.assertRaises(WebPracticalTaskReviewUnavailableError):
