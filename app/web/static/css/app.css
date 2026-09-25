@@ -5065,6 +5065,48 @@ a:focus-visible,
     text-align: center;
 }
 
+.auth-mfa-secret {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    border: 1px solid #c7d2fe;
+    border-radius: 0.625rem;
+    background: #eef2ff;
+}
+
+.auth-mfa-secret span {
+    color: #475569;
+    font-size: 0.8125rem;
+    font-weight: var(--font-weight-medium);
+}
+
+.auth-mfa-secret strong {
+    overflow-wrap: anywhere;
+    color: #111827;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 1rem;
+    letter-spacing: 0.08em;
+}
+
+.auth-mfa-details {
+    margin-bottom: 1.25rem;
+    color: #475569;
+    font-size: 0.8125rem;
+}
+
+.auth-mfa-details code {
+    display: block;
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    overflow-wrap: anywhere;
+    border-radius: 0.5rem;
+    background: #f8fafc;
+    color: #334155;
+    white-space: normal;
+}
+
 /* Platform administration */
 .dashboard-grid {
     display: grid;

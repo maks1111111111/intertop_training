@@ -56,10 +56,16 @@ sudo install -o root -g intertop -m 0640 deploy/staging.env.example \
   /etc/intertop-training/staging.env
 sudoedit /etc/intertop-training/staging.env
 openssl rand -base64 48
+.venv/bin/python -c \
+  'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
 ```
 
 Set `INTERTOP_ALLOWED_HOSTS` to the exact hostname and put the generated value in
-`WEB_SESSION_SECRET`. Keep `INTERTOP_WEB_HOST=127.0.0.1`; Nginx is the only
+`WEB_SESSION_SECRET`. Put the Fernet value in `INTERTOP_MFA_ENCRYPTION_KEY`.
+Store both values in the approved password manager as well as on the server.
+The MFA encryption key is required to decrypt enrolled company-administrator
+authenticator secrets and must not be rotated without resetting and re-enrolling
+every administrator. Keep `INTERTOP_WEB_HOST=127.0.0.1`; Nginx is the only
 process that may receive public HTTP traffic.
 
 Place only reviewed, published course directories in
@@ -111,6 +117,23 @@ and accepts the current six-digit code from the authenticator application:
 sudo systemctl restart intertop-training-web
 ```
 
+### Tenant administrator MFA
+
+MFA is mandatory for every active company membership with role `admin`. On the
+first successful password login the application shows a one-time setup key and
+does not issue a tenant session until the current six-digit code is confirmed.
+Later logins require password plus a fresh code; an accepted code cannot be
+replayed in the same time window. The TOTP secret is encrypted in SQLite with
+`INTERTOP_MFA_ENCRYPTION_KEY`.
+
+If an administrator loses the authenticator, the platform owner can open
+`/platform-admin/companies`, enter a reason and freshly confirm the owner
+password to reset MFA. The target administrator is resolved through the selected
+company, and the reset is written to the immutable platform audit log. MFA is
+attached to the user account: if the same account administers several companies,
+one reset affects that account everywhere. The administrator must enroll again
+on the next login.
+
 ## 4. Validate data before a release
 
 Run the combined preflight against a backup or an offline database after the
@@ -121,6 +144,7 @@ review is needed:
 
 ```bash
 cd /opt/intertop-training
+sudo -u intertop /opt/intertop-training/.venv/bin/python -m app.database.migrate
 sudo -u intertop /opt/intertop-training/.venv/bin/python -m app.deployment_audit
 ```
 
@@ -151,9 +175,10 @@ sudo -u intertop .venv/bin/python -m app.database.backup \
 Store backups on separate durable storage. A backup on the same VPS is not a
 disaster-recovery backup.
 
-The checked-in Web unit also runs the combined deployment audit through
-`ExecStartPre`. A non-clean tenant or platform audit therefore blocks a restart
-instead of serving a release over inconsistent data.
+The checked-in Web unit first applies idempotent schema migrations and then runs
+the combined deployment audit through `ExecStartPre`. Always create the release
+backup before restarting. A failed migration or non-clean tenant/platform audit
+blocks the Web process instead of serving a release over inconsistent data.
 
 ### Enable the daily integrity audit
 

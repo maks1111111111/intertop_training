@@ -8,6 +8,7 @@ from pathlib import Path
 
 from app.runtime_paths_config import RuntimePathsConfig
 from app.web.web_session_config import WebSessionConfig
+from app.web.mfa_secret_cipher import MFASecretCipher, MFA_ENCRYPTION_KEY_ENV
 
 
 DEPLOYMENT_ENV = "INTERTOP_ENV"
@@ -44,6 +45,14 @@ class DeploymentConfig:
                 raise RuntimeError(
                     "WEB_SESSION_SECRET must not use the example value in "
                     f"{environment}."
+                )
+            try:
+                mfa_cipher = MFASecretCipher.from_environment()
+            except ValueError as error:
+                raise RuntimeError(str(error)) from error
+            if not mfa_cipher.is_configured:
+                raise RuntimeError(
+                    f"{MFA_ENCRYPTION_KEY_ENV} is required in {environment}."
                 )
         elif configured_hosts is None:
             allowed_hosts = ("*",)

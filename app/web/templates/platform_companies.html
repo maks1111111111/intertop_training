@@ -49,6 +49,33 @@
                 <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
                 <button type="submit" class="button button-primary">Создать пользователя</button>
             </form>
+            <div class="platform-operation-form">
+                <h4>MFA администраторов</h4>
+                {% set company_admin_count = namespace(value=0) %}
+                {% for admin in company_admins if admin.company_id == company.id %}
+                {% set company_admin_count.value = company_admin_count.value + 1 %}
+                <div class="platform-company-summary">
+                    <div>
+                        <strong>{{ admin.display_name }}</strong>
+                        <p>{{ admin.email }}</p>
+                    </div>
+                    <span class="platform-status {% if admin.is_enrolled %}is-active{% else %}is-inactive{% endif %}">
+                        {% if admin.is_enrolled %}MFA подключена{% else %}Ожидает настройки{% endif %}
+                    </span>
+                </div>
+                {% if admin.is_enrolled %}
+                <form method="post" action="/platform-admin/companies/{{ company.id }}/admins/{{ admin.user_id }}/mfa/reset" class="platform-inline-form">
+                    <label class="auth-field"><span>Причина сброса MFA</span><input name="reason" required></label>
+                    <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
+                    <button type="submit" class="button button-secondary">Сбросить MFA</button>
+                </form>
+                <p class="field-hint">Сброс действует на аккаунт администратора во всех компаниях.</p>
+                {% endif %}
+                {% endfor %}
+                {% if company_admin_count.value == 0 %}
+                <p class="empty-state">Администратор компании ещё не создан.</p>
+                {% endif %}
+            </div>
             <form method="post" action="/platform-admin/companies/{{ company.id }}/status" class="platform-inline-form">
                 <input type="hidden" name="state" value="{% if company.is_active %}inactive{% else %}active{% endif %}">
                 <label class="auth-field"><span>Причина изменения</span><input name="reason" required></label>

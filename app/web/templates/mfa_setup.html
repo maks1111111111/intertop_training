@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Настройка MFA · Mentor Connect{% endblock %}
+
+{% block content %}
+<section class="auth-page">
+    <div class="auth-card">
+        <div class="auth-card-header">
+            <p class="auth-eyebrow">Защита аккаунта</p>
+            <h1>Подключите MFA</h1>
+            <p class="auth-description">
+                Для роли администратора второй фактор обязателен. Добавьте ключ в Google Authenticator,
+                Microsoft Authenticator, 1Password или другое TOTP-приложение.
+            </p>
+        </div>
+
+        {% if error_message %}
+        <div class="auth-error" role="alert">{{ error_message }}</div>
+        {% endif %}
+
+        <div class="auth-mfa-secret" aria-label="Ключ настройки MFA">
+            <span>Ключ настройки</span>
+            <strong>{{ enrollment.secret }}</strong>
+        </div>
+
+        <details class="auth-mfa-details">
+            <summary>Показать ссылку для ручного импорта</summary>
+            <code>{{ enrollment.authenticator_uri }}</code>
+        </details>
+
+        <form method="post" action="/mfa/setup" class="auth-form">
+            <label class="auth-field">
+                <span>Код из приложения</span>
+                <input
+                    type="text"
+                    name="otp_code"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    pattern="[0-9 ]{6,8}"
+                    maxlength="8"
+                    placeholder="000000"
+                    required
+                    autofocus
+                >
+                <small class="auth-field-hint">
+                    Введите текущий шестизначный код, чтобы завершить настройку.
+                </small>
+            </label>
+            <button type="submit" class="button button-primary auth-submit">
+                Подтвердить и войти
+            </button>
+        </form>
+        <p class="auth-legal-note">
+            Сохраните ключ в защищённом менеджере паролей. Не отправляйте его в почте или мессенджерах.
+        </p>
+    </div>
+</section>
+{% endblock %}

@@ -55,6 +55,22 @@
                 >
             </label>
 
+            <label class="auth-field">
+                <span>Код подтверждения</span>
+                <input
+                    type="text"
+                    name="otp_code"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    pattern="[0-9 ]{6,8}"
+                    maxlength="8"
+                    placeholder="6 цифр из приложения"
+                >
+                <small class="auth-field-hint">
+                    Обязателен для администраторов компании. При первом входе откроется настройка MFA.
+                </small>
+            </label>
+
             <button
                 type="submit"
                 class="button button-primary auth-submit"

@@ -269,6 +269,21 @@ def create_tables(connection: sqlite3.Connection) -> None:
         CREATE UNIQUE INDEX IF NOT EXISTS idx_user_password_credentials_email
             ON user_password_credentials(email COLLATE NOCASE);
 
+        CREATE TABLE IF NOT EXISTS user_mfa_credentials (
+            user_id INTEGER PRIMARY KEY,
+            encrypted_secret TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 0,
+            last_used_counter INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id)
+                REFERENCES users(id)
+                ON DELETE CASCADE,
+            CHECK (length(trim(encrypted_secret)) > 0),
+            CHECK (is_active IN (0, 1)),
+            CHECK (last_used_counter IS NULL OR last_used_counter >= 0)
+        );
+
         CREATE TABLE IF NOT EXISTS companies (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,

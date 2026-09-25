@@ -12,6 +12,7 @@ from app.runtime_paths_config import RuntimePathsConfig
 
 
 _SECURE_SECRET = "test-deployment-session-secret-at-least-32-bytes"
+_MFA_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
 
 class DeploymentConfigTests(unittest.TestCase):
@@ -29,6 +30,7 @@ class DeploymentConfigTests(unittest.TestCase):
             {
                 "INTERTOP_ENV": "production",
                 "WEB_SESSION_SECRET": _SECURE_SECRET,
+                "INTERTOP_MFA_ENCRYPTION_KEY": _MFA_KEY,
             },
             clear=True,
         ):
@@ -42,6 +44,7 @@ class DeploymentConfigTests(unittest.TestCase):
                 "INTERTOP_ENV": "production",
                 "INTERTOP_ALLOWED_HOSTS": "*",
                 "WEB_SESSION_SECRET": _SECURE_SECRET,
+                "INTERTOP_MFA_ENCRYPTION_KEY": _MFA_KEY,
             },
             clear=True,
         ):
@@ -69,6 +72,7 @@ class DeploymentConfigTests(unittest.TestCase):
                 "WEB_SESSION_SECRET": (
                     "replace-with-a-random-secret-at-least-32-bytes"
                 ),
+                "INTERTOP_MFA_ENCRYPTION_KEY": _MFA_KEY,
             },
             clear=True,
         ):
@@ -84,6 +88,7 @@ class DeploymentConfigTests(unittest.TestCase):
                     "STAGING.example.com, staging.example.com, localhost"
                 ),
                 "WEB_SESSION_SECRET": _SECURE_SECRET,
+                "INTERTOP_MFA_ENCRYPTION_KEY": _MFA_KEY,
             },
             clear=True,
         ):
@@ -95,6 +100,36 @@ class DeploymentConfigTests(unittest.TestCase):
             ("staging.example.com", "localhost"),
         )
         self.assertTrue(config.force_secure_session_cookie)
+
+    def test_production_requires_tenant_mfa_encryption_key(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "INTERTOP_ENV": "production",
+                "INTERTOP_ALLOWED_HOSTS": "training.example.com",
+                "WEB_SESSION_SECRET": _SECURE_SECRET,
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "INTERTOP_MFA_ENCRYPTION_KEY",
+            ):
+                DeploymentConfig.from_environment()
+
+    def test_production_rejects_invalid_tenant_mfa_encryption_key(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "INTERTOP_ENV": "production",
+                "INTERTOP_ALLOWED_HOSTS": "training.example.com",
+                "WEB_SESSION_SECRET": _SECURE_SECRET,
+                "INTERTOP_MFA_ENCRYPTION_KEY": "not-a-fernet-key",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "valid Fernet key"):
+                DeploymentConfig.from_environment()
 
     def test_unknown_environment_is_rejected(self) -> None:
         with patch.dict(

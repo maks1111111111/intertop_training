@@ -17,6 +17,7 @@ _REQUIRED_TABLES = (
     "platform_audit_events",
     "platform_support_accesses",
     "company_usage_limits",
+    "user_mfa_credentials",
 )
 _REQUIRED_TRIGGERS = (
     "prevent_platform_audit_event_update",

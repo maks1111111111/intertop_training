@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
 from app.database.db import get_connection
@@ -17,9 +18,19 @@ from app.repositories.company_repository import CompanyRepository
 from app.repositories.password_credential_repository import (
     PasswordCredentialRepository,
 )
+from app.repositories.user_mfa_repository import UserMFARepository
+from app.services.company_admin_mfa_service import CompanyAdminMFAService
+from app.web.mfa_secret_cipher import MFASecretCipher
 from app.web.password_hashing_service import PasswordHashingService
-from app.web.router import get_web_session_service
-from app.web.web_session_config import WEB_SESSION_COOKIE_NAME
+from app.web.router import (
+    get_company_admin_mfa_service,
+    get_web_session_service,
+)
+from app.web.totp import code_for_counter, decode_base32_secret
+from app.web.web_session_config import (
+    MFA_ENROLLMENT_COOKIE_NAME,
+    WEB_SESSION_COOKIE_NAME,
+)
 from app.web.web_session_service import WebSessionService
 from tests.web.test_web_ui import _create_test_app
 
@@ -163,6 +174,94 @@ class WebLoginRouteTests(unittest.TestCase):
             session.company_id,
             "login-company",
         )
+
+    def test_admin_must_enroll_and_then_supply_mfa_code(self) -> None:
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                UPDATE company_memberships
+                SET role = 'admin'
+                WHERE company_id = 'login-company' AND user_id = ?
+                """,
+                (self.user_id,),
+            )
+        clock = [59.0]
+        mfa_service = CompanyAdminMFAService(
+            UserMFARepository(),
+            MFASecretCipher.from_environment(
+                {
+                    "INTERTOP_MFA_ENCRYPTION_KEY": (
+                        Fernet.generate_key().decode("ascii")
+                    )
+                }
+            ),
+            clock=lambda: clock[0],
+        )
+        self.app.dependency_overrides[get_company_admin_mfa_service] = (
+            lambda: mfa_service
+        )
+
+        start = self.client.post(
+            "/login",
+            data=self._valid_login_data(),
+            follow_redirects=False,
+        )
+        self.assertEqual(start.status_code, 303)
+        self.assertEqual(start.headers["location"], "/mfa/setup")
+        self.assertIn(MFA_ENROLLMENT_COOKIE_NAME, start.cookies)
+        self.assertNotIn(WEB_SESSION_COOKIE_NAME, start.cookies)
+
+        setup = self.client.get("/mfa/setup")
+        self.assertEqual(setup.status_code, 200)
+        self.assertIn("Подключите MFA", setup.text)
+        pending = mfa_service.get_pending_enrollment(
+            self.db_path,
+            user_id=self.user_id,
+            email="user@example.com",
+        )
+        self.assertIsNotNone(pending)
+        assert pending is not None
+        secret = decode_base32_secret(pending.secret, field_name="test")
+        enrollment_code = code_for_counter(secret, 1)
+
+        complete = self.client.post(
+            "/mfa/setup",
+            data={"otp_code": enrollment_code},
+            follow_redirects=False,
+        )
+        self.assertEqual(complete.status_code, 303)
+        self.assertEqual(complete.headers["location"], "/dashboard")
+        self.assertIn(WEB_SESSION_COOKIE_NAME, complete.cookies)
+        self.assertTrue(mfa_service.is_enrolled(self.db_path, self.user_id))
+
+        self.client.post("/logout", follow_redirects=False)
+        clock[0] = 90.0
+        next_code = code_for_counter(secret, 3)
+        login = self.client.post(
+            "/login",
+            data={**self._valid_login_data(), "otp_code": next_code},
+            follow_redirects=False,
+        )
+        self.assertEqual(login.status_code, 303)
+        self.assertEqual(login.headers["location"], "/dashboard")
+        self.assertIn(WEB_SESSION_COOKIE_NAME, login.cookies)
+
+    def test_admin_login_fails_closed_when_mfa_key_is_missing(self) -> None:
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                UPDATE company_memberships
+                SET role = 'admin'
+                WHERE company_id = 'login-company' AND user_id = ?
+                """,
+                (self.user_id,),
+            )
+
+        response = self.client.post("/login", data=self._valid_login_data())
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("MFA не настроена на сервере", response.text)
+        self.assertNotIn(WEB_SESSION_COOKIE_NAME, response.cookies)
 
     def test_session_cookie_is_httponly_and_samesite_lax(self) -> None:
         response = self.client.post(

@@ -12,6 +12,7 @@ from app.database.db import get_connection
 from app.repositories.password_credential_repository import PasswordCredentialRepository
 from app.repositories.platform_admin_repository import PlatformAdminRepository
 from app.repositories.company_repository import CompanyRepository
+from app.repositories.user_mfa_repository import UserMFARepository
 from app.web.password_hashing_service import PasswordHashingService
 from app.web.router import get_platform_owner_totp
 from app.web.router import get_web_session_service
@@ -305,6 +306,60 @@ class PlatformAdminRouteTests(unittest.TestCase):
         events = PlatformAdminRepository().list_audit_events(self.db_path)
         self.assertEqual(events[0].action, "company.deactivated")
         self.assertEqual(events[0].reason, "Contract ended")
+
+    def test_owner_can_audit_and_reset_company_admin_mfa(self) -> None:
+        CompanyRepository().create(self.db_path, "company-a", "Company A")
+        self._login()
+        provisioned = self.client.post(
+            "/platform-admin/companies/company-a/users",
+            data={
+                "first_name": "Tenant",
+                "last_name": "Admin",
+                "email": "tenant-admin@example.com",
+                "password": "Strong-password-456!",
+                "role": "admin",
+                "current_password": "Strong-password-123!",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(provisioned.status_code, 303)
+        credential = PasswordCredentialRepository().get_by_email(
+            self.db_path,
+            "tenant-admin@example.com",
+        )
+        self.assertIsNotNone(credential)
+        assert credential is not None
+        mfa = UserMFARepository()
+        mfa.replace_pending(
+            self.db_path,
+            user_id=credential.user_id,
+            encrypted_secret="encrypted-secret",
+        )
+        mfa.activate(self.db_path, user_id=credential.user_id, counter=1)
+
+        page = self.client.get("/platform-admin/companies")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("tenant-admin@example.com", page.text)
+        self.assertIn("MFA подключена", page.text)
+
+        reset = self.client.post(
+            (
+                "/platform-admin/companies/company-a/admins/"
+                f"{credential.user_id}/mfa/reset"
+            ),
+            data={
+                "reason": "Lost authenticator",
+                "current_password": "Strong-password-123!",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(reset.status_code, 303)
+        self.assertIsNone(mfa.get(self.db_path, credential.user_id))
+        event = PlatformAdminRepository().list_audit_events(
+            self.db_path,
+            limit=1,
+        )[0]
+        self.assertEqual(event.action, "company_admin.mfa_reset")
 
     def test_non_owner_platform_admin_cannot_mutate_companies(self) -> None:
         with get_connection(self.db_path) as connection:

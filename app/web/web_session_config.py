@@ -9,6 +9,7 @@ from dataclasses import dataclass
 WEB_SESSION_SECRET_ENV = "WEB_SESSION_SECRET"
 WEB_SESSION_COOKIE_NAME = "intertop_session"
 PLATFORM_SESSION_COOKIE_NAME = "intertop_platform_session"
+MFA_ENROLLMENT_COOKIE_NAME = "intertop_mfa_enrollment"
 MIN_WEB_SESSION_SECRET_BYTES = 32
 
 

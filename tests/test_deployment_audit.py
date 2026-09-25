@@ -19,6 +19,7 @@ from app.web_server import WebServerConfig
 
 
 _SECURE_SECRET = "deployment-audit-session-secret-at-least-32-bytes"
+_MFA_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
 
 class DeploymentAuditTests(unittest.TestCase):
@@ -90,6 +91,7 @@ class DeploymentAuditTests(unittest.TestCase):
             "INTERTOP_ENV": "staging",
             "INTERTOP_ALLOWED_HOSTS": "staging.example.com",
             "WEB_SESSION_SECRET": _SECURE_SECRET,
+            "INTERTOP_MFA_ENCRYPTION_KEY": _MFA_KEY,
             "INTERTOP_WEB_HOST": "127.0.0.1",
             "INTERTOP_WEB_PORT": "8000",
             "INTERTOP_FORWARDED_ALLOW_IPS": "127.0.0.1",

@@ -11,6 +11,7 @@ WorkingDirectory=/opt/intertop-training
 EnvironmentFile=/etc/intertop-training/staging.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStartPre=/opt/intertop-training/.venv/bin/python -m app.database.migrate
 ExecStartPre=/opt/intertop-training/.venv/bin/python -m app.deployment_audit
 ExecStart=/opt/intertop-training/.venv/bin/python -m app.web_server
 Restart=on-failure

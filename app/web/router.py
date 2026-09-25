@@ -22,6 +22,7 @@ from app.repositories.company_repository import CompanyRepository
 from app.repositories.company_team_repository import CompanyTeamRepository
 from app.repositories.company_department_repository import CompanyDepartmentRepository
 from app.repositories.password_credential_repository import PasswordCredentialRepository
+from app.repositories.user_mfa_repository import UserMFARepository
 from app.repositories.platform_admin_repository import PlatformAdminRepository
 from app.repositories.manager_course_assignment_repository import (
     ManagerCourseAssignmentRepository,
@@ -36,6 +37,10 @@ from app.services.platform_admin_context_service import (
 from app.services.platform_company_service import (
     PlatformCompanyError,
     PlatformCompanyService,
+)
+from app.services.platform_company_mfa_service import (
+    PlatformCompanyMFAError,
+    PlatformCompanyMFAService,
 )
 from app.services.platform_admin_management_service import (
     PlatformAdminManagementError,
@@ -53,6 +58,10 @@ from app.services.platform_usage_limit_service import PlatformUsageLimitError, P
 from app.services.company_user_provisioning_service import (
     CompanyUserProvisioningError,
     CompanyUserProvisioningService,
+)
+from app.services.company_admin_mfa_service import (
+    CompanyAdminMFAService,
+    MFAEnrollment,
 )
 from app.services.company_organization_service import (
     CompanyOrganizationError,
@@ -178,6 +187,7 @@ from app.web.admin_knowledge_upload_service import (
 )
 from app.web.dashboard_service import DashboardService
 from app.web.login_attempt_guard import LoginAttemptGuard
+from app.web.mfa_secret_cipher import MFASecretCipher
 from app.web.manager_course_assignment_history_service import (
     ManagerCourseAssignmentHistoryService,
 )
@@ -218,11 +228,13 @@ from app.web.web_authentication_service import WebAuthenticationService
 from app.web.web_authorization_service import WebAuthorizationService
 from app.web.web_identity_service import WebIdentity, WebIdentityService
 from app.web.web_session_config import (
+    MFA_ENROLLMENT_COOKIE_NAME,
     PLATFORM_SESSION_COOKIE_NAME,
     WEB_SESSION_COOKIE_NAME,
     WebSessionConfig,
 )
 from app.web.web_session_service import (
+    MFA_ENROLLMENT_SESSION_SCOPE,
     PLATFORM_SESSION_SCOPE,
     TENANT_SESSION_SCOPE,
     WebSessionService,
@@ -299,6 +311,14 @@ def get_web_authentication_service() -> WebAuthenticationService:
     )
 
 
+def get_company_admin_mfa_service() -> CompanyAdminMFAService:
+    """Return encrypted authenticator management for tenant administrators."""
+    return CompanyAdminMFAService(
+        UserMFARepository(),
+        MFASecretCipher.from_environment(),
+    )
+
+
 def get_platform_admin_context_service() -> PlatformAdminContextService:
     """Return global administration resolution without tenant membership."""
     return PlatformAdminContextService(PlatformAdminRepository())
@@ -322,6 +342,14 @@ def get_platform_company_service() -> PlatformCompanyService:
     """Return owner-only company lifecycle operations."""
     return PlatformCompanyService(
         CompanyRepository(),
+        PlatformAdminRepository(),
+    )
+
+
+def get_platform_company_mfa_service() -> PlatformCompanyMFAService:
+    """Return owner-only tenant administrator MFA recovery controls."""
+    return PlatformCompanyMFAService(
+        UserMFARepository(),
         PlatformAdminRepository(),
     )
 
@@ -371,6 +399,18 @@ def get_web_session_service() -> WebSessionService:
     """Return the signed Web session service for the current application."""
     config = WebSessionConfig.from_environment()
     return WebSessionService(config.secret_key)
+
+
+def get_mfa_enrollment_session_service(request: Request) -> WebSessionService:
+    """Return a short-lived signer used only while enrolling tenant MFA."""
+    override = getattr(request.app.state, "mfa_enrollment_session_service", None)
+    if override is not None:
+        return override
+    test_override = getattr(request.app.state, "web_session_service", None)
+    if test_override is not None:
+        return test_override
+    config = WebSessionConfig.from_environment()
+    return WebSessionService(config.secret_key, ttl_seconds=10 * 60)
 
 
 def get_web_session_service_for_request(
@@ -1146,6 +1186,26 @@ def _render_login_page(
     )
 
 
+def _render_mfa_setup_page(
+    request: Request,
+    *,
+    enrollment: MFAEnrollment,
+    error_message: str = "",
+    status_code: int = 200,
+) -> HTMLResponse:
+    """Render one pending tenant administrator authenticator enrollment."""
+    return templates.TemplateResponse(
+        request,
+        "mfa_setup.html",
+        {
+            "enrollment": enrollment,
+            "error_message": error_message,
+        },
+        status_code=status_code,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 def _render_platform_login_page(
     request: Request,
     *,
@@ -1184,6 +1244,9 @@ def _render_platform_companies_page(
         "platform_companies.html",
         {
             "companies": CompanyRepository().list_all(db_path),
+            "company_admins": get_platform_company_mfa_service().list_admins(
+                db_path
+            ),
             "error_message": error_message,
             "platform_nav": "companies",
         },
@@ -1288,6 +1351,12 @@ async def login_submit(
     ),
     session_service: WebSessionService = Depends(get_web_session_service),
     attempt_guard: LoginAttemptGuard = Depends(get_login_attempt_guard),
+    mfa_service: CompanyAdminMFAService = Depends(
+        get_company_admin_mfa_service
+    ),
+    mfa_session_service: WebSessionService = Depends(
+        get_mfa_enrollment_session_service
+    ),
 ) -> HTMLResponse:
     """Authenticate credentials and create a signed Web session."""
     form = await request.form()
@@ -1295,6 +1364,7 @@ async def login_submit(
     email = str(form.get("email") or "").strip()
     password = str(form.get("password") or "")
     company_id = str(form.get("company_id") or "").strip()
+    otp_code = str(form.get("otp_code") or "")
     client_address = _login_client_address(request)
     account_identifier = f"{company_id}\n{email}"
     decision = attempt_guard.check(
@@ -1335,6 +1405,63 @@ async def login_submit(
             error_message="Неверные данные для входа.",
         )
 
+    if identity.role == "admin":
+        if not mfa_service.is_configured:
+            return _render_login_page(
+                request,
+                email=email,
+                company_id=company_id,
+                error_message=(
+                    "Вход администратора временно недоступен: "
+                    "MFA не настроена на сервере."
+                ),
+                status_code=503,
+            )
+        if mfa_service.is_enrolled(db_path, identity.user_id):
+            if not mfa_service.verify_login(
+                db_path,
+                user_id=identity.user_id,
+                code=otp_code,
+            ):
+                attempt_guard.record_failure(
+                    scope="tenant",
+                    client_address=client_address,
+                    account_identifier=account_identifier,
+                )
+                return _render_login_page(
+                    request,
+                    email=email,
+                    company_id=company_id,
+                    error_message="Неверные данные для входа.",
+                )
+        else:
+            mfa_service.begin_enrollment(
+                db_path,
+                user_id=identity.user_id,
+                email=email,
+            )
+            attempt_guard.record_success(
+                scope="tenant",
+                client_address=client_address,
+                account_identifier=account_identifier,
+            )
+            challenge = mfa_session_service.create_token(
+                user_id=identity.user_id,
+                company_id=identity.company_id,
+                scope=MFA_ENROLLMENT_SESSION_SCOPE,
+            )
+            response = RedirectResponse(url="/mfa/setup", status_code=303)
+            response.set_cookie(
+                key=MFA_ENROLLMENT_COOKIE_NAME,
+                value=challenge,
+                httponly=True,
+                secure=_secure_session_cookie(request),
+                samesite="strict",
+                max_age=10 * 60,
+                path="/mfa",
+            )
+            return response
+
     attempt_guard.record_success(
         scope="tenant",
         client_address=client_address,
@@ -1358,6 +1485,146 @@ async def login_submit(
         samesite="lax",
         path="/",
     )
+    return response
+
+
+def _pending_mfa_context(
+    request: Request,
+    *,
+    db_path: Path,
+    session_service: WebSessionService,
+    identity_service: WebIdentityService,
+    mfa_service: CompanyAdminMFAService,
+) -> Optional[tuple[WebIdentity, MFAEnrollment]]:
+    token = request.cookies.get(MFA_ENROLLMENT_COOKIE_NAME)
+    if token is None:
+        return None
+    session = session_service.resolve_token(token)
+    if session is None or session.scope != MFA_ENROLLMENT_SESSION_SCOPE:
+        return None
+    identity = identity_service.resolve_user(
+        db_path,
+        session.user_id,
+        session.company_id,
+    )
+    if identity is None or identity.role != "admin":
+        return None
+    credential = PasswordCredentialRepository().get_by_user_id(
+        db_path,
+        identity.user_id,
+    )
+    if credential is None or not credential.is_active:
+        return None
+    enrollment = mfa_service.get_pending_enrollment(
+        db_path,
+        user_id=identity.user_id,
+        email=credential.email,
+    )
+    if enrollment is None:
+        return None
+    return identity, enrollment
+
+
+@router.get("/mfa/setup", response_class=HTMLResponse, include_in_schema=False)
+def tenant_mfa_setup_page(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    identity_service: WebIdentityService = Depends(get_web_identity_service),
+    mfa_service: CompanyAdminMFAService = Depends(
+        get_company_admin_mfa_service
+    ),
+    session_service: WebSessionService = Depends(
+        get_mfa_enrollment_session_service
+    ),
+) -> HTMLResponse:
+    """Show a setup key only to a password-authenticated tenant admin."""
+    context = _pending_mfa_context(
+        request,
+        db_path=db_path,
+        session_service=session_service,
+        identity_service=identity_service,
+        mfa_service=mfa_service,
+    )
+    if context is None:
+        return RedirectResponse(url="/login", status_code=303)
+    _, enrollment = context
+    return _render_mfa_setup_page(request, enrollment=enrollment)
+
+
+@router.post("/mfa/setup", response_class=HTMLResponse, include_in_schema=False)
+async def tenant_mfa_setup_submit(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    identity_service: WebIdentityService = Depends(get_web_identity_service),
+    mfa_service: CompanyAdminMFAService = Depends(
+        get_company_admin_mfa_service
+    ),
+    enrollment_session_service: WebSessionService = Depends(
+        get_mfa_enrollment_session_service
+    ),
+    tenant_session_service: WebSessionService = Depends(get_web_session_service),
+    attempt_guard: LoginAttemptGuard = Depends(get_login_attempt_guard),
+) -> HTMLResponse:
+    """Activate tenant administrator MFA before issuing a full session."""
+    context = _pending_mfa_context(
+        request,
+        db_path=db_path,
+        session_service=enrollment_session_service,
+        identity_service=identity_service,
+        mfa_service=mfa_service,
+    )
+    if context is None:
+        return RedirectResponse(url="/login", status_code=303)
+    identity, enrollment = context
+    account_identifier = f"{identity.company_id}\n{identity.user_id}"
+    client_address = _login_client_address(request)
+    decision = attempt_guard.check(
+        scope="tenant-mfa-setup",
+        client_address=client_address,
+        account_identifier=account_identifier,
+    )
+    if not decision.allowed:
+        return _render_mfa_setup_page(
+            request,
+            enrollment=enrollment,
+            error_message="Слишком много попыток. Повторите позже.",
+            status_code=429,
+        )
+    form = await request.form()
+    if not mfa_service.activate(
+        db_path,
+        user_id=identity.user_id,
+        code=str(form.get("otp_code") or ""),
+    ):
+        attempt_guard.record_failure(
+            scope="tenant-mfa-setup",
+            client_address=client_address,
+            account_identifier=account_identifier,
+        )
+        return _render_mfa_setup_page(
+            request,
+            enrollment=enrollment,
+            error_message="Неверный код подтверждения.",
+        )
+    attempt_guard.record_success(
+        scope="tenant-mfa-setup",
+        client_address=client_address,
+        account_identifier=account_identifier,
+    )
+    token = tenant_session_service.create_token(
+        user_id=identity.user_id,
+        company_id=identity.company_id,
+    )
+    response = RedirectResponse(url="/dashboard", status_code=303)
+    response.set_cookie(
+        key=WEB_SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=_secure_session_cookie(request),
+        samesite="lax",
+        path="/",
+    )
+    response.delete_cookie(key=MFA_ENROLLMENT_COOKIE_NAME, path="/mfa")
     return response
 
 
@@ -1699,6 +1966,53 @@ async def platform_company_user_provision(
 
 
 @router.post(
+    "/platform-admin/companies/{company_id}/admins/{user_id}/mfa/reset",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def platform_company_admin_mfa_reset(
+    company_id: str,
+    user_id: int,
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    owner: PlatformAdminContext = Depends(require_platform_owner),
+    confirmation_service: PlatformOwnerConfirmationService = Depends(
+        get_platform_owner_confirmation_service
+    ),
+    mfa_service: PlatformCompanyMFAService = Depends(
+        get_platform_company_mfa_service
+    ),
+) -> HTMLResponse:
+    """Reset one tenant administrator's MFA after fresh owner confirmation."""
+    form = await request.form()
+    if not confirmation_service.confirm(
+        db_path,
+        owner_user_id=owner.user_id,
+        password=str(form.get("current_password") or ""),
+    ):
+        return _render_platform_companies_page(
+            request,
+            db_path=db_path,
+            error_message="Не удалось подтвердить текущий пароль.",
+        )
+    try:
+        mfa_service.reset(
+            db_path,
+            actor_user_id=owner.user_id,
+            company_id=company_id,
+            target_user_id=user_id,
+            reason=str(form.get("reason") or ""),
+        )
+    except PlatformCompanyMFAError as error:
+        return _render_platform_companies_page(
+            request,
+            db_path=db_path,
+            error_message=str(error),
+        )
+    return RedirectResponse(url="/platform-admin/companies", status_code=303)
+
+
+@router.post(
     "/platform-admin/companies/{company_id}/status",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -2008,6 +2322,10 @@ def logout_submit() -> RedirectResponse:
     response.delete_cookie(
         key=WEB_SESSION_COOKIE_NAME,
         path="/",
+    )
+    response.delete_cookie(
+        key=MFA_ENROLLMENT_COOKIE_NAME,
+        path="/mfa",
     )
     return response
 

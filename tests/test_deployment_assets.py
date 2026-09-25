@@ -15,6 +15,10 @@ class DeploymentAssetTests(unittest.TestCase):
 
         self.assertIn("User=intertop", service)
         self.assertIn("EnvironmentFile=/etc/intertop-training/staging.env", service)
+        self.assertIn(
+            "ExecStartPre=/opt/intertop-training/.venv/bin/python -m app.database.migrate",
+            service,
+        )
         self.assertIn("ExecStartPre=/opt/intertop-training/.venv/bin/python -m app.deployment_audit", service)
         self.assertIn("ExecStart=/opt/intertop-training/.venv/bin/python -m app.web_server", service)
         self.assertIn("ProtectSystem=strict", service)
@@ -65,6 +69,7 @@ class DeploymentAssetTests(unittest.TestCase):
         self.assertIn("INTERTOP_COURSES_DIR=/srv/intertop-training/courses", environment)
         self.assertIn("INTERTOP_UPLOAD_DIR=/srv/intertop-training/uploads", environment)
         self.assertIn("INTERTOP_PLATFORM_OWNER_TOTP_SECRET", environment)
+        self.assertIn("INTERTOP_MFA_ENCRYPTION_KEY", environment)
         self.assertNotIn("OPENAI_API_KEY=sk-", environment)
 
     def test_runbook_uses_versioned_health_and_readiness_endpoints(self) -> None:
@@ -80,6 +85,13 @@ class DeploymentAssetTests(unittest.TestCase):
 
         self.assertIn("-m app.platform_owner_setup", runbook)
         self.assertIn("/platform-admin/login", runbook)
+
+    def test_runbook_documents_tenant_admin_mfa_key_and_recovery(self) -> None:
+        runbook = _read("deploy/README.md")
+
+        self.assertIn("INTERTOP_MFA_ENCRYPTION_KEY", runbook)
+        self.assertIn("MFA is mandatory", runbook)
+        self.assertIn("immutable platform audit log", runbook)
 
 
 def _read(relative_path: str) -> str:

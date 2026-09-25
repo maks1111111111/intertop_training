@@ -435,6 +435,30 @@ def migrate_user_password_credentials_table(
     )
 
 
+def migrate_user_mfa_credentials_table(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add encrypted authenticator credentials for tenant administrators."""
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS user_mfa_credentials (
+            user_id INTEGER PRIMARY KEY,
+            encrypted_secret TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 0,
+            last_used_counter INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id)
+                REFERENCES users(id)
+                ON DELETE CASCADE,
+            CHECK (length(trim(encrypted_secret)) > 0),
+            CHECK (is_active IN (0, 1)),
+            CHECK (last_used_counter IS NULL OR last_used_counter >= 0)
+        );
+        """
+    )
+
+
 def migrate_companies_table(connection: sqlite3.Connection) -> None:
     """Ensure companies and company_memberships tables exist for legacy databases."""
     connection.executescript(
@@ -1169,6 +1193,7 @@ def run_migrations(connection: sqlite3.Connection) -> None:
     migrate_knowledge_documents_table(connection)
     migrate_knowledge_document_chunks_table(connection)
     migrate_user_password_credentials_table(connection)
+    migrate_user_mfa_credentials_table(connection)
     migrate_companies_table(connection)
     migrate_platform_admins_table(connection)
     migrate_platform_support_accesses_table(connection)
