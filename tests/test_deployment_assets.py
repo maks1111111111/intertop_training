@@ -61,6 +61,22 @@ class DeploymentAssetTests(unittest.TestCase):
         self.assertIn("OnCalendar=*-*-* 04:00:00", timer)
         self.assertIn("Persistent=true", timer)
 
+    def test_offsite_backup_is_encrypted_and_uses_separate_secrets(self) -> None:
+        service = _read("deploy/systemd/intertop-training-offsite-backup.service")
+        timer = _read("deploy/systemd/intertop-training-offsite-backup.timer")
+
+        self.assertIn("User=intertop", service)
+        self.assertIn(
+            "EnvironmentFile=/etc/intertop-training/offsite-backup.env",
+            service,
+        )
+        self.assertIn("-m app.database.offsite_backup", service)
+        self.assertIn("--courses-dir /srv/intertop-training/courses", service)
+        self.assertIn("--uploads-dir /srv/intertop-training/uploads", service)
+        self.assertIn("ProtectSystem=strict", service)
+        self.assertIn("OnCalendar=*-*-* 04:30:00", timer)
+        self.assertIn("Persistent=true", timer)
+
     def test_staging_environment_keeps_state_outside_the_checkout(self) -> None:
         environment = _read("deploy/staging.env.example")
 

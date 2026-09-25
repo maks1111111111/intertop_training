@@ -237,6 +237,53 @@ ls -l /var/backups/intertop-training
 The manual backup command in the prior section remains mandatory immediately
 before a release or a database-changing operation.
 
+### Enable encrypted offsite backups
+
+The offsite job creates a fresh verified SQLite snapshot, packages it with the
+course and upload directories, and encrypts the archive locally with AES-256-GCM
+before sending it to S3. The plaintext archive is never written to disk. After
+upload it downloads the ciphertext and verifies its size and SHA-256 digest. The S3
+credentials must belong to a dedicated service user whose bucket policy permits
+only listing, upload, read-back and multipart cleanup; do not grant object
+deletion or bucket administration.
+
+Create `/etc/intertop-training/offsite-backup.env` as `root:intertop` mode
+`0640`. Store the following values outside Git:
+
+```text
+INTERTOP_S3_ENDPOINT=https://s3.kz-1.srvstorage.kz
+INTERTOP_S3_REGION=kz-1
+INTERTOP_S3_BUCKET=mentorconnect-prod-backups-ACCOUNT_SUFFIX
+INTERTOP_S3_ACCESS_KEY_ID=REDACTED
+INTERTOP_S3_SECRET_ACCESS_KEY=REDACTED
+INTERTOP_BACKUP_ENCRYPTION_KEY=URLSAFE_BASE64_ENCODED_32_BYTES
+```
+
+Generate the encryption key once on a trusted machine and retain an offline copy
+in the approved password manager. Losing this key makes every offsite backup
+unrecoverable. Do not store the encryption key in S3 or in the repository.
+
+```bash
+python3 -c 'import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())'
+sudo install -d -o intertop -g intertop -m 0700 \
+  /var/backups/intertop-training/offsite-work
+sudo install -o root -g root -m 0644 \
+  deploy/systemd/intertop-training-offsite-backup.service \
+  /etc/systemd/system/intertop-training-offsite-backup.service
+sudo install -o root -g root -m 0644 \
+  deploy/systemd/intertop-training-offsite-backup.timer \
+  /etc/systemd/system/intertop-training-offsite-backup.timer
+sudo systemctl daemon-reload
+sudo systemctl start intertop-training-offsite-backup.service
+sudo systemctl status intertop-training-offsite-backup.service --no-pager -l
+sudo systemctl enable --now intertop-training-offsite-backup.timer
+```
+
+The timer runs after the local backup and daily integrity-audit windows. Verify a
+real recovery periodically on an isolated machine: download an encrypted object,
+decrypt it with the offline key, inspect the tar manifest, run SQLite
+`PRAGMA quick_check`, and validate representative course and upload files.
+
 ## 5. Install the Web service
 
 ```bash

@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily encrypted offsite backup for Mentor Connect
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=30m
+Persistent=true
+Unit=intertop-training-offsite-backup.service
+
+[Install]
+WantedBy=timers.target
