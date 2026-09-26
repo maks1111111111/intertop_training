@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,8 @@ from typing import Optional
 
 from fastapi.testclient import TestClient
 
+from app.web.router import get_current_web_identity
+from app.web.web_identity_service import WebIdentity
 from tests.web.test_web_ui import _create_test_app, _write_course
 
 
@@ -164,6 +167,41 @@ class AdminCourseUploadTests(unittest.TestCase):
         self.assertIn("Продолжить", response.text)
         self.assertIn('action="/admin/courses/new/review"', response.text)
         self.assertIn('name="upload_id"', response.text)
+
+    def test_other_company_cannot_review_an_uploaded_source_file(self) -> None:
+        """A guessed upload id must not bridge tenant file storage."""
+        upload_response = self._post_upload("source.pdf", b"%PDF-1.4 test")
+        self.assertEqual(upload_response.status_code, 200)
+        match = re.search(
+            r'name="upload_id"\s+value="([0-9a-f]{32})"',
+            upload_response.text,
+        )
+        self.assertIsNotNone(match)
+        assert match is not None
+
+        other_company_identity = WebIdentity(
+            user_id=20,
+            telegram_id=None,
+            company_id="company-b",
+            company_name="Company B",
+            role="admin",
+        )
+        self.app.dependency_overrides[get_current_web_identity] = (
+            lambda: other_company_identity
+        )
+
+        response = self.client.post(
+            "/admin/courses/new/review",
+            data={
+                **_default_form_data(),
+                "upload_id": match.group(1),
+                "original_filename": "source.pdf",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Загруженный файл не найден", response.text)
+        self.assertFalse((self.upload_dir / "company-b").exists())
 
     def test_admin_dashboard_still_works(self) -> None:
         response = self.client.get("/admin")
