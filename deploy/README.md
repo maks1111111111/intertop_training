@@ -184,10 +184,13 @@ blocks the Web process instead of serving a release over inconsistent data.
 
 Install and enable the audit timer. It runs the same combined audit every day
 after the normal backup window. A failed audit makes the oneshot unit fail and
-records the exact findings in the system journal.
+records the exact findings in the system journal. A success marker is updated
+only after the audit exits successfully.
 
 ```bash
 cd /opt/intertop-training
+sudo install -d -o intertop -g intertop -m 0750 \
+  /srv/intertop-training/monitoring
 sudo install -o root -g root -m 0644 \
   deploy/systemd/intertop-training-audit.service \
   /etc/systemd/system/intertop-training-audit.service
@@ -295,6 +298,27 @@ real recovery periodically on an isolated machine: download an encrypted object,
 decrypt it with the offline key, inspect the tar manifest, run SQLite
 `PRAGMA quick_check`, and validate representative course and upload files.
 
+### Monitor audit and offsite-backup completion externally
+
+The audit and offsite-backup units update separate success markers only after
+their main commands finish successfully. The public endpoint below returns no
+job names, timestamps, paths, customer data, or failure details:
+
+```bash
+curl --fail --location \
+  https://mentorconnect.kz/api/v1/automation-ready
+```
+
+It returns `200 {"status":"ready"}` only while both success markers are no
+older than 27 hours; otherwise it returns a generic `503`. Keep detailed errors
+in the local system journal.
+
+Create a normal HTTP(S) monitor in UptimeRobot for
+`https://mentorconnect.kz/api/v1/automation-ready`. A five-minute check interval
+is sufficient. Enable the existing email or mobile alert contact. This provides
+external notification without requiring the paid heartbeat monitor type and
+without sending backup data or audit results to UptimeRobot.
+
 ## 5. Install the Web service
 
 ```bash
@@ -338,6 +362,7 @@ sudo sed 's/__INTERTOP_HOSTNAME__/staging.example.com/g' \
 sudo nginx -t && sudo systemctl reload nginx
 curl --fail --location https://staging.example.com/api/v1/health
 curl --fail --location https://staging.example.com/api/v1/ready
+curl --fail --location https://staging.example.com/api/v1/automation-ready
 ```
 
 Use the provider's managed TLS equivalent when Nginx is not the public proxy;

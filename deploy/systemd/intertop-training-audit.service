@@ -12,6 +12,7 @@ EnvironmentFile=/etc/intertop-training/staging.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/opt/intertop-training/.venv/bin/python -m app.deployment_audit
+ExecStartPost=/usr/bin/touch /srv/intertop-training/monitoring/audit-success
 UMask=0077
 
 NoNewPrivileges=yes
@@ -21,6 +22,7 @@ ProtectHome=yes
 ProtectSystem=strict
 # SQLite can create WAL/-shm sidecar files even for an audit connection.
 ReadWritePaths=/srv/intertop-training/data
+ReadWritePaths=/srv/intertop-training/monitoring
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes

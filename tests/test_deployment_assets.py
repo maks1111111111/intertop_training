@@ -56,7 +56,9 @@ class DeploymentAssetTests(unittest.TestCase):
         self.assertIn("User=intertop", service)
         self.assertIn("EnvironmentFile=/etc/intertop-training/staging.env", service)
         self.assertIn("-m app.deployment_audit", service)
+        self.assertIn("monitoring/audit-success", service)
         self.assertIn("ReadWritePaths=/srv/intertop-training/data", service)
+        self.assertIn("ReadWritePaths=/srv/intertop-training/monitoring", service)
         self.assertIn("ProtectSystem=strict", service)
         self.assertIn("OnCalendar=*-*-* 04:00:00", timer)
         self.assertIn("Persistent=true", timer)
@@ -73,6 +75,8 @@ class DeploymentAssetTests(unittest.TestCase):
         self.assertIn("-m app.database.offsite_backup", service)
         self.assertIn("--courses-dir /srv/intertop-training/courses", service)
         self.assertIn("--uploads-dir /srv/intertop-training/uploads", service)
+        self.assertIn("monitoring/offsite-backup-success", service)
+        self.assertIn("ReadWritePaths=/srv/intertop-training/monitoring", service)
         self.assertIn("ProtectSystem=strict", service)
         self.assertIn("OnCalendar=*-*-* 04:30:00", timer)
         self.assertIn("Persistent=true", timer)
@@ -93,6 +97,7 @@ class DeploymentAssetTests(unittest.TestCase):
 
         self.assertIn("/api/v1/health", runbook)
         self.assertIn("/api/v1/ready", runbook)
+        self.assertIn("/api/v1/automation-ready", runbook)
         self.assertNotIn("127.0.0.1:8000/health", runbook)
         self.assertNotIn("127.0.0.1:8000/ready", runbook)
 

@@ -12,6 +12,7 @@ Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 EnvironmentFile=/etc/intertop-training/offsite-backup.env
 ExecStart=/opt/intertop-training/.venv/bin/python -m app.database.offsite_backup --db /srv/intertop-training/data/training.db --courses-dir /srv/intertop-training/courses --uploads-dir /srv/intertop-training/uploads --work-dir /var/backups/intertop-training/offsite-work
+ExecStartPost=/usr/bin/touch /srv/intertop-training/monitoring/offsite-backup-success
 UMask=0077
 
 NoNewPrivileges=yes
@@ -21,10 +22,10 @@ ProtectHome=yes
 ProtectSystem=strict
 ReadWritePaths=/srv/intertop-training/data
 ReadWritePaths=/var/backups/intertop-training/offsite-work
+ReadWritePaths=/srv/intertop-training/monitoring
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 LockPersonality=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SystemCallArchitectures=native
-

@@ -80,3 +80,23 @@ class HealthEndpointTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
+
+    @patch("app.api.v1.health.automation_is_healthy", return_value=True)
+    def test_automation_readiness_returns_200_when_jobs_are_fresh(
+        self,
+        _mock_automation_is_healthy,
+    ) -> None:
+        response = self.client.get("/api/v1/automation-ready")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ready"})
+
+    @patch("app.api.v1.health.automation_is_healthy", return_value=False)
+    def test_automation_readiness_returns_503_when_jobs_are_stale(
+        self,
+        _mock_automation_is_healthy,
+    ) -> None:
+        response = self.client.get("/api/v1/automation-ready")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json(), {"detail": "Automation unavailable"})
