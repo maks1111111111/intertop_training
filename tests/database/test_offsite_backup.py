@@ -13,6 +13,7 @@ from app.database.offsite_backup import (
     MAX_SINGLE_UPLOAD_SIZE,
     OffsiteBackupError,
     create_encrypted_archive,
+    delete_expired_backup_versions,
     decrypt_archive,
     upload_and_verify,
 )
@@ -24,6 +25,8 @@ class _FakeS3Client:
         self.remote_size = 0
         self.remote_metadata: dict[str, str] = {}
         self.remote_payload = b""
+        self.versions: list[dict[str, object]] = []
+        self.deleted_versions: list[tuple[str, str]] = []
 
     def put_object(self, **kwargs: object) -> dict[str, object]:
         self.upload = kwargs
@@ -44,6 +47,15 @@ class _FakeS3Client:
 
     def download_file(self, bucket: str, key: str, filename: str) -> None:
         Path(filename).write_bytes(self.remote_payload)
+
+    def list_object_versions(self, **kwargs: object) -> dict[str, object]:
+        return {"IsTruncated": False, "Versions": self.versions}
+
+    def delete_object(self, **kwargs: object) -> dict[str, object]:
+        self.deleted_versions.append(
+            (str(kwargs["Key"]), str(kwargs["VersionId"]))
+        )
+        return {}
 
 
 class OffsiteBackupTests(unittest.TestCase):
@@ -176,6 +188,39 @@ class OffsiteBackupTests(unittest.TestCase):
                 bucket="private-backups",
                 object_key="daily/backup.enc",
             )
+
+    def test_cleanup_deletes_only_expired_backup_versions(self) -> None:
+        client = _FakeS3Client()
+        client.versions = [
+            {
+                "Key": "daily/expired.enc",
+                "VersionId": "old-version",
+                "LastModified": datetime(2026, 7, 1, tzinfo=timezone.utc),
+            },
+            {
+                "Key": "daily/current.enc",
+                "VersionId": "new-version",
+                "LastModified": datetime(2026, 9, 20, tzinfo=timezone.utc),
+            },
+            {
+                "Key": "unrelated/object.enc",
+                "VersionId": "unrelated-version",
+                "LastModified": datetime(2026, 7, 1, tzinfo=timezone.utc),
+            },
+        ]
+
+        deleted = delete_expired_backup_versions(
+            client=client,
+            bucket="private-backups",
+            prefix="daily/",
+            cutoff=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        )
+
+        self.assertEqual(deleted, 1)
+        self.assertEqual(
+            client.deleted_versions,
+            [("daily/expired.enc", "old-version")],
+        )
 
 
 if __name__ == "__main__":

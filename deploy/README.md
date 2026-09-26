@@ -244,13 +244,18 @@ course and upload directories, and encrypts the archive locally with AES-256-GCM
 before sending it to S3. The plaintext archive is never written to disk. After
 upload it downloads the ciphertext and verifies its size and SHA-256 digest. The S3
 credentials must belong to a dedicated service user whose bucket policy permits
-only listing, upload, read-back and multipart cleanup; do not grant object
-deletion or bucket administration.
+only listing, upload, read-back and deletion of expired object versions; do not
+grant ordinary object deletion, retention bypass or bucket administration.
 
 The uploader deliberately uses one `PutObject` request instead of an automatic
 multipart upload so that the restricted Servercore bucket policy remains
 sufficient. A single encrypted backup must remain below the provider's 5 GiB
 single-upload limit; the job fails safely before upload if that limit is reached.
+After each verified upload, the job deletes only versions below the `daily/`
+prefix that are older than the configured retention period. Keep the period
+above the bucket's 30-day Object Lock duration. Grant the service user
+`DeleteObjectVersion`, but never `DeleteObject` or
+`BypassGovernanceRetention`.
 
 Create `/etc/intertop-training/offsite-backup.env` as `root:intertop` mode
 `0640`. Store the following values outside Git:
@@ -262,6 +267,7 @@ INTERTOP_S3_BUCKET=mentorconnect-prod-backups-ACCOUNT_SUFFIX
 INTERTOP_S3_ACCESS_KEY_ID=REDACTED
 INTERTOP_S3_SECRET_ACCESS_KEY=REDACTED
 INTERTOP_BACKUP_ENCRYPTION_KEY=URLSAFE_BASE64_ENCODED_32_BYTES
+INTERTOP_BACKUP_RETENTION_DAYS=35
 ```
 
 Generate the encryption key once on a trusted machine and retain an offline copy

@@ -9,7 +9,7 @@ import json
 import os
 import tarfile
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import BinaryIO, Callable, Protocol, Sequence
 
@@ -35,6 +35,10 @@ class S3Client(Protocol):
     def head_object(self, *, Bucket: str, Key: str) -> dict[str, object]: ...
 
     def download_file(self, bucket: str, key: str, filename: str) -> None: ...
+
+    def list_object_versions(self, **kwargs: object) -> dict[str, object]: ...
+
+    def delete_object(self, **kwargs: object) -> dict[str, object]: ...
 
 
 class _EncryptingWriter:
@@ -229,6 +233,54 @@ def upload_and_verify(
         verification_path.unlink(missing_ok=True)
 
 
+def delete_expired_backup_versions(
+    *,
+    client: S3Client,
+    bucket: str,
+    prefix: str,
+    cutoff: datetime,
+) -> int:
+    """Delete versioned backup objects older than the retention cutoff."""
+    normalized_cutoff = cutoff.astimezone(timezone.utc)
+    request: dict[str, object] = {"Bucket": bucket, "Prefix": prefix}
+    deleted = 0
+    while True:
+        response = client.list_object_versions(**request)
+        versions = response.get("Versions", [])
+        if not isinstance(versions, list):
+            raise OffsiteBackupError("S3 returned an invalid version listing")
+        for version in versions:
+            if not isinstance(version, dict):
+                raise OffsiteBackupError("S3 returned an invalid object version")
+            key = version.get("Key")
+            version_id = version.get("VersionId")
+            last_modified = version.get("LastModified")
+            if (
+                not isinstance(key, str)
+                or not key.startswith(prefix)
+                or not isinstance(version_id, str)
+                or not isinstance(last_modified, datetime)
+            ):
+                continue
+            if last_modified.astimezone(timezone.utc) >= normalized_cutoff:
+                continue
+            client.delete_object(
+                Bucket=bucket,
+                Key=key,
+                VersionId=version_id,
+            )
+            deleted += 1
+        if response.get("IsTruncated") is not True:
+            break
+        next_key = response.get("NextKeyMarker")
+        next_version = response.get("NextVersionIdMarker")
+        if not isinstance(next_key, str) or not isinstance(next_version, str):
+            raise OffsiteBackupError("S3 omitted version pagination markers")
+        request["KeyMarker"] = next_key
+        request["VersionIdMarker"] = next_version
+    return deleted
+
+
 def _create_s3_client(*, endpoint: str, region: str, access_key: str, secret_key: str):
     try:
         import boto3
@@ -322,6 +374,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         encryption_key = _decode_encryption_key(
             _required_env("INTERTOP_BACKUP_ENCRYPTION_KEY")
         )
+        try:
+            retention_days = int(
+                os.environ.get("INTERTOP_BACKUP_RETENTION_DAYS", "35")
+            )
+        except ValueError as error:
+            raise OffsiteBackupError(
+                "INTERTOP_BACKUP_RETENTION_DAYS must be an integer"
+            ) from error
+        if retention_days < 31:
+            raise OffsiteBackupError(
+                "offsite backup retention must be at least 31 days"
+            )
         now = datetime.now(timezone.utc)
         name = f"mentorconnect-backup-{_timestamp(now)}.tar.gz.aes256gcm"
         archive_path = Path(args.work_dir).resolve() / name
@@ -346,6 +410,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             bucket=bucket,
             object_key=object_key,
         )
+        deleted = delete_expired_backup_versions(
+            client=client,
+            bucket=bucket,
+            prefix="daily/",
+            cutoff=now - timedelta(days=retention_days),
+        )
     except Exception as error:
         parser.exit(1, f"offsite backup failed: {error}\n")
     finally:
@@ -353,6 +423,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             archive_path.unlink(missing_ok=True)
 
     print(f"s3://{bucket}/{object_key}")
+    print(f"expired_versions_deleted={deleted}")
     return 0
 
 
