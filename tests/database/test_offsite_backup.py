@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.database.offsite_backup import (
+    MAX_SINGLE_UPLOAD_SIZE,
     OffsiteBackupError,
     create_encrypted_archive,
     decrypt_archive,
@@ -19,25 +20,21 @@ from app.database.offsite_backup import (
 
 class _FakeS3Client:
     def __init__(self) -> None:
-        self.upload: tuple[str, str, str, dict[str, object]] | None = None
+        self.upload: dict[str, object] | None = None
         self.remote_size = 0
         self.remote_metadata: dict[str, str] = {}
         self.remote_payload = b""
 
-    def upload_file(
-        self,
-        filename: str,
-        bucket: str,
-        key: str,
-        ExtraArgs: dict[str, object] | None = None,
-    ) -> None:
-        assert ExtraArgs is not None
-        self.upload = (filename, bucket, key, ExtraArgs)
-        self.remote_payload = Path(filename).read_bytes()
-        self.remote_size = Path(filename).stat().st_size
-        metadata = ExtraArgs["Metadata"]
+    def put_object(self, **kwargs: object) -> dict[str, object]:
+        self.upload = kwargs
+        body = kwargs["Body"]
+        assert hasattr(body, "read")
+        self.remote_payload = body.read()
+        self.remote_size = len(self.remote_payload)
+        metadata = kwargs["Metadata"]
         assert isinstance(metadata, dict)
         self.remote_metadata = metadata
+        return {"ETag": "test-etag"}
 
     def head_object(self, *, Bucket: str, Key: str) -> dict[str, object]:
         return {
@@ -120,7 +117,8 @@ class OffsiteBackupTests(unittest.TestCase):
         )
 
         assert client.upload is not None
-        self.assertEqual(client.upload[1:3], ("private-backups", "daily/backup.enc"))
+        self.assertEqual(client.upload["Bucket"], "private-backups")
+        self.assertEqual(client.upload["Key"], "daily/backup.enc")
         self.assertEqual(
             client.remote_metadata["format"],
             "mentorconnect-offsite-v1",
@@ -141,6 +139,20 @@ class OffsiteBackupTests(unittest.TestCase):
         with self.assertRaisesRegex(OffsiteBackupError, "size verification"):
             upload_and_verify(
                 client=client,
+                archive_path=archive,
+                bucket="private-backups",
+                object_key="daily/backup.enc",
+            )
+
+    def test_upload_rejects_archive_larger_than_single_put_limit(self) -> None:
+        archive = self.root / "oversized-backup.enc"
+        archive.touch()
+        with archive.open("r+b") as output:
+            output.truncate(MAX_SINGLE_UPLOAD_SIZE + 1)
+
+        with self.assertRaisesRegex(OffsiteBackupError, "5 GiB"):
+            upload_and_verify(
+                client=_FakeS3Client(),
                 archive_path=archive,
                 bucket="private-backups",
                 object_key="daily/backup.enc",

@@ -247,6 +247,11 @@ credentials must belong to a dedicated service user whose bucket policy permits
 only listing, upload, read-back and multipart cleanup; do not grant object
 deletion or bucket administration.
 
+The uploader deliberately uses one `PutObject` request instead of an automatic
+multipart upload so that the restricted Servercore bucket policy remains
+sufficient. A single encrypted backup must remain below the provider's 5 GiB
+single-upload limit; the job fails safely before upload if that limit is reached.
+
 Create `/etc/intertop-training/offsite-backup.env` as `root:intertop` mode
 `0640`. Store the following values outside Git:
 

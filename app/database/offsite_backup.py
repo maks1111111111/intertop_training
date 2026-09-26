@@ -22,6 +22,7 @@ ARCHIVE_MAGIC = b"MCBACKUP1\x00"
 NONCE_SIZE = 12
 TAG_SIZE = 16
 CHUNK_SIZE = 1024 * 1024
+MAX_SINGLE_UPLOAD_SIZE = 5 * 1024 * 1024 * 1024
 
 
 class OffsiteBackupError(RuntimeError):
@@ -29,13 +30,7 @@ class OffsiteBackupError(RuntimeError):
 
 
 class S3Client(Protocol):
-    def upload_file(
-        self,
-        filename: str,
-        bucket: str,
-        key: str,
-        ExtraArgs: dict[str, object] | None = None,
-    ) -> None: ...
+    def put_object(self, **kwargs: object) -> dict[str, object]: ...
 
     def head_object(self, *, Bucket: str, Key: str) -> dict[str, object]: ...
 
@@ -198,20 +193,24 @@ def upload_and_verify(
 ) -> None:
     """Upload one archive, download it again, and verify its ciphertext digest."""
     archive = Path(archive_path).resolve()
-    digest = _sha256(archive)
     size = archive.stat().st_size
-    client.upload_file(
-        str(archive),
-        bucket,
-        object_key,
-        ExtraArgs={
-            "ContentType": "application/octet-stream",
-            "Metadata": {
+    if size > MAX_SINGLE_UPLOAD_SIZE:
+        raise OffsiteBackupError(
+            "encrypted backup exceeds the provider's 5 GiB single-upload limit"
+        )
+    digest = _sha256(archive)
+    with archive.open("rb") as encrypted_file:
+        client.put_object(
+            Bucket=bucket,
+            Key=object_key,
+            Body=encrypted_file,
+            ContentLength=size,
+            ContentType="application/octet-stream",
+            Metadata={
                 "sha256": digest,
                 "format": "mentorconnect-offsite-v1",
             },
-        },
-    )
+        )
     remote = client.head_object(Bucket=bucket, Key=object_key)
     remote_metadata = remote.get("Metadata")
     if remote.get("ContentLength") != size:
