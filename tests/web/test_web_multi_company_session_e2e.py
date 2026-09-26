@@ -227,8 +227,11 @@ class WebMultiCompanySessionE2ETests(unittest.TestCase):
             assignment = connection.execute(
                 """
                 SELECT 1
-                FROM user_course_progress
-                WHERE company_id = ? AND user_id = ? AND course_slug = ?
+                FROM enrollments
+                JOIN courses ON courses.id = enrollments.course_id
+                WHERE enrollments.company_id = ?
+                  AND enrollments.user_id = ?
+                  AND courses.slug = ?
                 """,
                 ("company-b", self.company_a_user_id, "beta"),
             ).fetchone()
