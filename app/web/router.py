@@ -1001,12 +1001,31 @@ def get_admin_lesson_create_service(
 
 def get_admin_lesson_question_preview_store(
     request: Request,
+    identity: WebIdentity = Depends(require_web_admin_identity),
 ) -> AdminLessonQuestionPreviewStore:
-    """Return the in-memory preview store for AI lesson question previews."""
-    store = getattr(request.app.state, "admin_lesson_question_preview_store", None)
+    """Return an AI-question preview store confined to one tenant."""
+    stores = getattr(
+        request.app.state,
+        "admin_lesson_question_preview_stores_by_company",
+        None,
+    )
+    if stores is None:
+        existing = getattr(
+            request.app.state,
+            "admin_lesson_question_preview_store",
+            None,
+        )
+        stores = {}
+        if existing is not None:
+            stores[identity.company_id] = existing
+        request.app.state.admin_lesson_question_preview_stores_by_company = stores
+
+    store = stores.get(identity.company_id)
     if store is None:
         store = AdminLessonQuestionPreviewStore()
-        request.app.state.admin_lesson_question_preview_store = store
+        stores[identity.company_id] = store
+    # Preserve the established test/debug handle without using it for routing.
+    request.app.state.admin_lesson_question_preview_store = store
     return store
 
 
@@ -1048,16 +1067,31 @@ def get_admin_lesson_question_apply_service(
 
 def get_admin_lesson_practical_task_preview_store(
     request: Request,
+    identity: WebIdentity = Depends(require_web_admin_identity),
 ) -> AdminLessonPracticalTaskPreviewStore:
-    """Return the in-memory preview store for AI lesson practical-task previews."""
-    store = getattr(
+    """Return an AI practical-task preview store confined to one tenant."""
+    stores = getattr(
         request.app.state,
-        "admin_lesson_practical_task_preview_store",
+        "admin_lesson_practical_task_preview_stores_by_company",
         None,
     )
+    if stores is None:
+        existing = getattr(
+            request.app.state,
+            "admin_lesson_practical_task_preview_store",
+            None,
+        )
+        stores = {}
+        if existing is not None:
+            stores[identity.company_id] = existing
+        request.app.state.admin_lesson_practical_task_preview_stores_by_company = stores
+
+    store = stores.get(identity.company_id)
     if store is None:
         store = AdminLessonPracticalTaskPreviewStore()
-        request.app.state.admin_lesson_practical_task_preview_store = store
+        stores[identity.company_id] = store
+    # Preserve the established test/debug handle without using it for routing.
+    request.app.state.admin_lesson_practical_task_preview_store = store
     return store
 
 

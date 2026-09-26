@@ -62,6 +62,8 @@ class WebMultiCompanySessionE2ETests(unittest.TestCase):
         self.shared_user_id = self._create_user(101, "shared-user", "Shared")
         self.company_a_user_id = self._create_user(102, "a-learner", "A Learner")
         self.company_b_user_id = self._create_user(103, "b-learner", "B Learner")
+        self.company_a_admin_id = self._create_user(104, "a-admin", "A Admin")
+        self.company_b_admin_id = self._create_user(105, "b-admin", "B Admin")
 
         self.memberships.add(
             self.db_path,
@@ -86,6 +88,18 @@ class WebMultiCompanySessionE2ETests(unittest.TestCase):
             "company-b",
             self.company_b_user_id,
             role="student",
+        )
+        self.memberships.add(
+            self.db_path,
+            "company-a",
+            self.company_a_admin_id,
+            role="admin",
+        )
+        self.memberships.add(
+            self.db_path,
+            "company-b",
+            self.company_b_admin_id,
+            role="admin",
         )
 
         sync_courses(
@@ -121,9 +135,14 @@ class WebMultiCompanySessionE2ETests(unittest.TestCase):
         assert row is not None
         return int(row["id"])
 
-    def _headers_for_company(self, company_id: str) -> dict[str, str]:
+    def _headers_for_company(
+        self,
+        company_id: str,
+        *,
+        user_id: int | None = None,
+    ) -> dict[str, str]:
         token = self.session_service.create_token(
-            user_id=self.shared_user_id,
+            user_id=self.shared_user_id if user_id is None else user_id,
             company_id=company_id,
         )
         return {"Cookie": f"{WEB_SESSION_COOKIE_NAME}={token}"}
@@ -194,6 +213,89 @@ class WebMultiCompanySessionE2ETests(unittest.TestCase):
 
                     self.assertEqual(response.status_code, 404)
                     self.assertNotIn(foreign_title, response.text)
+
+    def test_manager_cannot_assign_course_to_foreign_tenant_member(self) -> None:
+        response = self.client.post(
+            f"/manager/team/{self.company_a_user_id}/assign-course",
+            headers=self._headers_for_company("company-b"),
+            data={"course_slug": "beta"},
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 404)
+        with get_connection(self.db_path) as connection:
+            assignment = connection.execute(
+                """
+                SELECT 1
+                FROM user_course_progress
+                WHERE company_id = ? AND user_id = ? AND course_slug = ?
+                """,
+                ("company-b", self.company_a_user_id, "beta"),
+            ).fetchone()
+        self.assertIsNone(assignment)
+
+    def test_admin_course_routes_cannot_read_or_mutate_foreign_tenant_course(
+        self,
+    ) -> None:
+        headers = self._headers_for_company(
+            "company-a",
+            user_id=self.company_a_admin_id,
+        )
+        requests = (
+            ("GET", "/admin/courses/beta"),
+            ("GET", "/admin/courses/beta/edit"),
+            ("POST", "/admin/courses/beta/edit"),
+            ("GET", "/admin/courses/beta/archive"),
+            ("POST", "/admin/courses/beta/archive"),
+            ("POST", "/admin/courses/beta/restore"),
+            ("GET", "/admin/courses/beta/delete"),
+            ("POST", "/admin/courses/beta/delete"),
+            ("GET", "/admin/courses/beta/preview"),
+            ("GET", "/admin/courses/beta/preview/lessons/lesson_01"),
+            ("GET", "/admin/courses/beta/lessons/lesson_01/edit"),
+            ("POST", "/admin/courses/beta/lessons/lesson_01/edit"),
+        )
+
+        for method, path in requests:
+            with self.subTest(method=method, path=path):
+                response = self.client.request(
+                    method,
+                    path,
+                    headers=headers,
+                    data={},
+                    follow_redirects=False,
+                )
+                self.assertEqual(response.status_code, 404)
+                self.assertNotIn("Beta B", response.text)
+
+        company_b_course = self.courses_root / "company-b" / "beta" / "course.json"
+        self.assertTrue(company_b_course.exists())
+        self.assertIn("Beta B", company_b_course.read_text(encoding="utf-8"))
+
+    def test_ai_preview_stores_are_separate_for_each_tenant(self) -> None:
+        cases = (
+            ("company-a", self.company_a_admin_id, "alpha"),
+            ("company-b", self.company_b_admin_id, "beta"),
+        )
+        for company_id, user_id, slug in cases:
+            headers = self._headers_for_company(company_id, user_id=user_id)
+            for suffix in ("generate-questions", "generate-practical-task"):
+                response = self.client.get(
+                    f"/admin/courses/{slug}/lessons/lesson_01/{suffix}",
+                    headers=headers,
+                )
+                self.assertEqual(response.status_code, 200)
+
+        question_stores = (
+            self.app.state.admin_lesson_question_preview_stores_by_company
+        )
+        practical_stores = (
+            self.app.state.admin_lesson_practical_task_preview_stores_by_company
+        )
+        self.assertEqual(set(question_stores), {"company-a", "company-b"})
+        self.assertEqual(set(practical_stores), {"company-a", "company-b"})
+        self.assertIsNot(question_stores["company-a"], question_stores["company-b"])
+        self.assertIsNot(practical_stores["company-a"], practical_stores["company-b"])
 
     def test_deactivated_membership_invalidates_existing_signed_session(self) -> None:
         headers = self._headers_for_company("company-a")
