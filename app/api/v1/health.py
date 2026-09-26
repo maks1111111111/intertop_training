@@ -25,6 +25,7 @@ def health() -> HealthResponse:
     return HealthResponse(status="ok")
 
 
+@router.head("/ready", include_in_schema=False)
 @router.get("/ready", response_model=HealthResponse)
 def readiness(request: Request) -> HealthResponse:
     """Report whether the application can query its primary database."""
@@ -43,6 +44,7 @@ def readiness(request: Request) -> HealthResponse:
     return HealthResponse(status="ready")
 
 
+@router.head("/automation-ready", include_in_schema=False)
 @router.get("/automation-ready", response_model=HealthResponse)
 def automation_readiness() -> HealthResponse:
     """Report whether critical daily automation completed recently."""

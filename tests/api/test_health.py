@@ -41,6 +41,12 @@ class HealthEndpointTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ready"})
 
+    def test_readiness_accepts_head_for_external_monitors(self) -> None:
+        response = self.client.head("/api/v1/ready")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"")
+
     @patch(
         "app.api.v1.health.get_connection",
         side_effect=sqlite3.OperationalError("database is locked"),
@@ -90,6 +96,16 @@ class HealthEndpointTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ready"})
+
+    @patch("app.api.v1.health.automation_is_healthy", return_value=True)
+    def test_automation_readiness_accepts_head_for_external_monitors(
+        self,
+        _mock_automation_is_healthy,
+    ) -> None:
+        response = self.client.head("/api/v1/automation-ready")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"")
 
     @patch("app.api.v1.health.automation_is_healthy", return_value=False)
     def test_automation_readiness_returns_503_when_jobs_are_stale(
