@@ -298,6 +298,34 @@ real recovery periodically on an isolated machine: download an encrypted object,
 decrypt it with the offline key, inspect the tar manifest, run SQLite
 `PRAGMA quick_check`, and validate representative course and upload files.
 
+#### Non-destructive restore drill
+
+Do not restore over the production database merely to test recoverability. The
+checked-in restore-drill command downloads only the newest `daily/` object,
+decrypts it into a private temporary directory, verifies the manifest and SQLite
+database, then removes all plaintext before it exits. It uses the existing
+restricted S3 service identity; it never prints credentials or the encryption
+key.
+
+```bash
+sudo install -d -o intertop -g intertop -m 0700 \
+  /var/backups/intertop-training/restore-drill
+sudo systemd-run --wait --pipe --collect \
+  -p User=intertop \
+  -p Group=intertop \
+  -p UMask=0077 \
+  -p WorkingDirectory=/opt/intertop-training \
+  -p EnvironmentFile=/etc/intertop-training/offsite-backup.env \
+  -p ProtectSystem=strict \
+  -p ReadWritePaths=/var/backups/intertop-training/restore-drill \
+  /opt/intertop-training/.venv/bin/python \
+  -m app.database.offsite_restore_verify \
+  --work-dir /var/backups/intertop-training/restore-drill
+```
+
+Run this drill after initial backup configuration, then at least quarterly and
+after any change to the backup encryption key or S3 access policy.
+
 ### Monitor audit and offsite-backup completion externally
 
 The audit and offsite-backup units update separate success markers only after

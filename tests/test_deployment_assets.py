@@ -81,6 +81,13 @@ class DeploymentAssetTests(unittest.TestCase):
         self.assertIn("OnCalendar=*-*-* 04:30:00", timer)
         self.assertIn("Persistent=true", timer)
 
+    def test_runbook_includes_a_non_destructive_offsite_restore_drill(self) -> None:
+        runbook = _read("deploy/README.md")
+
+        self.assertIn("-m app.database.offsite_restore_verify", runbook)
+        self.assertIn("/var/backups/intertop-training/restore-drill", runbook)
+        self.assertIn("Do not restore over the production database", runbook)
+
     def test_staging_environment_keeps_state_outside_the_checkout(self) -> None:
         environment = _read("deploy/staging.env.example")
 
