@@ -175,6 +175,46 @@ sudo -u intertop .venv/bin/python -m app.database.backup \
 Store backups on separate durable storage. A backup on the same VPS is not a
 disaster-recovery backup.
 
+### Export one company’s data without crossing tenant boundaries
+
+The following operator-only command creates a portable archive for one company
+when fulfilling an agreed customer export or offboarding request. It takes a
+consistent SQLite snapshot first, includes only the selected company’s profile,
+members, learning records, Knowledge Base data, course content and tenant upload
+files, and refuses symlinks or missing course directories rather than silently
+creating an incomplete archive.
+
+It deliberately excludes password hashes, MFA secrets, sessions, platform-wide
+administrator and audit records, temporary support-access records, and all data
+belonging to other companies. The archive itself contains personal data: create
+it in a dedicated `0700` directory, transfer it only through an approved
+encrypted channel, and remove it after documented delivery. Do not use the
+platform backup-encryption key as a customer delivery key.
+
+```bash
+cd /opt/intertop-training
+sudo install -d -o intertop -g intertop -m 0700 \
+  /var/backups/intertop-training/company-exports
+sudo systemd-run --wait --pipe --collect \
+  -p User=intertop \
+  -p Group=intertop \
+  -p UMask=0077 \
+  -p WorkingDirectory=/opt/intertop-training \
+  -p ProtectSystem=strict \
+  -p ReadWritePaths=/var/backups/intertop-training/company-exports \
+  /opt/intertop-training/.venv/bin/python \
+  -m app.database.company_data_export \
+  --db /srv/intertop-training/data/training.db \
+  --company-id <COMPANY_ID> \
+  --courses-dir /srv/intertop-training/courses \
+  --uploads-dir /srv/intertop-training/uploads \
+  --output /var/backups/intertop-training/company-exports/<COMPANY_ID>-export.tar.gz
+```
+
+The command does not delete or deactivate the company. Deletion requires a
+separate approved retention and offboarding policy, including a grace period and
+handling of immutable backup copies.
+
 The checked-in Web unit first applies idempotent schema migrations and then runs
 the combined deployment audit through `ExecStartPre`. Always create the release
 backup before restarting. A failed migration or non-clean tenant/platform audit
