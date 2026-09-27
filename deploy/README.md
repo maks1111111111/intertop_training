@@ -248,6 +248,21 @@ explicitly confirmed working-data purge procedure. That procedure must verify a
 recorded export and capture a final owner reason; it must never run
 automatically from this timer-free eligibility check.
 
+Before that final purge is enabled, use the following dry-run to enumerate only
+counts of the eligible company's database records and tenant files. It cannot
+delete, rename, deactivate, export or modify data. It refuses unsafe paths and
+missing course directories so an operator cannot approve an incomplete scope.
+
+```bash
+cd /opt/intertop-training
+sudo -u intertop /opt/intertop-training/.venv/bin/python \
+  -m app.database.company_purge_plan \
+  --db /srv/intertop-training/data/training.db \
+  --company-id <COMPANY_ID> \
+  --courses-dir /srv/intertop-training/courses \
+  --uploads-dir /srv/intertop-training/uploads
+```
+
 The checked-in Web unit first applies idempotent schema migrations and then runs
 the combined deployment audit through `ExecStartPre`. Always create the release
 backup before restarting. A failed migration or non-clean tenant/platform audit
