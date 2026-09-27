@@ -215,6 +215,39 @@ The command does not delete or deactivate the company. Deletion requires a
 separate approved retention and offboarding policy, including a grace period and
 handling of immutable backup copies.
 
+### Approved company offboarding policy
+
+For a company that has ended its contract, the platform owner must first create
+and document a successful export, then disable the company through the platform
+interface with a reason. Working tenant data remains available only for the
+following **30 full days**. The company may be re-enabled during that period;
+reactivation cancels the pending deletion window. Offsite encrypted backups are
+not edited retroactively and expire through their configured 35-day retention.
+Immutable platform audit events are retained as security records and are not
+included in the customer's export.
+
+The following command is read-only. It derives the deletion eligibility only
+from the current inactive state and the latest immutable
+`company.deactivated`/`company.activated` audit event. It does not export,
+delete, or change the company:
+
+```bash
+cd /opt/intertop-training
+sudo systemd-run --wait --pipe --collect \
+  -p User=intertop \
+  -p Group=intertop \
+  -p WorkingDirectory=/opt/intertop-training \
+  /opt/intertop-training/.venv/bin/python \
+  -m app.database.company_offboarding \
+  --db /srv/intertop-training/data/training.db \
+  --company-id <COMPANY_ID>
+```
+
+Only when it reports `eligible=true` may a platform owner begin the separate,
+explicitly confirmed working-data purge procedure. That procedure must verify a
+recorded export and capture a final owner reason; it must never run
+automatically from this timer-free eligibility check.
+
 The checked-in Web unit first applies idempotent schema migrations and then runs
 the combined deployment audit through `ExecStartPre`. Always create the release
 backup before restarting. A failed migration or non-clean tenant/platform audit
