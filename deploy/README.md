@@ -215,6 +215,13 @@ The command does not delete or deactivate the company. Deletion requires a
 separate approved retention and offboarding policy, including a grace period and
 handling of immutable backup copies.
 
+After a successful run, it prints `archive_sha256=...`. Before disabling the
+company, a platform owner must open **Platform Admin → Companies** and use
+**Record verified data export** for that company. Copy only the archive
+filename and that SHA-256 value, state the reason, and enter the current owner
+password. The Web application does not upload or expose the archive; it writes
+these non-secret verification details to the immutable platform audit trail.
+
 ### Approved company offboarding policy
 
 For a company that has ended its contract, the platform owner must first create

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
 import tarfile
 import tempfile
@@ -206,6 +207,12 @@ class CompanyDataExportTests(unittest.TestCase):
         )
 
         self.assertEqual(result.company_id, "alpha")
+        self.assertEqual(len(result.archive_sha256), 64)
+        self.assertTrue(result.archive_sha256.isascii())
+        self.assertEqual(
+            result.archive_sha256,
+            hashlib.sha256(output.read_bytes()).hexdigest(),
+        )
         self.assertEqual(result.course_files, 1)
         self.assertEqual(result.upload_files, 1)
         self.assertEqual(output.stat().st_mode & 0o777, 0o600)

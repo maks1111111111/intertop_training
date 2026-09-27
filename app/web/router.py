@@ -2097,6 +2097,51 @@ async def platform_company_status_update(
     return RedirectResponse(url="/platform-admin/companies", status_code=303)
 
 
+@router.post(
+    "/platform-admin/companies/{company_id}/export-record",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def platform_company_export_record(
+    company_id: str,
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    owner: PlatformAdminContext = Depends(require_platform_owner),
+    service: PlatformCompanyService = Depends(get_platform_company_service),
+    confirmation_service: PlatformOwnerConfirmationService = Depends(
+        get_platform_owner_confirmation_service
+    ),
+) -> HTMLResponse:
+    """Persist the proof of a verified export before company offboarding."""
+    form = await request.form()
+    if not confirmation_service.confirm(
+        db_path,
+        owner_user_id=owner.user_id,
+        password=str(form.get("current_password") or ""),
+    ):
+        return _render_platform_companies_page(
+            request,
+            db_path=db_path,
+            error_message="Не удалось подтвердить текущий пароль.",
+        )
+    try:
+        service.record_company_data_export(
+            db_path,
+            actor_user_id=owner.user_id,
+            company_id=company_id,
+            archive_name=str(form.get("archive_name") or ""),
+            archive_sha256=str(form.get("archive_sha256") or ""),
+            reason=str(form.get("reason") or ""),
+        )
+    except PlatformCompanyError as error:
+        return _render_platform_companies_page(
+            request,
+            db_path=db_path,
+            error_message=str(error),
+        )
+    return RedirectResponse(url="/platform-admin/companies", status_code=303)
+
+
 @router.get("/platform-admin/admins", response_class=HTMLResponse, include_in_schema=False)
 def platform_admins_page(
     request: Request,

@@ -37,6 +37,7 @@ class CompanyDataExportResult:
 
     output_path: Path
     company_id: str
+    archive_sha256: str
     record_counts: Mapping[str, int]
     course_files: int
     upload_files: int
@@ -147,6 +148,7 @@ def create_company_data_export(
     return CompanyDataExportResult(
         output_path=destination,
         company_id=normalized_company_id,
+        archive_sha256=_sha256(destination),
         record_counts={name: len(rows) for name, rows in payloads.items()},
         course_files=len(course_files),
         upload_files=len(upload_files),
@@ -584,6 +586,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print(result.output_path)
     print(f"company_id={result.company_id}")
+    print(f"archive_sha256={result.archive_sha256}")
     print(f"course_files={result.course_files}")
     print(f"upload_files={result.upload_files}")
     print("status=complete")

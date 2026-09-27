@@ -77,6 +77,52 @@ class PlatformCompanyServiceTests(unittest.TestCase):
         self.assertEqual(event.action, "company.deactivated")
         self.assertEqual(event.reason, "Contract ended")
 
+    def test_owner_can_record_verified_export_only_while_company_is_active(self) -> None:
+        self.companies.create(self.db_path, "north-shop", "North Shop")
+        archive_sha256 = "a" * 64
+
+        self.service.record_company_data_export(
+            self.db_path,
+            actor_user_id=self.owner_id,
+            company_id="north-shop",
+            archive_name="north-shop-export.tar.gz",
+            archive_sha256=archive_sha256,
+            reason="Customer requested an offboarding export",
+        )
+
+        event = self.admins.list_audit_events(self.db_path)[0]
+        self.assertEqual(event.action, "company.data_export_recorded")
+        self.assertIn(f"archive_sha256={archive_sha256}", event.reason)
+        self.service.set_company_active(
+            self.db_path,
+            actor_user_id=self.owner_id,
+            company_id="north-shop",
+            is_active=False,
+            reason="Contract ended",
+        )
+        with self.assertRaisesRegex(PlatformCompanyError, "before the company is disabled"):
+            self.service.record_company_data_export(
+                self.db_path,
+                actor_user_id=self.owner_id,
+                company_id="north-shop",
+                archive_name="north-shop-export.tar.gz",
+                archive_sha256=archive_sha256,
+                reason="Too late",
+            )
+
+    def test_export_record_rejects_unverifiable_archive_fingerprint(self) -> None:
+        self.companies.create(self.db_path, "north-shop", "North Shop")
+
+        with self.assertRaisesRegex(PlatformCompanyError, "SHA-256"):
+            self.service.record_company_data_export(
+                self.db_path,
+                actor_user_id=self.owner_id,
+                company_id="north-shop",
+                archive_name="north-shop-export.tar.gz",
+                archive_sha256="not-a-hash",
+                reason="Bad input",
+            )
+
     def test_non_owner_cannot_mutate_company_lifecycle(self) -> None:
         non_owner_id = self._create_user("platform-admin")
         with get_connection(self.db_path) as connection:

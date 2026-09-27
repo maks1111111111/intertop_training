@@ -11,6 +11,8 @@ from app.repositories.platform_admin_repository import PlatformAdminRepository
 
 
 _COMPANY_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+_ARCHIVE_SHA256_PATTERN = re.compile(r"^[a-f0-9]{64}$")
+_ARCHIVE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 class PlatformCompanyError(ValueError):
@@ -97,6 +99,50 @@ class PlatformCompanyService:
         )
         return refreshed
 
+    def record_company_data_export(
+        self,
+        db_path: Path,
+        *,
+        actor_user_id: int,
+        company_id: str,
+        archive_name: str,
+        archive_sha256: str,
+        reason: str,
+    ) -> None:
+        """Record an operator-verified customer export before offboarding.
+
+        The archive remains outside the Web process.  This method records only
+        its non-secret filename and SHA-256 fingerprint in the immutable
+        platform audit trail, so a later destructive workflow has a durable
+        prerequisite without exposing the customer archive in the UI.
+        """
+        self._require_owner(db_path, actor_user_id)
+        normalized_id = _validate_company_id(company_id)
+        normalized_name = _validate_archive_name(archive_name)
+        normalized_sha256 = _validate_archive_sha256(archive_sha256)
+        normalized_reason = _validate_text(reason, "reason")
+
+        company = self._companies.get_by_id(db_path, normalized_id)
+        if company is None:
+            raise PlatformCompanyError("company not found")
+        if not company.is_active:
+            raise PlatformCompanyError(
+                "company export must be recorded before the company is disabled"
+            )
+
+        self._platform_admins.append_audit_event(
+            db_path,
+            actor_user_id=actor_user_id,
+            action="company.data_export_recorded",
+            target_type="company",
+            target_id=normalized_id,
+            reason=(
+                f"archive_name={normalized_name}; "
+                f"archive_sha256={normalized_sha256}; "
+                f"operator_reason={normalized_reason}"
+            ),
+        )
+
     def _require_owner(self, db_path: Path, actor_user_id: int) -> None:
         admin = self._platform_admins.get_active_by_user_id(db_path, actor_user_id)
         if admin is None or not admin.is_owner:
@@ -120,4 +166,24 @@ def _validate_text(value: str, field_name: str) -> str:
     normalized = value.strip()
     if not normalized:
         raise PlatformCompanyError(f"{field_name} is required")
+    return normalized
+
+
+def _validate_archive_name(value: str) -> str:
+    if not isinstance(value, str):
+        raise PlatformCompanyError("archive_name must be a string")
+    normalized = value.strip()
+    if not _ARCHIVE_NAME_PATTERN.fullmatch(normalized):
+        raise PlatformCompanyError(
+            "archive_name must be a filename of at most 128 safe characters"
+        )
+    return normalized
+
+
+def _validate_archive_sha256(value: str) -> str:
+    if not isinstance(value, str):
+        raise PlatformCompanyError("archive_sha256 must be a string")
+    normalized = value.strip().lower()
+    if not _ARCHIVE_SHA256_PATTERN.fullmatch(normalized):
+        raise PlatformCompanyError("archive_sha256 must be a 64-character SHA-256 hex value")
     return normalized

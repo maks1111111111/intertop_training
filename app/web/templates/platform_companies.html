@@ -76,6 +76,17 @@
                 <p class="empty-state">Администратор компании ещё не создан.</p>
                 {% endif %}
             </div>
+            {% if company.is_active %}
+            <form method="post" action="/platform-admin/companies/{{ company.id }}/export-record" class="platform-operation-form">
+                <h4>Зафиксировать проверенную выгрузку данных</h4>
+                <p class="field-hint">Сначала создайте архив операторской командой и проверьте его SHA-256. Эта запись не загружает архив в платформу: она фиксирует его имя, отпечаток и причину в неизменяемом журнале перед отключением компании.</p>
+                <label class="auth-field"><span>Имя архива</span><input name="archive_name" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,127}" placeholder="company-export.tar.gz" required></label>
+                <label class="auth-field"><span>SHA-256 архива</span><input name="archive_sha256" pattern="[A-Fa-f0-9]{64}" minlength="64" maxlength="64" autocapitalize="off" autocomplete="off" required></label>
+                <label class="auth-field"><span>Причина выгрузки</span><input name="reason" required></label>
+                <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
+                <button type="submit" class="button button-secondary">Зафиксировать выгрузку</button>
+            </form>
+            {% endif %}
             <form method="post" action="/platform-admin/companies/{{ company.id }}/status" class="platform-inline-form">
                 <input type="hidden" name="state" value="{% if company.is_active %}inactive{% else %}active{% endif %}">
                 <label class="auth-field"><span>Причина изменения</span><input name="reason" required></label>

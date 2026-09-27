@@ -307,6 +307,44 @@ class PlatformAdminRouteTests(unittest.TestCase):
         self.assertEqual(events[0].action, "company.deactivated")
         self.assertEqual(events[0].reason, "Contract ended")
 
+    def test_owner_can_record_company_export_with_fresh_password(self) -> None:
+        CompanyRepository().create(self.db_path, "north-shop", "North Shop")
+        self._login()
+        archive_sha256 = "b" * 64
+
+        denied = self.client.post(
+            "/platform-admin/companies/north-shop/export-record",
+            data={
+                "archive_name": "north-shop-export.tar.gz",
+                "archive_sha256": archive_sha256,
+                "reason": "Customer data export",
+                "current_password": "wrong-password",
+            },
+        )
+        self.assertEqual(denied.status_code, 400)
+        self.assertIn("Не удалось подтвердить текущий пароль", denied.text)
+        self.assertFalse(
+            any(
+                event.action == "company.data_export_recorded"
+                for event in PlatformAdminRepository().list_audit_events(self.db_path)
+            )
+        )
+
+        recorded = self.client.post(
+            "/platform-admin/companies/north-shop/export-record",
+            data={
+                "archive_name": "north-shop-export.tar.gz",
+                "archive_sha256": archive_sha256,
+                "reason": "Customer data export",
+                "current_password": "Strong-password-123!",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(recorded.status_code, 303)
+        event = PlatformAdminRepository().list_audit_events(self.db_path, limit=1)[0]
+        self.assertEqual(event.action, "company.data_export_recorded")
+        self.assertIn(f"archive_sha256={archive_sha256}", event.reason)
+
     def test_owner_can_audit_and_reset_company_admin_mfa(self) -> None:
         CompanyRepository().create(self.db_path, "company-a", "Company A")
         self._login()
