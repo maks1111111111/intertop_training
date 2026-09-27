@@ -5467,6 +5467,16 @@ a:focus-visible,
     grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
 }
 
+/* Company cards combine short operational forms with explanatory text. Keep
+ * headings, safety notes and the administrator summary out of the input grid,
+ * otherwise they consume columns intended for controls on wide screens. */
+.platform-company-card > .platform-operation-form > h4,
+.platform-company-card > .platform-operation-form > .field-hint,
+.platform-company-card > .platform-operation-form > .platform-company-summary,
+.platform-company-card > .platform-operation-form > .platform-inline-form {
+    grid-column: 1 / -1;
+}
+
 .platform-inline-form {
     grid-template-columns: minmax(12rem, 1fr) minmax(12rem, 1fr) auto;
     padding-top: 1rem;
