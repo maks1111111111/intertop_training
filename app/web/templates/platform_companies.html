@@ -7,7 +7,7 @@
     <div>
         <p class="page-eyebrow">Platform Admin</p>
         <h1>Компании</h1>
-        <p class="page-subtitle">Создание и изменение статуса фиксируются в неизменяемом журнале.</p>
+        <p class="page-subtitle">Найдите компанию, откройте её рабочее пространство и выполняйте действия только в её контексте.</p>
     </div>
     <a class="button button-secondary" href="/platform-admin">Обзор</a>
 </section>
@@ -17,6 +17,30 @@
 {% if error_message %}
 <div class="auth-error" role="alert">{{ error_message }}</div>
 {% endif %}
+
+<section class="content-section">
+    <div class="section-heading"><div><h2>Найти компанию</h2><p class="section-description">Поиск работает по названию и ID. В результатах показываются максимум 25 компаний.</p></div></div>
+    <form method="get" action="/platform-admin/companies" class="platform-company-search-form">
+        <label class="auth-field"><span>Название или ID компании</span><input name="company_query" value="{{ company_query }}" placeholder="Например, pilot-company"></label>
+        <button type="submit" class="button button-primary">Найти</button>
+        {% if company_query %}<a class="button button-secondary" href="/platform-admin/companies">Сбросить</a>{% endif %}
+    </form>
+    {% if company_results %}
+    <div class="platform-company-directory" aria-label="Результаты поиска компаний">
+        {% for company in company_results %}
+        <a class="platform-company-directory-item {% if selected_company and selected_company.id == company.id %}is-selected{% endif %}" href="/platform-admin/companies?company_id={{ company.id }}">
+            <span><strong>{{ company.name }}</strong><small>{{ company.id }}</small></span>
+            <span class="platform-status {% if company.is_active %}is-active{% else %}is-inactive{% endif %}">{% if company.is_active %}Активна{% else %}Отключена{% endif %}</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% if company_result_count > company_results|length %}<p class="field-hint">Найдены {{ company_result_count }} компаний. Уточните запрос, чтобы увидеть остальные.</p>{% endif %}
+    {% elif company_query %}
+    <p class="empty-state">Компании по этому запросу не найдены.</p>
+    {% else %}
+    <p class="empty-state">Компаний пока нет.</p>
+    {% endif %}
+</section>
 
 <section class="content-section">
     <div class="section-heading"><div><h2>Создать компанию</h2><p class="section-description">ID нельзя изменить после создания. Используйте короткий латинский идентификатор.</p></div></div>
@@ -29,75 +53,71 @@
     </form>
 </section>
 
-<section class="content-section">
-    <div class="section-heading"><div><h2>Все компании</h2><p class="section-description">Отключенная компания теряет tenant- и support-доступ до повторной активации.</p></div></div>
-    {% if companies %}
-    <div class="platform-company-list">
-        {% for company in companies %}
-        <article class="platform-company-card">
-            <div class="platform-company-summary">
-                <div><h3>{{ company.name }}</h3><p>{{ company.id }}</p></div>
-                <div class="platform-usage-meta"><span class="platform-status {% if company.is_active %}is-active{% else %}is-inactive{% endif %}">{% if company.is_active %}Активна{% else %}Отключена{% endif %}</span></div>
-            </div>
-            <form method="post" action="/platform-admin/companies/{{ company.id }}/users" class="platform-operation-form">
-                <h4>Назначить администратора компании</h4>
-                <label class="auth-field"><span>Имя</span><input name="first_name" required></label>
-                <label class="auth-field"><span>Фамилия</span><input name="last_name"></label>
-                <label class="auth-field"><span>Email для входа</span><input name="email" type="email" autocomplete="email" required></label>
-                <input type="hidden" name="role" value="admin">
-                <label class="auth-field"><span>Временный пароль (минимум 12 символов)</span><input name="password" type="password" autocomplete="new-password" required></label>
-                <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
-                <button type="submit" class="button button-primary">Создать пользователя</button>
-            </form>
-            <div class="platform-operation-form">
-                <h4>MFA администраторов</h4>
-                {% set company_admin_count = namespace(value=0) %}
-                {% for admin in company_admins if admin.company_id == company.id %}
-                {% set company_admin_count.value = company_admin_count.value + 1 %}
-                <div class="platform-company-summary">
-                    <div>
-                        <strong>{{ admin.display_name }}</strong>
-                        <p>{{ admin.email }}</p>
-                    </div>
-                    <span class="platform-status {% if admin.is_enrolled %}is-active{% else %}is-inactive{% endif %}">
-                        {% if admin.is_enrolled %}MFA подключена{% else %}Ожидает настройки{% endif %}
-                    </span>
-                </div>
+{% if selected_company %}
+<section class="content-section platform-company-workspace">
+    <div class="platform-company-workspace-header">
+        <div><p class="page-eyebrow">Рабочее пространство компании</p><h2>{{ selected_company.name }}</h2><p>{{ selected_company.id }}</p></div>
+        <span class="platform-status {% if selected_company.is_active %}is-active{% else %}is-inactive{% endif %}">{% if selected_company.is_active %}Активна{% else %}Отключена{% endif %}</span>
+    </div>
+
+    <section class="platform-company-operation">
+        <div class="platform-company-operation-heading"><h3>Администраторы</h3><p>Создайте администратора компании или проверьте статус MFA существующих учётных записей.</p></div>
+        <form method="post" action="/platform-admin/companies/{{ selected_company.id }}/users" class="platform-operation-form">
+            <label class="auth-field"><span>Имя</span><input name="first_name" required></label>
+            <label class="auth-field"><span>Фамилия</span><input name="last_name"></label>
+            <label class="auth-field"><span>Email для входа</span><input name="email" type="email" autocomplete="email" required></label>
+            <input type="hidden" name="role" value="admin">
+            <label class="auth-field"><span>Временный пароль (минимум 12 символов)</span><input name="password" type="password" autocomplete="new-password" required></label>
+            <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
+            <button type="submit" class="button button-primary">Создать пользователя</button>
+        </form>
+
+        {% if selected_company_admins %}
+        <div class="platform-company-admin-list">
+            {% for admin in selected_company_admins %}
+            <article class="platform-company-admin-item">
+                <div><strong>{{ admin.display_name }}</strong><p>{{ admin.email }}</p></div>
+                <span class="platform-status {% if admin.is_enrolled %}is-active{% else %}is-inactive{% endif %}">{% if admin.is_enrolled %}MFA подключена{% else %}Ожидает настройки{% endif %}</span>
                 {% if admin.is_enrolled %}
-                <form method="post" action="/platform-admin/companies/{{ company.id }}/admins/{{ admin.user_id }}/mfa/reset" class="platform-inline-form">
+                <form method="post" action="/platform-admin/companies/{{ selected_company.id }}/admins/{{ admin.user_id }}/mfa/reset" class="platform-inline-form">
                     <label class="auth-field"><span>Причина сброса MFA</span><input name="reason" required></label>
                     <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
                     <button type="submit" class="button button-secondary">Сбросить MFA</button>
                 </form>
                 <p class="field-hint">Сброс действует на аккаунт администратора во всех компаниях.</p>
                 {% endif %}
-                {% endfor %}
-                {% if company_admin_count.value == 0 %}
-                <p class="empty-state">Администратор компании ещё не создан.</p>
-                {% endif %}
-            </div>
-            {% if company.is_active %}
-            <form method="post" action="/platform-admin/companies/{{ company.id }}/export-record" class="platform-operation-form">
-                <h4>Зафиксировать проверенную выгрузку данных</h4>
-                <p class="field-hint">Сначала создайте архив операторской командой и проверьте его SHA-256. Эта запись не загружает архив в платформу: она фиксирует его имя, отпечаток и причину в неизменяемом журнале перед отключением компании.</p>
-                <label class="auth-field"><span>Имя архива</span><input name="archive_name" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,127}" placeholder="company-export.tar.gz" required></label>
-                <label class="auth-field"><span>SHA-256 архива</span><input name="archive_sha256" pattern="[A-Fa-f0-9]{64}" minlength="64" maxlength="64" autocapitalize="off" autocomplete="off" required></label>
-                <label class="auth-field"><span>Причина выгрузки</span><input name="reason" required></label>
-                <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
-                <button type="submit" class="button button-secondary">Зафиксировать выгрузку</button>
-            </form>
-            {% endif %}
-            <form method="post" action="/platform-admin/companies/{{ company.id }}/status" class="platform-inline-form">
-                <input type="hidden" name="state" value="{% if company.is_active %}inactive{% else %}active{% endif %}">
-                <label class="auth-field"><span>Причина изменения</span><input name="reason" required></label>
-                <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
-                <button type="submit" class="button button-secondary">{% if company.is_active %}Отключить{% else %}Включить{% endif %}</button>
-            </form>
-        </article>
-        {% endfor %}
-    </div>
-    {% else %}
-    <p class="empty-state">Компаний пока нет.</p>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty-state">Администратор компании ещё не создан.</p>
+        {% endif %}
+    </section>
+
+    {% if selected_company.is_active %}
+    <section class="platform-company-operation">
+        <div class="platform-company-operation-heading"><h3>Выгрузка данных</h3><p>После успешной операторской выгрузки зафиксируйте имя архива и SHA-256. Архив в платформу не загружается.</p></div>
+        <form method="post" action="/platform-admin/companies/{{ selected_company.id }}/export-record" class="platform-operation-form">
+            <label class="auth-field"><span>Имя архива</span><input name="archive_name" pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,127}" placeholder="company-export.tar.gz" required></label>
+            <label class="auth-field"><span>SHA-256 архива</span><input name="archive_sha256" pattern="[A-Fa-f0-9]{64}" minlength="64" maxlength="64" autocapitalize="off" autocomplete="off" required></label>
+            <label class="auth-field"><span>Причина выгрузки</span><input name="reason" required></label>
+            <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
+            <button type="submit" class="button button-secondary">Зафиксировать выгрузку</button>
+        </form>
+    </section>
     {% endif %}
+
+    <section class="platform-company-operation">
+        <div class="platform-company-operation-heading"><h3>Статус компании</h3><p>{% if selected_company.is_active %}Отключенная компания теряет tenant- и support-доступ до повторной активации.{% else %}Включение отменяет окно последующего удаления рабочих данных.{% endif %}</p></div>
+        <form method="post" action="/platform-admin/companies/{{ selected_company.id }}/status" class="platform-inline-form">
+            <input type="hidden" name="state" value="{% if selected_company.is_active %}inactive{% else %}active{% endif %}">
+            <label class="auth-field"><span>Причина изменения</span><input name="reason" required></label>
+            <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
+            <button type="submit" class="button button-secondary">{% if selected_company.is_active %}Отключить{% else %}Включить{% endif %}</button>
+        </form>
+    </section>
 </section>
+{% elif company_results %}
+<p class="empty-state">Выберите компанию в списке, чтобы открыть её рабочее пространство.</p>
+{% endif %}
 {% endblock %}

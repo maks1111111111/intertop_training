@@ -307,6 +307,26 @@ class PlatformAdminRouteTests(unittest.TestCase):
         self.assertEqual(events[0].action, "company.deactivated")
         self.assertEqual(events[0].reason, "Contract ended")
 
+    def test_owner_filters_companies_and_opens_one_workspace(self) -> None:
+        CompanyRepository().create(self.db_path, "alpha-shop", "Alpha Shop")
+        CompanyRepository().create(self.db_path, "bravo-shop", "Bravo Shop")
+        self._login()
+
+        filtered = self.client.get(
+            "/platform-admin/companies?company_query=bravo"
+        )
+        self.assertEqual(filtered.status_code, 200)
+        self.assertIn("Bravo Shop", filtered.text)
+        self.assertNotIn("Alpha Shop", filtered.text)
+        self.assertIn("Рабочее пространство компании", filtered.text)
+
+        selected = self.client.get(
+            "/platform-admin/companies?company_id=alpha-shop"
+        )
+        self.assertEqual(selected.status_code, 200)
+        self.assertIn("Alpha Shop", selected.text)
+        self.assertIn("Администраторы", selected.text)
+
     def test_owner_can_record_company_export_with_fresh_password(self) -> None:
         CompanyRepository().create(self.db_path, "north-shop", "North Shop")
         self._login()

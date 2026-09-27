@@ -5467,6 +5467,124 @@ a:focus-visible,
     grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
 }
 
+.platform-company-search-form {
+    display: flex;
+    align-items: end;
+    gap: 0.75rem;
+}
+
+.platform-company-search-form .auth-field {
+    flex: 1 1 28rem;
+}
+
+.platform-company-directory {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.platform-company-directory-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-width: 0;
+    padding: 0.9rem 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.625rem;
+    color: inherit;
+    text-decoration: none;
+}
+
+.platform-company-directory-item:hover,
+.platform-company-directory-item:focus-visible,
+.platform-company-directory-item.is-selected {
+    border-color: #2563eb;
+    background: #eff6ff;
+}
+
+.platform-company-directory-item:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+.platform-company-directory-item > span:first-child {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.platform-company-directory-item strong,
+.platform-company-directory-item small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.platform-company-directory-item small,
+.platform-company-workspace-header p,
+.platform-company-admin-item p,
+.platform-company-operation-heading p {
+    margin: 0;
+    color: #6b7280;
+}
+
+.platform-company-workspace {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.platform-company-workspace-header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.platform-company-workspace-header h2,
+.platform-company-operation-heading h3 {
+    margin: 0;
+}
+
+.platform-company-operation {
+    display: grid;
+    gap: 1rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #e5e7eb;
+}
+
+.platform-company-operation:first-of-type {
+    padding-top: 0;
+    border-top: 0;
+}
+
+.platform-company-operation-heading {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.platform-company-admin-list {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.platform-company-admin-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    align-items: center;
+    padding: 1rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.625rem;
+    background: #f9fafb;
+}
+
+.platform-company-admin-item > .platform-inline-form,
+.platform-company-admin-item > .field-hint {
+    grid-column: 1 / -1;
+}
+
 /* Company cards combine short operational forms with explanatory text. Keep
  * headings, safety notes and the administrator summary out of the input grid,
  * otherwise they consume columns intended for controls on wide screens. */
@@ -5526,6 +5644,10 @@ a:focus-visible,
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .platform-company-search-form {
+        flex-wrap: wrap;
+    }
+
     .platform-limit-form .button {
         width: 100%;
     }
@@ -5569,6 +5691,20 @@ a:focus-visible,
 
     .platform-company-summary {
         flex-direction: column;
+    }
+
+    .platform-company-search-form,
+    .platform-company-workspace-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .platform-company-search-form .button {
+        width: 100%;
+    }
+
+    .platform-company-admin-item {
+        grid-template-columns: 1fr;
     }
 
     .platform-usage-meta {

@@ -1271,15 +1271,45 @@ def _render_platform_companies_page(
     *,
     db_path: Path,
     error_message: str = "",
+    selected_company_id: str = "",
+    company_query: str = "",
 ) -> HTMLResponse:
-    """Render lifecycle controls with all company states visible."""
+    """Render a searchable company directory and one selected workspace."""
+    all_companies = CompanyRepository().list_all(db_path)
+    normalized_query = company_query.strip().casefold()
+    matching_companies = tuple(
+        company
+        for company in all_companies
+        if not normalized_query
+        or normalized_query in company.id.casefold()
+        or normalized_query in company.name.casefold()
+    )
+    normalized_selection = selected_company_id.strip().lower()
+    selected_company = next(
+        (
+            company
+            for company in all_companies
+            if company.id == normalized_selection
+        ),
+        None,
+    )
+    if selected_company is None and len(matching_companies) == 1:
+        selected_company = matching_companies[0]
+
+    company_admins = get_platform_company_mfa_service().list_admins(db_path)
     return templates.TemplateResponse(
         request,
         "platform_companies.html",
         {
-            "companies": CompanyRepository().list_all(db_path),
-            "company_admins": get_platform_company_mfa_service().list_admins(
-                db_path
+            "company_results": matching_companies[:25],
+            "company_result_count": len(matching_companies),
+            "company_query": company_query.strip(),
+            "selected_company": selected_company,
+            "selected_company_admins": tuple(
+                admin
+                for admin in company_admins
+                if selected_company is not None
+                and admin.company_id == selected_company.id
             ),
             "error_message": error_message,
             "platform_nav": "companies",
@@ -1896,11 +1926,18 @@ async def platform_usage_limits_update(
 )
 def platform_companies_page(
     request: Request,
+    company_id: str = "",
+    company_query: str = "",
     db_path: Path = Depends(get_db_path),
     _: PlatformAdminContext = Depends(require_platform_owner),
 ) -> HTMLResponse:
     """Show all company lifecycle states only to the platform owner."""
-    return _render_platform_companies_page(request, db_path=db_path)
+    return _render_platform_companies_page(
+        request,
+        db_path=db_path,
+        selected_company_id=company_id,
+        company_query=company_query,
+    )
 
 
 @router.post(
@@ -1930,7 +1967,7 @@ async def platform_company_create(
             error_message="Не удалось подтвердить текущий пароль.",
         )
     try:
-        service.create_company(
+        company = service.create_company(
             db_path,
             actor_user_id=owner.user_id,
             company_id=str(form.get("company_id") or ""),
@@ -1943,7 +1980,10 @@ async def platform_company_create(
             db_path=db_path,
             error_message=str(error),
         )
-    return RedirectResponse(url="/platform-admin/companies", status_code=303)
+    return RedirectResponse(
+        url=f"/platform-admin/companies?company_id={company.id}",
+        status_code=303,
+    )
 
 
 @router.post(
@@ -1974,6 +2014,7 @@ async def platform_company_user_provision(
             request,
             db_path=db_path,
             error_message="Не удалось подтвердить текущий пароль.",
+            selected_company_id=company_id,
         )
     try:
         role = str(form.get("role") or "").strip().lower()
@@ -1995,8 +2036,12 @@ async def platform_company_user_provision(
             request,
             db_path=db_path,
             error_message=str(error),
+            selected_company_id=company_id,
         )
-    return RedirectResponse(url="/platform-admin/companies", status_code=303)
+    return RedirectResponse(
+        url=f"/platform-admin/companies?company_id={company_id}",
+        status_code=303,
+    )
 
 
 @router.post(
@@ -2028,6 +2073,7 @@ async def platform_company_admin_mfa_reset(
             request,
             db_path=db_path,
             error_message="Не удалось подтвердить текущий пароль.",
+            selected_company_id=company_id,
         )
     try:
         mfa_service.reset(
@@ -2042,8 +2088,12 @@ async def platform_company_admin_mfa_reset(
             request,
             db_path=db_path,
             error_message=str(error),
+            selected_company_id=company_id,
         )
-    return RedirectResponse(url="/platform-admin/companies", status_code=303)
+    return RedirectResponse(
+        url=f"/platform-admin/companies?company_id={company_id}",
+        status_code=303,
+    )
 
 
 @router.post(
@@ -2072,6 +2122,7 @@ async def platform_company_status_update(
             request,
             db_path=db_path,
             error_message="Не удалось подтвердить текущий пароль.",
+            selected_company_id=company_id,
         )
     state = str(form.get("state") or "")
     if state not in {"active", "inactive"}:
@@ -2079,6 +2130,7 @@ async def platform_company_status_update(
             request,
             db_path=db_path,
             error_message="state must be active or inactive",
+            selected_company_id=company_id,
         )
     try:
         service.set_company_active(
@@ -2093,8 +2145,12 @@ async def platform_company_status_update(
             request,
             db_path=db_path,
             error_message=str(error),
+            selected_company_id=company_id,
         )
-    return RedirectResponse(url="/platform-admin/companies", status_code=303)
+    return RedirectResponse(
+        url=f"/platform-admin/companies?company_id={company_id}",
+        status_code=303,
+    )
 
 
 @router.post(
@@ -2123,6 +2179,7 @@ async def platform_company_export_record(
             request,
             db_path=db_path,
             error_message="Не удалось подтвердить текущий пароль.",
+            selected_company_id=company_id,
         )
     try:
         service.record_company_data_export(
@@ -2138,8 +2195,12 @@ async def platform_company_export_record(
             request,
             db_path=db_path,
             error_message=str(error),
+            selected_company_id=company_id,
         )
-    return RedirectResponse(url="/platform-admin/companies", status_code=303)
+    return RedirectResponse(
+        url=f"/platform-admin/companies?company_id={company_id}",
+        status_code=303,
+    )
 
 
 @router.get("/platform-admin/admins", response_class=HTMLResponse, include_in_schema=False)
