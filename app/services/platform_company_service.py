@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from pathlib import Path
@@ -98,6 +99,49 @@ class PlatformCompanyService:
             reason=normalized_reason,
         )
         return refreshed
+
+    def rename_company(
+        self,
+        db_path: Path,
+        *,
+        actor_user_id: int,
+        company_id: str,
+        name: str,
+        reason: str,
+    ) -> Company:
+        """Rename a company without changing its immutable tenant ID."""
+        self._require_owner(db_path, actor_user_id)
+        normalized_id = _validate_company_id(company_id)
+        normalized_name = _validate_text(name, "name")
+        normalized_reason = _validate_text(reason, "reason")
+
+        company = self._companies.get_by_id(db_path, normalized_id)
+        if company is None:
+            raise PlatformCompanyError("company not found")
+        if company.name == normalized_name:
+            return company
+        if not self._companies.set_name(db_path, normalized_id, normalized_name):
+            raise RuntimeError("failed to update company name")
+        renamed = self._companies.get_by_id(db_path, normalized_id)
+        if renamed is None:
+            raise RuntimeError("failed to load company after rename")
+        self._platform_admins.append_audit_event(
+            db_path,
+            actor_user_id=actor_user_id,
+            action="company.renamed",
+            target_type="company",
+            target_id=renamed.id,
+            reason=json.dumps(
+                {
+                    "new_name": renamed.name,
+                    "old_name": company.name,
+                    "operator_reason": normalized_reason,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+        )
+        return renamed
 
     def record_company_data_export(
         self,

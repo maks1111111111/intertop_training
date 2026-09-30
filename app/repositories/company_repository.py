@@ -143,3 +143,26 @@ class CompanyRepository:
             )
 
         return cursor.rowcount > 0
+
+    def set_name(
+        self,
+        db_path: Path,
+        company_id: str,
+        name: str,
+    ) -> bool:
+        """Update only the human-readable company name, never its ID."""
+        normalized_id = _validate_non_empty(company_id, "company_id")
+        normalized_name = _validate_non_empty(name, "name")
+
+        with get_connection(db_path) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE companies
+                SET name = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (normalized_name, normalized_id),
+            )
+
+        return cursor.rowcount > 0

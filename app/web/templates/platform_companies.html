@@ -61,6 +61,16 @@
     </div>
 
     <section class="platform-company-operation">
+        <div class="platform-company-operation-heading"><h3>Название компании</h3><p>ID <code>{{ selected_company.id }}</code> остаётся неизменным и используется для изоляции данных.</p></div>
+        <form method="post" action="/platform-admin/companies/{{ selected_company.id }}/name" class="platform-operation-form">
+            <label class="auth-field"><span>Новое название</span><input name="name" value="{{ selected_company.name }}" required></label>
+            <label class="auth-field"><span>Причина изменения</span><input name="reason" required></label>
+            <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
+            <button type="submit" class="button button-secondary">Переименовать</button>
+        </form>
+    </section>
+
+    <section class="platform-company-operation">
         <div class="platform-company-operation-heading"><h3>Администраторы</h3><p>Создайте администратора компании или проверьте статус MFA существующих учётных записей.</p></div>
         <form method="post" action="/platform-admin/companies/{{ selected_company.id }}/users" class="platform-operation-form">
             <label class="auth-field"><span>Имя</span><input name="first_name" required></label>

@@ -77,6 +77,25 @@ class PlatformCompanyServiceTests(unittest.TestCase):
         self.assertEqual(event.action, "company.deactivated")
         self.assertEqual(event.reason, "Contract ended")
 
+    def test_owner_can_rename_company_without_changing_its_id(self) -> None:
+        self.companies.create(self.db_path, "north-shop", "North Shpo")
+
+        company = self.service.rename_company(
+            self.db_path,
+            actor_user_id=self.owner_id,
+            company_id="north-shop",
+            name="North Shop",
+            reason="Correcting a spelling mistake",
+        )
+
+        self.assertEqual(company.id, "north-shop")
+        self.assertEqual(company.name, "North Shop")
+        event = self.admins.list_audit_events(self.db_path)[0]
+        self.assertEqual(event.action, "company.renamed")
+        self.assertEqual(event.target_id, "north-shop")
+        self.assertIn('"old_name": "North Shpo"', event.reason)
+        self.assertIn('"new_name": "North Shop"', event.reason)
+
     def test_owner_can_record_verified_export_only_while_company_is_active(self) -> None:
         self.companies.create(self.db_path, "north-shop", "North Shop")
         archive_sha256 = "a" * 64
@@ -137,6 +156,16 @@ class PlatformCompanyServiceTests(unittest.TestCase):
                 actor_user_id=non_owner_id,
                 company_id="north-shop",
                 name="North Shop",
+                reason="Unauthorized test",
+            )
+
+        self.companies.create(self.db_path, "north-shop", "North Shop")
+        with self.assertRaisesRegex(PlatformCompanyError, "owner access"):
+            self.service.rename_company(
+                self.db_path,
+                actor_user_id=non_owner_id,
+                company_id="north-shop",
+                name="Different name",
                 reason="Unauthorized test",
             )
 

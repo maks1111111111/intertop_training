@@ -307,6 +307,42 @@ class PlatformAdminRouteTests(unittest.TestCase):
         self.assertEqual(events[0].action, "company.deactivated")
         self.assertEqual(events[0].reason, "Contract ended")
 
+    def test_owner_can_rename_company_only_with_fresh_password(self) -> None:
+        CompanyRepository().create(self.db_path, "north-shop", "North Shpo")
+        self._login()
+
+        denied = self.client.post(
+            "/platform-admin/companies/north-shop/name",
+            data={
+                "name": "North Shop",
+                "reason": "Correcting a spelling mistake",
+                "current_password": "wrong-password",
+            },
+        )
+        self.assertEqual(denied.status_code, 400)
+        self.assertIn("Не удалось подтвердить текущий пароль", denied.text)
+        self.assertEqual(
+            CompanyRepository().get_by_id(self.db_path, "north-shop").name,
+            "North Shpo",
+        )
+
+        renamed = self.client.post(
+            "/platform-admin/companies/north-shop/name",
+            data={
+                "name": "North Shop",
+                "reason": "Correcting a spelling mistake",
+                "current_password": "Strong-password-123!",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(renamed.status_code, 303)
+        self.assertEqual(
+            renamed.headers["location"],
+            "/platform-admin/companies?company_id=north-shop",
+        )
+        event = PlatformAdminRepository().list_audit_events(self.db_path)[0]
+        self.assertEqual(event.action, "company.renamed")
+
     def test_owner_filters_companies_and_opens_one_workspace(self) -> None:
         CompanyRepository().create(self.db_path, "alpha-shop", "Alpha Shop")
         CompanyRepository().create(self.db_path, "bravo-shop", "Bravo Shop")
