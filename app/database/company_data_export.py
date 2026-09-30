@@ -380,9 +380,17 @@ def _collect_course_files(
     company_id: str,
     courses: Iterable[Mapping[str, Any]],
 ) -> list[tuple[Path, str]]:
-    company_root = _company_courses_root(courses_root, company_id)
+    course_records = tuple(courses)
+    company_root = _company_courses_root(
+        courses_root,
+        company_id,
+        allow_missing=not course_records,
+    )
+    if company_root is None:
+        return []
+
     files: list[tuple[Path, str]] = []
-    for course in courses:
+    for course in course_records:
         slug = _validate_company_id(str(course["slug"]))
         candidate = company_root / slug
         if candidate.is_symlink():
@@ -400,7 +408,12 @@ def _collect_course_files(
     return files
 
 
-def _company_courses_root(courses_root: Path, company_id: str) -> Path:
+def _company_courses_root(
+    courses_root: Path,
+    company_id: str,
+    *,
+    allow_missing: bool = False,
+) -> Path | None:
     if company_id == LEGACY_COMPANY_ID:
         return courses_root
     candidate = courses_root / company_id
@@ -409,6 +422,8 @@ def _company_courses_root(courses_root: Path, company_id: str) -> Path:
     company_root = candidate.resolve()
     if company_root.parent != courses_root:
         raise CompanyDataExportError("company directory escaped courses root")
+    if not company_root.exists() and allow_missing:
+        return None
     if not company_root.is_dir():
         raise CompanyDataExportError("company courses directory is missing")
     return company_root

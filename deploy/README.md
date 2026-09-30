@@ -181,8 +181,9 @@ The following operator-only command creates a portable archive for one company
 when fulfilling an agreed customer export or offboarding request. It takes a
 consistent SQLite snapshot first, includes only the selected company’s profile,
 members, learning records, Knowledge Base data, course content and tenant upload
-files, and refuses symlinks or missing course directories rather than silently
-creating an incomplete archive.
+files, and refuses symlinks or missing directories for declared courses rather
+than silently creating an incomplete archive. A newly created company with no
+courses may be exported before its tenant course directory exists.
 
 It deliberately excludes password hashes, MFA secrets, sessions, platform-wide
 administrator and audit records, temporary support-access records, and all data

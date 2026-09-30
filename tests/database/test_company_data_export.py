@@ -42,6 +42,9 @@ class CompanyDataExportTests(unittest.TestCase):
                 "INSERT INTO companies (id, name) VALUES ('bravo', 'Bravo Ltd')"
             )
             connection.execute(
+                "INSERT INTO companies (id, name) VALUES ('empty', 'Empty Ltd')"
+            )
+            connection.execute(
                 """
                 INSERT INTO users (id, username, first_name, last_name)
                 VALUES (1, 'alpha-user', 'Alice', 'Alpha')
@@ -256,6 +259,25 @@ class CompanyDataExportTests(unittest.TestCase):
             )
 
         self.assertFalse(output.exists())
+
+    def test_export_of_a_new_company_without_courses_needs_no_course_directory(self) -> None:
+        output = self.root / "empty-export.tar.gz"
+
+        result = create_company_data_export(
+            db_path=self.db_path,
+            company_id="empty",
+            courses_dir=self.courses_dir,
+            uploads_dir=self.uploads_dir,
+            output_path=output,
+        )
+
+        self.assertEqual(result.company_id, "empty")
+        self.assertEqual(result.course_files, 0)
+        self.assertEqual(result.upload_files, 0)
+        with tarfile.open(output, mode="r:gz") as archive:
+            manifest = json.load(archive.extractfile("manifest.json"))
+        self.assertEqual(manifest["company"]["id"], "empty")
+        self.assertEqual(manifest["course_files"], 0)
 
     def test_refuses_a_symbolic_link_in_company_files(self) -> None:
         target = self.root / "outside.txt"
