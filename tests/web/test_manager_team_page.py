@@ -1384,6 +1384,18 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertIn("Сотрудников с просрочкой", response.text)
         self.assertIn("dashboard-compliance-badge--overdue", response.text)
         self.assertIn("Просрочено: 1", response.text)
+        self.assertIn('href="/manager/team/manage"', response.text)
+        self.assertNotIn('action="/manager/team/employees"', response.text)
+
+    def test_manager_can_open_separate_team_management_page(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.get("/manager/team/manage")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Управление командой", response.text)
+        self.assertIn('href="/manager/team"', response.text)
+        self.assertIn("Для добавления сотрудников менеджеру нужно назначенное подразделение.", response.text)
 
     def test_manager_team_page_renders_development_assignment_impact_metrics(
         self,

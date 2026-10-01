@@ -2609,7 +2609,6 @@ def manager_team_page(
     )
     team_filter = normalize_team_member_filter(request.query_params.get("filter"))
     filtered_member_rows = filter_team_member_rows(overview.members, team_filter)
-    organization_error = str(request.query_params.get("organization_error") or "").strip()
     selected_department_id = _optional_positive_int(request.query_params.get("department_id"))
     selected_manager_id = _optional_positive_int(request.query_params.get("manager_id"))
     selected_employee_id = _optional_positive_int(request.query_params.get("employee_id"))
@@ -2647,10 +2646,6 @@ def manager_team_page(
             "departments": CompanyDepartmentRepository().list_for_company(
                 db_path, identity.company_id
             ),
-            "can_create_department": identity.role == "admin",
-            "can_create_manager": identity.role == "admin",
-            "can_create_employee": identity.role == "manager" and identity.department_id is not None,
-            "organization_error": organization_error,
             "selected_department_id": selected_department_id,
             "selected_manager_id": selected_manager_id,
             "selected_employee_id": selected_employee_id,
@@ -2660,6 +2655,38 @@ def manager_team_page(
             "managers": tuple(row.member for row in overview.members if row.member.role == "manager"),
             "employees": tuple(row.member for row in overview.members if row.member.role == "student"),
             "course_slugs": tuple(sorted({assignment.course_slug for row in overview.members for assignment in row.assignment_history.assignments})),
+        },
+    )
+
+
+@router.get(
+    "/manager/team/manage",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def manager_team_management_page(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_web_management_identity),
+) -> HTMLResponse:
+    """Render the separate, tenant-scoped team management workspace."""
+    departments = CompanyDepartmentRepository().list_for_company(
+        db_path, identity.company_id
+    )
+    return templates.TemplateResponse(
+        request,
+        "manager_team_manage.html",
+        {
+            "active_nav": "team_manage",
+            "departments": departments,
+            "organization_error": str(
+                request.query_params.get("organization_error") or ""
+            ).strip(),
+            "can_create_department": identity.role == "admin",
+            "can_create_manager": identity.role == "admin" and bool(departments),
+            "can_create_employee": (
+                identity.role == "manager" and identity.department_id is not None
+            ),
         },
     )
 
@@ -2714,8 +2741,8 @@ async def company_department_create(
             name=str(form.get("name") or ""),
         )
     except CompanyOrganizationError as exc:
-        return RedirectResponse(url=f"/manager/team?organization_error={str(exc)}", status_code=303)
-    return RedirectResponse(url="/manager/team", status_code=303)
+        return RedirectResponse(url=f"/manager/team/manage?organization_error={str(exc)}", status_code=303)
+    return RedirectResponse(url="/manager/team/manage", status_code=303)
 
 
 @router.post("/manager/team/managers", include_in_schema=False)
@@ -2734,8 +2761,8 @@ async def company_manager_create(
             email=str(form.get("email") or ""), password=str(form.get("password") or ""),
         )
     except (CompanyOrganizationError, ValueError) as exc:
-        return RedirectResponse(url=f"/manager/team?organization_error={str(exc)}", status_code=303)
-    return RedirectResponse(url="/manager/team", status_code=303)
+        return RedirectResponse(url=f"/manager/team/manage?organization_error={str(exc)}", status_code=303)
+    return RedirectResponse(url="/manager/team/manage", status_code=303)
 
 
 @router.post("/manager/team/employees", include_in_schema=False)
@@ -2753,8 +2780,8 @@ async def company_employee_create(
             email=str(form.get("email") or ""), password=str(form.get("password") or ""),
         )
     except CompanyOrganizationError as exc:
-        return RedirectResponse(url=f"/manager/team?organization_error={str(exc)}", status_code=303)
-    return RedirectResponse(url="/manager/team", status_code=303)
+        return RedirectResponse(url=f"/manager/team/manage?organization_error={str(exc)}", status_code=303)
+    return RedirectResponse(url="/manager/team/manage", status_code=303)
 
 
 

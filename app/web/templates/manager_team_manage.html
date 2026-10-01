@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Управление командой — Mentor Connect{% endblock %}
+
+{% block content %}
+<section class="page-header team-page-header">
+    <div>
+        <h1 class="page-title">Управление командой</h1>
+        <p class="page-lead">Создавайте подразделения и учётные записи отдельно от дашборда прогресса.</p>
+    </div>
+    <a class="button button-secondary" href="/manager/team">К аналитике команды</a>
+</section>
+
+{% if organization_error %}
+<div class="admin-form-error" role="alert">{{ organization_error }}</div>
+{% endif %}
+
+<section class="section">
+    <h2 class="section-title">Структура и сотрудники</h2>
+
+    {% if can_create_department %}
+    <div class="team-management-section">
+        <h3 class="section-subtitle">Создать подразделение</h3>
+        <form method="post" action="/manager/team/departments" class="platform-operation-form">
+            <label class="auth-field"><span>Название подразделения</span><input name="name" required></label>
+            <button type="submit" class="button button-secondary">Создать подразделение</button>
+        </form>
+    </div>
+    {% endif %}
+
+    {% if can_create_manager %}
+    <div class="team-management-section">
+        <h3 class="section-subtitle">Назначить менеджера подразделения</h3>
+        <form method="post" action="/manager/team/managers" class="platform-operation-form">
+            <label class="auth-field"><span>Подразделение</span><select name="department_id" required>{% for department in departments %}<option value="{{ department.id }}">{{ department.name }}</option>{% endfor %}</select></label>
+            <label class="auth-field"><span>Имя</span><input name="first_name" required></label>
+            <label class="auth-field"><span>Фамилия</span><input name="last_name"></label>
+            <label class="auth-field"><span>Email</span><input name="email" type="email" required></label>
+            <label class="auth-field"><span>Временный пароль (минимум 12 символов)</span><input name="password" type="password" required></label>
+            <button type="submit" class="button button-primary">Создать менеджера</button>
+        </form>
+    </div>
+    {% elif can_create_department %}
+    <div class="team-management-section">
+        <p class="page-meta">Сначала создайте подразделение, затем сможете назначить его менеджера.</p>
+    </div>
+    {% endif %}
+
+    {% if can_create_employee %}
+    <div class="team-management-section">
+        <h3 class="section-subtitle">Добавить сотрудника в своё подразделение</h3>
+        <form method="post" action="/manager/team/employees" class="platform-operation-form">
+            <label class="auth-field"><span>Имя</span><input name="first_name" required></label>
+            <label class="auth-field"><span>Фамилия</span><input name="last_name"></label>
+            <label class="auth-field"><span>Email</span><input name="email" type="email" required></label>
+            <label class="auth-field"><span>Временный пароль (минимум 12 символов)</span><input name="password" type="password" required></label>
+            <button type="submit" class="button button-primary">Создать сотрудника</button>
+        </form>
+    </div>
+    {% elif identity.role == "manager" %}
+    <div class="team-management-section">
+        <p class="page-meta">Для добавления сотрудников менеджеру нужно назначенное подразделение.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}
