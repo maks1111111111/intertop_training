@@ -159,6 +159,35 @@ class PlatformAdminRouteTests(unittest.TestCase):
         )
         self.assertEqual(other_response.status_code, 403)
 
+    def test_owner_can_filter_audit_history_by_company_and_action(self) -> None:
+        CompanyRepository().create(self.db_path, "north-shop", "North Shop")
+        PlatformAdminRepository().append_audit_event(
+            self.db_path,
+            actor_user_id=self.owner_id,
+            action="company.renamed",
+            target_type="company",
+            target_id="north-shop",
+            reason="Corrected a spelling mistake",
+        )
+        PlatformAdminRepository().append_audit_event(
+            self.db_path,
+            actor_user_id=self.owner_id,
+            action="company.deactivated",
+            target_type="company",
+            target_id="north-shop",
+            reason="Contract ended",
+        )
+        self._login()
+
+        response = self.client.get(
+            "/platform-admin/audit?company_query=north&action_query=renamed"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("company.renamed", response.text)
+        self.assertNotIn("company.deactivated", response.text)
+        self.assertIn("Найдено событий: 1", response.text)
+
     def test_usage_is_visible_to_owner_only(self) -> None:
         CompanyRepository().create(self.db_path, "usage-company", "Usage Co")
         self._login()

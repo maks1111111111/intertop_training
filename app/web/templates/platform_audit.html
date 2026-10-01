@@ -3,5 +3,21 @@
 {% block content %}
 <section class="page-header"><div><p class="page-eyebrow">Platform Admin</p><h1>Неизменяемый журнал операций</h1><p class="page-subtitle">Показаны последние 500 событий. Записи нельзя изменить или удалить.</p></div><a class="button button-secondary" href="/platform-admin">Обзор</a></section>
 {% include "_platform_admin_nav.html" %}
-<section class="content-section"><ul class="simple-list">{% for event in audit_events %}<li><div><strong>{{ event.action }}</strong><span>{{ event.created_at }} · исполнитель: {% if event.actor_user_id %}#{{ event.actor_user_id }}{% else %}система{% endif %} · {{ event.target_type }}: {{ event.target_id }}</span><span>Причина: {{ event.reason }}</span></div></li>{% endfor %}</ul></section>
+<section class="content-section">
+    <div class="section-heading"><div><h2>Найти событие</h2><p class="section-description">Поиск работает по текущему названию или ID компании и по названию действия.</p></div></div>
+    <form method="get" action="/platform-admin/audit" class="platform-operation-form">
+        <label class="auth-field"><span>Компания или ID</span><input name="company_query" value="{{ company_query }}" placeholder="Например, lifecycle-drill"></label>
+        <label class="auth-field"><span>Действие</span><input name="action_query" value="{{ action_query }}" placeholder="Например, company.renamed"></label>
+        <button type="submit" class="button button-primary">Найти</button>
+        {% if company_query or action_query %}<a class="button button-secondary" href="/platform-admin/audit">Сбросить</a>{% endif %}
+    </form>
+</section>
+<section class="content-section">
+    <p class="section-description">Найдено событий: {{ audit_event_count }}.</p>
+    {% if audit_events %}
+    <ul class="simple-list">{% for event in audit_events %}<li><div><strong>{{ event.action }}</strong><span>{{ event.created_at }} · исполнитель: {% if event.actor_user_id %}#{{ event.actor_user_id }}{% else %}система{% endif %} · {{ event.target_type }}: {{ event.target_id }}</span><span>Причина: {{ event.reason }}</span></div></li>{% endfor %}</ul>
+    {% else %}
+    <p class="empty-state">События по указанным условиям не найдены.</p>
+    {% endif %}
+</section>
 {% endblock %}

@@ -1832,18 +1832,43 @@ def platform_admin_dashboard(
 )
 def platform_audit_page(
     request: Request,
+    company_query: str = "",
+    action_query: str = "",
     db_path: Path = Depends(get_db_path),
     _: PlatformAdminContext = Depends(require_platform_owner),
 ) -> HTMLResponse:
     """Show the immutable platform operation history to its owner only."""
+    audit_events = PlatformAdminRepository().list_audit_events(db_path, limit=500)
+    companies_by_id = {
+        company.id: company.name for company in CompanyRepository().list_all(db_path)
+    }
+    normalized_company_query = company_query.strip().casefold()
+    normalized_action_query = action_query.strip().casefold()
+    matching_events = tuple(
+        event
+        for event in audit_events
+        if (
+            not normalized_company_query
+            or normalized_company_query in event.target_id.casefold()
+            or (
+                event.target_type == "company"
+                and normalized_company_query
+                in companies_by_id.get(event.target_id, "").casefold()
+            )
+        )
+        and (
+            not normalized_action_query
+            or normalized_action_query in event.action.casefold()
+        )
+    )
     return templates.TemplateResponse(
         request,
         "platform_audit.html",
         {
-            "audit_events": PlatformAdminRepository().list_audit_events(
-                db_path,
-                limit=500,
-            ),
+            "audit_events": matching_events,
+            "audit_event_count": len(matching_events),
+            "company_query": company_query.strip(),
+            "action_query": action_query.strip(),
             "platform_nav": "audit",
         },
     )
