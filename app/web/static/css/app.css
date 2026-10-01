@@ -5739,6 +5739,10 @@ a:focus-visible,
         overflow: visible;
     }
 
+    .sidebar-account {
+        margin-top: 1.25rem;
+    }
+
     .team-page-header {
         display: flex;
         flex-direction: column;
@@ -5748,6 +5752,10 @@ a:focus-visible,
     .team-page-header .button {
         width: 100%;
         text-align: center;
+    }
+
+    .team-dashboard-summary {
+        grid-template-columns: 1fr;
     }
 }
 
@@ -5766,4 +5774,125 @@ a:focus-visible,
     margin-top: 1.5rem;
     padding-top: 1.5rem;
     border-top: 1px solid #e5e7eb;
+}
+
+.team-dashboard-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.team-dashboard-heading .section-title {
+    margin-bottom: 0;
+}
+
+.team-dashboard-link {
+    flex: 0 0 auto;
+    font-size: 0.9375rem;
+    font-weight: 600;
+}
+
+.team-dashboard-summary {
+    display: grid;
+    grid-template-columns: minmax(14rem, 1.25fr) repeat(2, minmax(12rem, 1fr));
+    gap: 0.875rem;
+    margin-bottom: 1.75rem;
+}
+
+.team-dashboard-summary article {
+    display: flex;
+    flex-direction: column;
+    min-height: 10.5rem;
+    padding: 1.25rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.875rem;
+}
+
+.team-dashboard-primary-card {
+    color: #ffffff;
+    border-color: #1d4ed8 !important;
+    background: linear-gradient(135deg, #1d4ed8, #2563eb 56%, #3b82f6);
+}
+
+.team-dashboard-focus-card {
+    background: #f8fafc;
+}
+
+.team-dashboard-focus-card.is-attention {
+    border-color: #fed7aa;
+    background: #fff7ed;
+}
+
+.team-dashboard-focus-card.is-on-track {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+}
+
+.team-dashboard-progress-card {
+    background: #f8fafc;
+}
+
+.team-dashboard-kicker {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.team-dashboard-primary-card .team-dashboard-kicker,
+.team-dashboard-primary-card .team-dashboard-primary-label,
+.team-dashboard-primary-card .team-dashboard-mini-metrics {
+    color: #dbeafe;
+}
+
+.team-dashboard-primary-value {
+    margin-top: auto;
+    font-size: 3.25rem;
+    line-height: 1;
+}
+
+.team-dashboard-primary-label,
+.team-dashboard-focus-card > span:last-child,
+.team-dashboard-progress-card > span:last-child {
+    margin-top: 0.35rem;
+    color: #64748b;
+    font-size: 0.9375rem;
+    line-height: 1.45;
+}
+
+.team-dashboard-mini-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem 0.9rem;
+    margin-top: 1rem;
+    font-size: 0.8125rem;
+}
+
+.team-dashboard-focus-card > strong,
+.team-dashboard-progress-card > strong {
+    margin-top: auto;
+    color: #0f172a;
+    font-size: 1.35rem;
+    line-height: 1.25;
+}
+
+.team-dashboard-focus-card.is-attention > strong {
+    color: #9a3412;
+}
+
+.team-dashboard-focus-card.is-on-track > strong {
+    color: #166534;
+}
+
+.team-dashboard-progress-card > strong {
+    font-size: 2rem;
+}
+
+@media (max-width: 560px) {
+    .team-dashboard-heading {
+        align-items: start;
+        flex-direction: column;
+    }
 }

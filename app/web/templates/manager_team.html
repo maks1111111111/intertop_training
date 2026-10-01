@@ -27,7 +27,41 @@
 {% endif %}
 
 <section class="section">
-    <h2 class="section-title">Аналитика команды</h2>
+    <div class="team-dashboard-heading">
+        <div>
+            <h2 class="section-title">Обзор команды</h2>
+            <p class="page-meta">Главное для ежедневного контроля обучения.</p>
+        </div>
+        <a class="team-dashboard-link" href="/manager/team?filter=attention">Показать требующих внимания</a>
+    </div>
+    <div class="team-dashboard-summary">
+        <article class="team-dashboard-primary-card">
+            <span class="team-dashboard-kicker">Команда сейчас</span>
+            <strong class="team-dashboard-primary-value">{{ team_analytics.members_count }}</strong>
+            <span class="team-dashboard-primary-label">сотрудников в команде</span>
+            <div class="team-dashboard-mini-metrics">
+                <span><strong>{{ team_analytics.started_members_count }}</strong> начали обучение</span>
+                <span><strong>{{ team_analytics.completed_members_count }}</strong> завершили курс</span>
+            </div>
+        </article>
+        <article class="team-dashboard-focus-card{% if team_analytics.members_requiring_attention_count > 0 or team_analytics.assignment_overdue_count > 0 %} is-attention{% else %} is-on-track{% endif %}">
+            <span class="team-dashboard-kicker">Фокус руководителя</span>
+            {% if team_analytics.members_requiring_attention_count > 0 or team_analytics.assignment_overdue_count > 0 %}
+            <strong>{% if team_analytics.members_requiring_attention_count > 0 %}{{ team_analytics.members_requiring_attention_count }} требуют внимания{% else %}Есть просроченные назначения{% endif %}</strong>
+            <span>{% if team_analytics.assignment_overdue_count > 0 %}Просрочено назначений: {{ team_analytics.assignment_overdue_count }}.{% else %}Откройте список и помогите сотрудникам продолжить обучение.{% endif %}</span>
+            {% else %}
+            <strong>Команда под контролем</strong>
+            <span>Сейчас нет сотрудников, которым требуется срочное внимание.</span>
+            {% endif %}
+        </article>
+        <article class="team-dashboard-progress-card">
+            <span class="team-dashboard-kicker">Средний прогресс</span>
+            <strong>{% if team_analytics.average_progress_percent is not none %}{{ team_analytics.average_progress_percent }}%{% else %}—{% endif %}</strong>
+            <span>{% if team_analytics.average_quiz_score_percent is not none %}Средний результат тестов: {{ team_analytics.average_quiz_score_percent }}%{% else %}Появится после первых результатов тестов{% endif %}</span>
+        </article>
+    </div>
+
+    <h3 class="section-subtitle">Метрики обучения</h3>
     <div class="dashboard-metrics">
         <div class="dashboard-metric">
             <span class="dashboard-metric-label">Сотрудников</span>
