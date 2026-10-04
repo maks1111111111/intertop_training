@@ -6039,9 +6039,230 @@ a:focus-visible,
     font-size: 2rem;
 }
 
+.team-learning-overview {
+    display: grid;
+    grid-template-columns: minmax(18rem, 0.85fr) minmax(22rem, 1.35fr);
+    gap: 1rem;
+    margin: 0 0 1.25rem;
+    padding: 1.25rem;
+    border: 1px solid #dbe4f0;
+    border-radius: 1rem;
+    background:
+        radial-gradient(circle at 0 0, rgba(37, 99, 235, 0.1), transparent 32%),
+        #ffffff;
+    box-shadow: 0 0.75rem 2rem rgba(15, 23, 42, 0.06);
+}
+
+.team-progress-visual {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding-right: 1rem;
+    border-right: 1px solid #e2e8f0;
+}
+
+.team-progress-visual h3 {
+    margin: 0.25rem 0 0.3rem;
+    color: #0f172a;
+    font-size: 1.2rem;
+}
+
+.team-progress-visual p {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.875rem;
+    line-height: 1.45;
+}
+
+.team-progress-ring {
+    position: relative;
+    flex: 0 0 8.25rem;
+    width: 8.25rem;
+    height: 8.25rem;
+}
+
+.team-progress-ring svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.team-progress-ring circle {
+    fill: none;
+    stroke-width: 10;
+}
+
+.team-progress-ring-track {
+    stroke: #e2e8f0;
+}
+
+.team-progress-ring-value {
+    stroke: #2563eb;
+    stroke-linecap: round;
+}
+
+.team-progress-ring > span {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    text-align: center;
+}
+
+.team-progress-ring strong {
+    color: #0f172a;
+    font-size: 1.65rem;
+    line-height: 1;
+}
+
+.team-progress-ring small {
+    max-width: 5rem;
+    margin-top: 0.3rem;
+    color: #64748b;
+    font-size: 0.68rem;
+    line-height: 1.15;
+}
+
+.team-learning-funnel {
+    display: grid;
+    align-content: center;
+    gap: 0.9rem;
+}
+
+.team-learning-funnel-row {
+    display: grid;
+    grid-template-columns: minmax(9rem, 0.8fr) minmax(8rem, 1.2fr) 2.5rem;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.team-learning-funnel-row > div:first-child {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.team-learning-funnel-row span,
+.team-learning-funnel-row small {
+    color: #64748b;
+    font-size: 0.8rem;
+}
+
+.team-learning-funnel-row strong {
+    color: #1e293b;
+    font-size: 0.9rem;
+}
+
+.team-learning-funnel-row small {
+    color: #334155;
+    font-weight: 700;
+    text-align: right;
+}
+
+.team-learning-track,
+.team-member-progress-track {
+    height: 0.55rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e2e8f0;
+}
+
+.team-learning-track > span,
+.team-member-progress-track > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #1d4ed8, #60a5fa);
+}
+
+.team-learning-track--success > span {
+    background: linear-gradient(90deg, #059669, #34d399);
+}
+
+.team-learning-track--violet > span {
+    background: linear-gradient(90deg, #7c3aed, #a78bfa);
+}
+
+.team-metrics-details {
+    margin-bottom: 1.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.8rem;
+    background: #f8fafc;
+}
+
+.team-metrics-details summary {
+    padding: 0.9rem 1rem;
+    color: #334155;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.team-dashboard-metric-grid {
+    padding: 0 1rem 1rem;
+}
+
+.team-member-card {
+    overflow: hidden;
+    border-color: #dbe4f0;
+    box-shadow: 0 0.5rem 1.5rem rgba(15, 23, 42, 0.045);
+}
+
+.team-member-progress {
+    margin: 1rem 0;
+    padding: 0.85rem 1rem;
+    border-radius: 0.75rem;
+    background: #f8fafc;
+}
+
+.team-member-progress-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+    color: #475569;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.team-member-progress-heading strong {
+    color: #1d4ed8;
+    font-size: 1rem;
+}
+
 @media (max-width: 560px) {
     .team-dashboard-heading {
         align-items: start;
         flex-direction: column;
+    }
+
+    .team-learning-overview {
+        grid-template-columns: 1fr;
+        padding: 1rem;
+    }
+
+    .team-progress-visual {
+        padding: 0 0 1rem;
+        border-right: 0;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .team-progress-ring {
+        flex-basis: 7rem;
+        width: 7rem;
+        height: 7rem;
+    }
+
+    .team-learning-funnel-row {
+        grid-template-columns: 1fr 2.5rem;
+    }
+
+    .team-learning-funnel-row .team-learning-track {
+        grid-column: 1 / -1;
+        grid-row: 2;
     }
 }

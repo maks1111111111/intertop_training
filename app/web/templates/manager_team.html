@@ -61,8 +61,47 @@
         </article>
     </div>
 
-    <h3 class="section-subtitle">Метрики обучения</h3>
-    <div class="dashboard-metrics">
+    {% set average_progress = team_analytics.average_progress_percent if team_analytics.average_progress_percent is not none else 0 %}
+    {% set started_rate = ((team_analytics.started_members_count * 100 / team_analytics.members_count) | round(0) | int) if team_analytics.members_count else 0 %}
+    {% set completed_rate = ((team_analytics.completed_members_count * 100 / team_analytics.members_count) | round(0) | int) if team_analytics.members_count else 0 %}
+    {% set quiz_coverage_rate = ((team_analytics.members_with_quiz_results_count * 100 / team_analytics.members_count) | round(0) | int) if team_analytics.members_count else 0 %}
+    <div class="team-learning-overview">
+        <div class="team-progress-visual">
+            <div class="team-progress-ring" role="img" aria-label="Средний прогресс команды: {% if team_analytics.average_progress_percent is not none %}{{ team_analytics.average_progress_percent }} процентов{% else %}нет данных{% endif %}">
+                <svg viewBox="0 0 120 120" aria-hidden="true">
+                    <circle class="team-progress-ring-track" cx="60" cy="60" r="50" pathLength="100"></circle>
+                    <circle class="team-progress-ring-value" cx="60" cy="60" r="50" pathLength="100" stroke-dasharray="{{ average_progress }} 100"></circle>
+                </svg>
+                <span><strong>{% if team_analytics.average_progress_percent is not none %}{{ team_analytics.average_progress_percent }}%{% else %}—{% endif %}</strong><small>средний прогресс</small></span>
+            </div>
+            <div>
+                <span class="team-dashboard-kicker">Динамика обучения</span>
+                <h3>Как команда проходит курсы</h3>
+                <p>От первого старта до подтверждённого результата.</p>
+            </div>
+        </div>
+        <div class="team-learning-funnel">
+            <div class="team-learning-funnel-row">
+                <div><span>Начали обучение</span><strong>{{ team_analytics.started_members_count }} из {{ team_analytics.members_count }}</strong></div>
+                <div class="team-learning-track"><span style="width: {{ started_rate }}%"></span></div>
+                <small>{{ started_rate }}%</small>
+            </div>
+            <div class="team-learning-funnel-row">
+                <div><span>Завершили курс</span><strong>{{ team_analytics.completed_members_count }} из {{ team_analytics.members_count }}</strong></div>
+                <div class="team-learning-track team-learning-track--success"><span style="width: {{ completed_rate }}%"></span></div>
+                <small>{{ completed_rate }}%</small>
+            </div>
+            <div class="team-learning-funnel-row">
+                <div><span>Есть результаты тестов</span><strong>{{ team_analytics.members_with_quiz_results_count }} из {{ team_analytics.members_count }}</strong></div>
+                <div class="team-learning-track team-learning-track--violet"><span style="width: {{ quiz_coverage_rate }}%"></span></div>
+                <small>{{ quiz_coverage_rate }}%</small>
+            </div>
+        </div>
+    </div>
+
+    <details class="team-metrics-details">
+        <summary>Все метрики обучения</summary>
+        <div class="dashboard-metrics team-dashboard-metric-grid">
         <div class="dashboard-metric">
             <span class="dashboard-metric-label">Сотрудников</span>
             <span class="dashboard-metric-value">{{ team_analytics.members_count }}</span>
@@ -107,7 +146,8 @@
                 {% endif %}
             </span>
         </div>
-    </div>
+        </div>
+    </details>
 
     <h3 class="section-subtitle">Практические задания</h3>
     <div class="dashboard-metrics">
@@ -211,7 +251,7 @@
     {% if recommendations %}
     <ul class="course-list admin-course-list">
         {% for recommendation in recommendations %}
-        <li class="course-card admin-course-card">
+        <li class="course-card admin-course-card team-member-card">
             <div class="admin-course-body">
                 <header class="admin-course-header">
                     <h4 class="course-card-title">{{ recommendation.title }}</h4>
@@ -407,6 +447,15 @@
                 {% if member.department_name %}
                 <p class="page-meta">Подразделение: {{ member.department_name }}{% if member.manager_name %} · менеджер: {{ member.manager_name }}{% endif %}</p>
                 {% endif %}
+                <div class="team-member-progress">
+                    <div class="team-member-progress-heading">
+                        <span>Прогресс обучения</span>
+                        <strong>{{ member.average_progress_percent }}%</strong>
+                    </div>
+                    <div class="team-member-progress-track" role="progressbar" aria-label="Прогресс обучения сотрудника" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ member.average_progress_percent }}">
+                        <span style="width: {{ member.average_progress_percent }}%"></span>
+                    </div>
+                </div>
                 <div class="dashboard-metrics">
                     <div class="dashboard-metric">
                         <span class="dashboard-metric-label">Начато курсов</span>
