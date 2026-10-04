@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
@@ -59,6 +60,7 @@ from app.services.company_user_provisioning_service import (
     CompanyUserProvisioningError,
     CompanyUserProvisioningService,
 )
+from app.services.user_password_service import UserPasswordError, UserPasswordService
 from app.services.company_admin_mfa_service import (
     CompanyAdminMFAService,
     MFAEnrollment,
@@ -360,6 +362,14 @@ def get_company_user_provisioning_service() -> CompanyUserProvisioningService:
     return CompanyUserProvisioningService()
 
 
+def get_user_password_service() -> UserPasswordService:
+    """Return password lifecycle operations for tenant users."""
+    return UserPasswordService(
+        PasswordCredentialRepository(),
+        PasswordHashingService(),
+    )
+
+
 def get_company_organization_service() -> CompanyOrganizationService:
     """Return the tenant team service enforcing the company role hierarchy."""
     return CompanyOrganizationService()
@@ -464,6 +474,15 @@ def get_current_web_identity(
         session.user_id,
         session.company_id,
     )
+    if identity is not None:
+        credential = PasswordCredentialRepository().get_by_user_id(
+            db_path,
+            identity.user_id,
+        )
+        if credential is not None and not credential.is_active:
+            identity = None
+        elif credential is not None and credential.must_change_password:
+            identity = replace(identity, must_change_password=True)
     request.state.web_identity = identity
     return identity
 
@@ -472,6 +491,25 @@ def require_web_identity(
     identity: Optional[WebIdentity] = Depends(get_current_web_identity),
 ) -> WebIdentity:
     """Require an authenticated Web identity for learner routes."""
+    if identity is None:
+        raise HTTPException(
+            status_code=303,
+            detail="Authentication required",
+            headers={"Location": "/login"},
+        )
+    if identity.must_change_password:
+        raise HTTPException(
+            status_code=303,
+            detail="Password change required",
+            headers={"Location": "/account/password"},
+        )
+    return identity
+
+
+def require_web_identity_for_password_change(
+    identity: Optional[WebIdentity] = Depends(get_current_web_identity),
+) -> WebIdentity:
+    """Require a tenant session while allowing the mandatory password page."""
     if identity is None:
         raise HTTPException(
             status_code=303,
@@ -560,6 +598,12 @@ def require_web_management_identity(
     """Require manager/admin permission for a resolved Web identity."""
     if identity is None or not authorization_service.can_manage_learning(identity):
         raise HTTPException(status_code=403, detail="Forbidden")
+    if identity.must_change_password:
+        raise HTTPException(
+            status_code=303,
+            detail="Password change required",
+            headers={"Location": "/account/password"},
+        )
     return identity
 
 
@@ -572,6 +616,12 @@ def require_web_admin_identity(
     """Require an administrator for course and Knowledge Base management."""
     if identity is None or not authorization_service.is_admin(identity):
         raise HTTPException(status_code=403, detail="Forbidden")
+    if identity.must_change_password:
+        raise HTTPException(
+            status_code=303,
+            detail="Password change required",
+            headers={"Location": "/account/password"},
+        )
     return identity
 
 
@@ -1402,9 +1452,23 @@ def login_page(
 ) -> HTMLResponse:
     """Render the login page or redirect an authenticated user."""
     if identity is not None:
-        return RedirectResponse(url="/dashboard", status_code=302)
+        return RedirectResponse(
+            url=(
+                "/account/password"
+                if identity.must_change_password
+                else "/dashboard"
+            ),
+            status_code=302,
+        )
 
     return _render_login_page(request)
+
+
+def _tenant_post_login_url(db_path: Path, user_id: int) -> str:
+    credential = PasswordCredentialRepository().get_by_user_id(db_path, user_id)
+    if credential is not None and credential.must_change_password:
+        return "/account/password"
+    return "/dashboard"
 
 
 @router.post("/login", response_class=HTMLResponse, include_in_schema=False)
@@ -1539,7 +1603,7 @@ async def login_submit(
     )
 
     response = RedirectResponse(
-        url="/dashboard",
+        url=_tenant_post_login_url(db_path, identity.user_id),
         status_code=303,
     )
     response.set_cookie(
@@ -1680,7 +1744,10 @@ async def tenant_mfa_setup_submit(
         user_id=identity.user_id,
         company_id=identity.company_id,
     )
-    response = RedirectResponse(url="/dashboard", status_code=303)
+    response = RedirectResponse(
+        url=_tenant_post_login_url(db_path, identity.user_id),
+        status_code=303,
+    )
     response.set_cookie(
         key=WEB_SESSION_COOKIE_NAME,
         value=token,
@@ -2527,6 +2594,64 @@ def platform_support_diagnostics(
     )
 
 
+@router.get(
+    "/account/password",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+def account_password_page(
+    request: Request,
+    identity: WebIdentity = Depends(require_web_identity_for_password_change),
+) -> HTMLResponse:
+    """Show self-service password change, including mandatory first login."""
+    return templates.TemplateResponse(
+        request,
+        "account_password.html",
+        {
+            "active_nav": "account",
+            "password_change_required": identity.must_change_password,
+            "error_message": "",
+        },
+    )
+
+
+@router.post(
+    "/account/password",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def account_password_submit(
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    password_service: UserPasswordService = Depends(get_user_password_service),
+    identity: WebIdentity = Depends(require_web_identity_for_password_change),
+) -> HTMLResponse:
+    """Verify the current password and replace it with a permanent password."""
+    form = await request.form()
+    try:
+        password_service.change_password(
+            db_path,
+            user_id=identity.user_id,
+            current_password=str(form.get("current_password") or ""),
+            new_password=str(form.get("new_password") or ""),
+            confirmation=str(form.get("password_confirmation") or ""),
+        )
+    except UserPasswordError as error:
+        return templates.TemplateResponse(
+            request,
+            "account_password.html",
+            {
+                "active_nav": "account",
+                "password_change_required": identity.must_change_password,
+                "error_message": str(error),
+            },
+            status_code=400,
+        )
+    response = RedirectResponse(url="/login?password_changed=1", status_code=303)
+    response.delete_cookie(key=WEB_SESSION_COOKIE_NAME, path="/")
+    return response
+
+
 @router.post("/logout", include_in_schema=False)
 def logout_submit() -> RedirectResponse:
     """Clear the current Web session cookie."""
@@ -2552,7 +2677,14 @@ def root(
 ):
     """Show the public landing page or return a learner to their workspace."""
     if identity is not None:
-        return RedirectResponse(url="/dashboard", status_code=302)
+        return RedirectResponse(
+            url=(
+                "/account/password"
+                if identity.must_change_password
+                else "/dashboard"
+            ),
+            status_code=302,
+        )
 
     return templates.TemplateResponse(request, "landing.html")
 
@@ -2909,7 +3041,60 @@ def manager_team_member_page(
                 )
             ),
             "practical_task_analytics": practical_task_analytics,
+            "password_reset": request.query_params.get("password_reset", ""),
         },
+    )
+
+
+@router.post(
+    "/manager/team/{user_id}/password-reset",
+    include_in_schema=False,
+)
+async def manager_team_member_password_reset(
+    request: Request,
+    user_id: int,
+    db_path: Path = Depends(get_db_path),
+    team_service: ManagerTeamService = Depends(get_manager_team_service),
+    password_service: UserPasswordService = Depends(get_user_password_service),
+    identity: WebIdentity = Depends(require_web_management_identity),
+) -> RedirectResponse:
+    """Issue a tenant-scoped temporary password after actor confirmation."""
+    department_id = identity.department_id if identity.role == "manager" else None
+    member = (
+        team_service.get_member(identity.company_id, user_id)
+        if department_id is None
+        else team_service.get_member(identity.company_id, user_id, department_id)
+    )
+    if member is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    if identity.role == "manager" and member.role != "student":
+        raise HTTPException(status_code=403, detail="Managers may manage employees only")
+    if identity.user_id == user_id:
+        raise HTTPException(status_code=403, detail="Use self-service password change")
+
+    form = await request.form()
+    try:
+        password_service.reset_to_temporary_password(
+            db_path,
+            actor_user_id=identity.user_id,
+            actor_password=str(form.get("actor_password") or ""),
+            user_id=user_id,
+            temporary_password=str(form.get("temporary_password") or ""),
+            confirmation=str(form.get("password_confirmation") or ""),
+        )
+    except UserPasswordError as error:
+        code = (
+            "confirmation_failed"
+            if "подтвердить текущий пароль" in str(error)
+            else "invalid"
+        )
+        return RedirectResponse(
+            url=f"/manager/team/{user_id}?password_reset={code}#password-reset",
+            status_code=303,
+        )
+    return RedirectResponse(
+        url=f"/manager/team/{user_id}?password_reset=success#password-reset",
+        status_code=303,
     )
 
 

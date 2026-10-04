@@ -175,6 +175,61 @@ class WebLoginRouteTests(unittest.TestCase):
             "login-company",
         )
 
+    def test_temporary_password_requires_change_before_dashboard(self) -> None:
+        credential = self.credential_repository.get_by_user_id(
+            self.db_path,
+            self.user_id,
+        )
+        self.assertIsNotNone(credential)
+        assert credential is not None
+        self.credential_repository.replace_password(
+            self.db_path,
+            self.user_id,
+            credential.password_hash,
+            must_change_password=True,
+        )
+
+        login = self.client.post(
+            "/login",
+            data=self._valid_login_data(),
+            follow_redirects=False,
+        )
+        self.assertEqual(login.status_code, 303)
+        self.assertEqual(login.headers["location"], "/account/password")
+
+        dashboard = self.client.get("/dashboard", follow_redirects=False)
+        self.assertEqual(dashboard.status_code, 303)
+        self.assertEqual(dashboard.headers["location"], "/account/password")
+
+        page = self.client.get("/account/password")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Временный пароль необходимо заменить", page.text)
+
+        changed = self.client.post(
+            "/account/password",
+            data={
+                "current_password": "Strong-password-123!",
+                "new_password": "New-permanent-password-456!",
+                "password_confirmation": "New-permanent-password-456!",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(changed.status_code, 303)
+        self.assertEqual(changed.headers["location"], "/login?password_changed=1")
+        updated = self.credential_repository.get_by_user_id(
+            self.db_path,
+            self.user_id,
+        )
+        self.assertIsNotNone(updated)
+        assert updated is not None
+        self.assertFalse(updated.must_change_password)
+        self.assertTrue(
+            self.password_hashing_service.verify_password(
+                "New-permanent-password-456!",
+                updated.password_hash,
+            ).valid
+        )
+
     def test_admin_must_enroll_and_then_supply_mfa_code(self) -> None:
         with get_connection(self.db_path) as connection:
             connection.execute(

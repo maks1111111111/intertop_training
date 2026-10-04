@@ -56,6 +56,7 @@ class PasswordCredentialsSchemaTests(unittest.TestCase):
                 "email",
                 "password_hash",
                 "is_active",
+                "must_change_password",
                 "created_at",
                 "updated_at",
             ],
@@ -201,6 +202,40 @@ class PasswordCredentialsSchemaTests(unittest.TestCase):
             ).fetchone()
 
         self.assertIsNotNone(row)
+
+    def test_existing_credentials_table_gets_password_change_column(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "legacy-credentials.db"
+            initialize_database(db_path)
+            with get_connection(db_path) as connection:
+                connection.execute(
+                    "ALTER TABLE user_password_credentials RENAME TO old_credentials"
+                )
+                connection.execute(
+                    """
+                    CREATE TABLE user_password_credentials (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL UNIQUE,
+                        email TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                        password_hash TEXT NOT NULL,
+                        is_active INTEGER NOT NULL DEFAULT 1,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                connection.execute("DROP TABLE old_credentials")
+
+            initialize_database(db_path)
+            with get_connection(db_path) as migrated:
+                columns = {
+                    row["name"]
+                    for row in migrated.execute(
+                        "PRAGMA table_info(user_password_credentials)"
+                    ).fetchall()
+                }
+
+        self.assertIn("must_change_password", columns)
 
     def test_legacy_database_gets_credentials_table(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

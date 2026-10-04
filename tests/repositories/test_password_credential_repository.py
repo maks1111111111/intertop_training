@@ -45,6 +45,7 @@ class PasswordCredentialRepositoryTests(unittest.TestCase):
         self.assertEqual(created.email, "user@example.com")
         self.assertEqual(created.password_hash, "hashed-value")
         self.assertTrue(created.is_active)
+        self.assertFalse(created.must_change_password)
 
         loaded = self.repository.get_by_email(
             self.db_path,
@@ -207,6 +208,28 @@ class PasswordCredentialRepositoryTests(unittest.TestCase):
         self.assertIsNotNone(loaded)
         assert loaded is not None
         self.assertFalse(loaded.is_active)
+
+    def test_replace_password_sets_first_login_requirement(self) -> None:
+        self.repository.create(
+            self.db_path,
+            user_id=self.user_id,
+            email="user@example.com",
+            password_hash="old-hash",
+        )
+
+        self.assertTrue(
+            self.repository.replace_password(
+                self.db_path,
+                self.user_id,
+                "temporary-hash",
+                must_change_password=True,
+            )
+        )
+        loaded = self.repository.get_by_user_id(self.db_path, self.user_id)
+        self.assertIsNotNone(loaded)
+        assert loaded is not None
+        self.assertEqual(loaded.password_hash, "temporary-hash")
+        self.assertTrue(loaded.must_change_password)
 
 
 if __name__ == "__main__":

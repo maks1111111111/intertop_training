@@ -34,6 +34,45 @@
     </div>
 </section>
 
+<section class="section profile-section-anchor" id="password-reset">
+    <h2>Сбросить пароль сотрудника</h2>
+    {% if member.user_id != identity.user_id %}
+    <p class="page-meta">
+        Выдайте временный пароль по защищённому каналу. При следующем входе сотрудник обязан заменить его.
+    </p>
+    {% if password_reset == "success" %}
+    <div class="assignment-success-notice" role="status">
+        <span class="assignment-success-notice-icon" aria-hidden="true">✓</span>
+        <div><strong>Временный пароль установлен</strong></div>
+    </div>
+    {% elif password_reset == "confirmation_failed" %}
+    <div class="admin-form-error" role="alert">Не удалось подтвердить ваш текущий пароль.</div>
+    {% elif password_reset == "invalid" %}
+    <div class="admin-form-error" role="alert">Проверьте временный пароль: минимум 12 символов, оба значения должны совпадать.</div>
+    {% endif %}
+    <form method="post" action="/manager/team/{{ member.user_id }}/password-reset" class="admin-create-form">
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="temporary-password">Временный пароль</label>
+            <input class="admin-form-input" id="temporary-password" name="temporary_password" type="password" autocomplete="new-password" minlength="12" required>
+        </div>
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="temporary-password-confirmation">Повторите временный пароль</label>
+            <input class="admin-form-input" id="temporary-password-confirmation" name="password_confirmation" type="password" autocomplete="new-password" minlength="12" required>
+        </div>
+        <div class="admin-form-field">
+            <label class="admin-form-label" for="actor-password">Ваш текущий пароль</label>
+            <input class="admin-form-input" id="actor-password" name="actor_password" type="password" autocomplete="current-password" required>
+        </div>
+        <div class="admin-form-actions">
+            <button class="button button-secondary" type="submit">Установить временный пароль</button>
+        </div>
+    </form>
+    {% else %}
+    <p class="page-meta">Для своего аккаунта используйте самостоятельную смену пароля.</p>
+    <a class="button button-secondary" href="/account/password">Сменить свой пароль</a>
+    {% endif %}
+</section>
+
 <section class="section profile-section-anchor" id="assign-course">
     <h2>Назначить курс</h2>
 

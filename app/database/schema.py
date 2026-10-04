@@ -253,6 +253,7 @@ def create_tables(connection: sqlite3.Connection) -> None:
             email TEXT NOT NULL COLLATE NOCASE UNIQUE,
             password_hash TEXT NOT NULL,
             is_active INTEGER NOT NULL DEFAULT 1,
+            must_change_password INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id)
@@ -260,7 +261,8 @@ def create_tables(connection: sqlite3.Connection) -> None:
                 ON DELETE CASCADE,
             CHECK (length(trim(email)) > 0),
             CHECK (length(trim(password_hash)) > 0),
-            CHECK (is_active IN (0, 1))
+            CHECK (is_active IN (0, 1)),
+            CHECK (must_change_password IN (0, 1))
         );
 
         CREATE INDEX IF NOT EXISTS idx_user_password_credentials_user_id

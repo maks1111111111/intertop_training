@@ -57,6 +57,7 @@ from app.web.router import (
     get_manager_employee_analytics_service,
     get_manager_team_analytics_service,
     get_manager_team_service,
+    get_user_password_service,
 )
 from app.web.web_identity_service import WebIdentity
 from tests.web.test_web_ui import _create_test_app
@@ -1301,6 +1302,12 @@ class ManagerTeamPageTests(unittest.TestCase):
                 "empty-course": 0,
             }
         )
+        self.password_service = SimpleNamespace(calls=[])
+
+        def reset_to_temporary_password(db_path, **kwargs):
+            self.password_service.calls.append((db_path, kwargs))
+
+        self.password_service.reset_to_temporary_password = reset_to_temporary_password
         self.app.dependency_overrides[get_manager_team_service] = lambda: self.team_service
         self.app.dependency_overrides[get_dashboard_service] = lambda: self.dashboard_service
         self.app.dependency_overrides[get_manager_employee_analytics_service] = (
@@ -1316,6 +1323,9 @@ class ManagerTeamPageTests(unittest.TestCase):
             lambda: self.assignment_history_service
         )
         self.app.dependency_overrides[get_content_runtime] = lambda: self.content_runtime
+        self.app.dependency_overrides[get_user_password_service] = (
+            lambda: self.password_service
+        )
 
     def tearDown(self) -> None:
         self.app.dependency_overrides.clear()
@@ -2432,6 +2442,52 @@ class ManagerTeamPageTests(unittest.TestCase):
             self.assignment_service.calls,
             [("intertop", 2, "alpha", 10, None, None, None)],
         )
+
+    def test_manager_can_issue_temporary_password_to_scoped_employee(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.post(
+            "/manager/team/2/password-reset",
+            data={
+                "actor_password": "Manager-password-1",
+                "temporary_password": "Temporary-password-2",
+                "password_confirmation": "Temporary-password-2",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            response.headers["location"],
+            "/manager/team/2?password_reset=success#password-reset",
+        )
+        self.assertEqual(len(self.password_service.calls), 1)
+        self.assertEqual(
+            self.password_service.calls[0][1],
+            {
+                "actor_user_id": 10,
+                "actor_password": "Manager-password-1",
+                "user_id": 2,
+                "temporary_password": "Temporary-password-2",
+                "confirmation": "Temporary-password-2",
+            },
+        )
+
+    def test_manager_cannot_reset_password_outside_scope(self) -> None:
+        self._set_identity("manager")
+
+        response = self.client.post(
+            "/manager/team/99/password-reset",
+            data={
+                "actor_password": "Manager-password-1",
+                "temporary_password": "Temporary-password-2",
+                "password_confirmation": "Temporary-password-2",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.password_service.calls, [])
 
     def test_admin_can_assign_course(self) -> None:
         self._set_identity("admin")

@@ -33,10 +33,11 @@ class CompanyUserProvisioningServiceTests(unittest.TestCase):
         )
         with get_connection(self.db_path) as connection:
             membership = connection.execute("SELECT company_id, role FROM company_memberships WHERE user_id = ?", (user.user_id,)).fetchone()
-            credential = connection.execute("SELECT password_hash FROM user_password_credentials WHERE user_id = ?", (user.user_id,)).fetchone()
+            credential = connection.execute("SELECT password_hash, must_change_password FROM user_password_credentials WHERE user_id = ?", (user.user_id,)).fetchone()
         self.assertEqual((user.email, user.role), ("ada@example.com", "admin"))
         self.assertEqual((membership["company_id"], membership["role"]), ("alpha", "admin"))
         self.assertTrue(PasswordHashingService().verify_password("Strong-password-123!", credential["password_hash"]).valid)
+        self.assertEqual(credential["must_change_password"], 1)
 
     def test_rejects_short_password_without_creating_user(self) -> None:
         with self.assertRaisesRegex(CompanyUserProvisioningError, "12"):

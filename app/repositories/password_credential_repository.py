@@ -17,6 +17,7 @@ class PasswordCredential:
     email: str
     password_hash: str
     is_active: bool
+    must_change_password: bool
     created_at: str
     updated_at: str
 
@@ -28,6 +29,7 @@ def _row_to_credential(row: sqlite3.Row) -> PasswordCredential:
         email=str(row["email"]),
         password_hash=str(row["password_hash"]),
         is_active=bool(row["is_active"]),
+        must_change_password=bool(row["must_change_password"]),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
     )
@@ -69,6 +71,7 @@ class PasswordCredentialRepository:
         user_id: int,
         email: str,
         password_hash: str,
+        must_change_password: bool = False,
     ) -> PasswordCredential:
         normalized_user_id = _validate_user_id(user_id)
         normalized_email = _normalize_email(email)
@@ -80,14 +83,16 @@ class PasswordCredentialRepository:
                 INSERT INTO user_password_credentials (
                     user_id,
                     email,
-                    password_hash
+                    password_hash,
+                    must_change_password
                 )
-                VALUES (?, ?, ?)
+                VALUES (?, ?, ?, ?)
                 """,
                 (
                     normalized_user_id,
                     normalized_email,
                     normalized_hash,
+                    1 if must_change_password else 0,
                 ),
             )
             row = connection.execute(
@@ -185,6 +190,36 @@ class PasswordCredentialRepository:
                 WHERE user_id = ?
                 """,
                 (active_value, normalized_user_id),
+            )
+
+        return cursor.rowcount > 0
+
+    def replace_password(
+        self,
+        db_path: Path,
+        user_id: int,
+        password_hash: str,
+        *,
+        must_change_password: bool,
+    ) -> bool:
+        """Replace a password and explicitly set its first-login requirement."""
+        normalized_user_id = _validate_user_id(user_id)
+        normalized_hash = _validate_password_hash(password_hash)
+
+        with get_connection(db_path) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE user_password_credentials
+                SET password_hash = ?,
+                    must_change_password = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+                """,
+                (
+                    normalized_hash,
+                    1 if must_change_password else 0,
+                    normalized_user_id,
+                ),
             )
 
         return cursor.rowcount > 0

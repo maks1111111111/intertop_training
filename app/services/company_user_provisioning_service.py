@@ -114,8 +114,10 @@ class CompanyUserProvisioningService:
                 )
                 connection.execute(
                     """
-                    INSERT INTO user_password_credentials (user_id, email, password_hash)
-                    VALUES (?, ?, ?)
+                    INSERT INTO user_password_credentials (
+                        user_id, email, password_hash, must_change_password
+                    )
+                    VALUES (?, ?, ?, 1)
                     """,
                     (user_id, normalized_email, password_hash),
                 )

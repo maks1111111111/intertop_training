@@ -3470,6 +3470,10 @@ a:focus-visible,
     border-radius: 0.5rem;
 }
 
+.account-password-panel {
+    max-width: 42rem;
+}
+
 .assignment-success-notice {
     display: flex;
     align-items: flex-start;

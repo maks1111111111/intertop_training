@@ -20,6 +20,7 @@ class WebIdentity:
     company_name: str
     role: str
     department_id: Optional[int] = None
+    must_change_password: bool = False
 
 
 class WebIdentityService:

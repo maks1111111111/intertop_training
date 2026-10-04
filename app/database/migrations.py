@@ -416,6 +416,7 @@ def migrate_user_password_credentials_table(
             email TEXT NOT NULL COLLATE NOCASE UNIQUE,
             password_hash TEXT NOT NULL,
             is_active INTEGER NOT NULL DEFAULT 1,
+            must_change_password INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id)
@@ -423,7 +424,8 @@ def migrate_user_password_credentials_table(
                 ON DELETE CASCADE,
             CHECK (length(trim(email)) > 0),
             CHECK (length(trim(password_hash)) > 0),
-            CHECK (is_active IN (0, 1))
+            CHECK (is_active IN (0, 1)),
+            CHECK (must_change_password IN (0, 1))
         );
 
         CREATE INDEX IF NOT EXISTS idx_user_password_credentials_user_id
@@ -433,6 +435,16 @@ def migrate_user_password_credentials_table(
             ON user_password_credentials(email COLLATE NOCASE);
         """
     )
+
+    columns = _get_table_columns(connection, "user_password_credentials")
+    if "must_change_password" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE user_password_credentials
+            ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0
+            CHECK (must_change_password IN (0, 1))
+            """
+        )
 
 
 def migrate_user_mfa_credentials_table(
