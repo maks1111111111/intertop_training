@@ -425,6 +425,11 @@ class AdminGenerationServiceUnitTests(unittest.TestCase):
         self.mock_importer = MagicMock()
         self.mock_text_service = MagicMock()
         self.mock_course_with_quiz = MagicMock()
+        self.mock_source_image_import = MagicMock()
+        self.mock_source_image_import.import_into_course.return_value = MagicMock(
+            extracted_count=0,
+            lesson_images_installed=0,
+        )
 
         self.service = AdminGenerationService(
             upload_service=self.upload_service,
@@ -433,6 +438,7 @@ class AdminGenerationServiceUnitTests(unittest.TestCase):
             importer=self.mock_importer,
             text_generation_service=self.mock_text_service,
             course_with_quiz_service=self.mock_course_with_quiz,
+            source_image_import_service=self.mock_source_image_import,
         )
 
     def tearDown(self) -> None:
@@ -523,6 +529,10 @@ class AdminGenerationServiceUnitTests(unittest.TestCase):
             persist_call.kwargs["output_language"],
             "ru",
         )
+        self.mock_source_image_import.import_into_course.assert_called_once_with(
+            self.upload_service.resolve_upload(upload_id).source_path,
+            course_dir,
+        )
 
     def test_web_form_uses_adaptive_quiz_not_fixed_three(self) -> None:
         upload_id, form_values = self._saved_upload()
@@ -542,6 +552,7 @@ class AdminGenerationServiceUnitTests(unittest.TestCase):
             importer=self.mock_importer,
             text_generation_service=self.mock_text_service,
             course_with_quiz_service=self.mock_course_with_quiz,
+            source_image_import_service=self.mock_source_image_import,
         )
         upload_id, form_values = self._saved_upload()
         self.mock_importer.read_source.return_value = "Imported text"

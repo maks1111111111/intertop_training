@@ -21,6 +21,7 @@ from app.content.course_generation_wizard import (
 from app.content.importer import CourseImporter
 from app.content.runtime import ContentRuntime
 from app.content.runtime_manager import ContentRuntimeManager
+from app.content.source_image_importer import SourceImageImportService
 from app.services.course_with_quiz_generation_service import (
     CourseWithQuizGenerationService,
 )
@@ -184,6 +185,7 @@ class AdminGenerationService:
         course_with_quiz_service_factory: Callable[
             [], CourseWithQuizGenerationService
         ] = _default_course_with_quiz_service_factory,
+        source_image_import_service: Optional[SourceImageImportService] = None,
     ) -> None:
         self._upload_service = upload_service
         self._courses_dir = courses_dir
@@ -195,6 +197,11 @@ class AdminGenerationService:
         self._course_with_quiz_service = course_with_quiz_service
         self._text_generation_service_factory = text_generation_service_factory
         self._course_with_quiz_service_factory = course_with_quiz_service_factory
+        self._source_image_import_service = (
+            source_image_import_service
+            if source_image_import_service is not None
+            else SourceImageImportService()
+        )
 
     def generate_course(self, request: AdminGenerationRequest) -> AdminGenerationSuccess:
         """Generate and persist a course from a stored upload and wizard options."""
@@ -247,6 +254,25 @@ class AdminGenerationService:
             questions_per_lesson=prepared.questions_per_lesson,
             output_language=output_language,
         )
+
+        try:
+            image_result = self._source_image_import_service.import_into_course(
+                resolved.source_path,
+                workflow_result.course_directory,
+            )
+            if image_result.extracted_count:
+                _logger.info(
+                    "Imported %s source images into generated course %s "
+                    "(%s lesson images)",
+                    image_result.extracted_count,
+                    workflow_result.course_directory.name,
+                    image_result.lesson_images_installed,
+                )
+        except Exception:
+            _logger.warning(
+                "Generated course without source images because extraction failed",
+                exc_info=True,
+            )
 
         slug = _read_persisted_course_slug(workflow_result.course_directory)
         if self._db_path is not None and self._company_id is not None:
