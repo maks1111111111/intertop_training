@@ -27,6 +27,9 @@
 <ul class="course-list">
     {% for course in courses %}
     <li class="course-card">
+        {% if course.cover_url %}
+        <img class="course-card-cover" src="{{ course.cover_url }}" alt="">
+        {% endif %}
         <div class="course-card-body">
             <h2 class="course-card-title">{{ course.title }}</h2>
             {% if course.description %}

@@ -15,6 +15,9 @@
     {% endif %}
 
     <div class="course-detail-header-body">
+        {% if course.cover_url %}
+        <img class="course-detail-cover" src="{{ course.cover_url }}" alt="Обложка курса «{{ course.title }}»">
+        {% endif %}
         <h1 class="page-title">{{ course.title }}</h1>
         {% if course.description %}
         <p class="page-lead">{{ course.description }}</p>

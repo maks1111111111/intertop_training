@@ -10,11 +10,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from app.content.contract import COURSE_JSON_FILENAME
+from app.content.contract import (
+    COURSE_COVER_FILENAMES,
+    COURSE_COVER_STEM,
+    COURSE_JSON_FILENAME,
+)
 from app.content.runtime import ContentRuntime
 from app.content.runtime_manager import ContentRuntimeManager
 from app.services.runtime_refresh_service import RuntimeRefreshService
 from app.web.admin_service import AdminSelectOption
+from app.web.admin_image_service import (
+    AdminImageError,
+    remove_image_slot,
+    replace_image_slot,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -46,6 +55,8 @@ class AdminCourseEditView:
     language_options: tuple[AdminSelectOption, ...]
     detail_url: str
     cancel_url: str
+    has_cover: bool
+    cover_url: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -168,7 +179,55 @@ class AdminCourseEditService:
             language_options=PERSISTED_LANGUAGE_OPTIONS,
             detail_url=f"/admin/courses/{course.slug}",
             cancel_url=f"/admin/courses/{course.slug}",
+            has_cover=course.cover_path is not None,
+            cover_url=(
+                f"/courses/{course.slug}/cover" if course.cover_path is not None else None
+            ),
         )
+
+    def save_cover(self, slug: str, filename: Optional[str], content: bytes) -> None:
+        """Validate and replace the course cover image."""
+        try:
+            course_dir = _resolve_course_json_path(self._courses_dir, slug).parent
+            replace_image_slot(
+                course_dir,
+                stem=COURSE_COVER_STEM,
+                slot_filenames=COURSE_COVER_FILENAMES,
+                filename=filename,
+                content=content,
+            )
+        except AdminImageError as exc:
+            raise AdminCourseEditError(str(exc)) from exc
+        try:
+            RuntimeRefreshService(ContentRuntimeManager(self._runtime)).refresh()
+        except Exception as exc:
+            _logger.exception(
+                "Course cover saved but runtime refresh failed for slug=%s",
+                slug,
+            )
+            raise AdminCourseEditError(
+                "Обложка сохранена, но каталог курсов не обновился. "
+                "Обновите страницу или попробуйте снова."
+            ) from exc
+
+    def remove_cover(self, slug: str) -> None:
+        """Remove the course cover image when present."""
+        try:
+            course_dir = _resolve_course_json_path(self._courses_dir, slug).parent
+            remove_image_slot(course_dir, slot_filenames=COURSE_COVER_FILENAMES)
+        except AdminImageError as exc:
+            raise AdminCourseEditError(str(exc)) from exc
+        try:
+            RuntimeRefreshService(ContentRuntimeManager(self._runtime)).refresh()
+        except Exception as exc:
+            _logger.exception(
+                "Course cover removed but runtime refresh failed for slug=%s",
+                slug,
+            )
+            raise AdminCourseEditError(
+                "Обложка удалена, но каталог курсов не обновился. "
+                "Обновите страницу или попробуйте снова."
+            ) from exc
 
     def update_metadata(self, request: AdminCourseEditRequest) -> AdminCourseEditResult:
         """Validate, persist, and refresh one course's metadata."""

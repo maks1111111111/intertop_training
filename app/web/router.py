@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.api.mappers import course_mapper
@@ -91,6 +91,7 @@ from app.web.admin_lesson_edit_service import (
     AdminLessonEditService,
     _parse_multiline_list,
 )
+from app.web.admin_image_service import MAX_ADMIN_IMAGE_BYTES, image_media_type
 from app.web.admin_lesson_practical_task_apply_service import (
     AdminLessonPracticalTaskApplyError,
     AdminLessonPracticalTaskApplyRequest,
@@ -4344,6 +4345,52 @@ async def admin_course_edit_submit(
     )
 
 
+@admin_router.post(
+    "/admin/courses/{slug}/cover",
+    include_in_schema=False,
+)
+async def admin_course_cover_submit(
+    slug: str,
+    request: Request,
+    edit_service: AdminCourseEditService = Depends(get_admin_course_edit_service),
+):
+    """Upload or remove the fixed cover image for one tenant course."""
+    edit_view = edit_service.get_edit_view(slug)
+    if edit_view is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Курс не найден",
+                "message": "Запрошенный курс недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    form = await request.form()
+    try:
+        if str(form.get("operation") or "") == "remove":
+            edit_service.remove_cover(slug)
+        else:
+            upload = form.get("cover_file")
+            filename = getattr(upload, "filename", None)
+            read = getattr(upload, "read", None)
+            content = (
+                await read(MAX_ADMIN_IMAGE_BYTES + 1)
+                if callable(read)
+                else b""
+            )
+            edit_service.save_cover(slug, filename, content)
+    except AdminCourseEditError as exc:
+        return _render_admin_course_edit_page(
+            request,
+            edit_view,
+            error_message=exc.message,
+        )
+
+    return RedirectResponse(url=f"/admin/courses/{slug}/edit", status_code=303)
+
+
 def _render_admin_lesson_edit_page(
     request: Request,
     edit_view,
@@ -4476,6 +4523,56 @@ async def admin_lesson_edit_submit(
 
     return RedirectResponse(
         url=f"/admin/courses/{result.slug}",
+        status_code=303,
+    )
+
+
+@admin_router.post(
+    "/admin/courses/{slug}/lessons/{lesson_id}/image",
+    include_in_schema=False,
+)
+async def admin_lesson_image_submit(
+    slug: str,
+    lesson_id: str,
+    request: Request,
+    edit_service: AdminLessonEditService = Depends(get_admin_lesson_edit_service),
+):
+    """Upload or remove the fixed illustration for one tenant lesson."""
+    edit_view = edit_service.get_edit_view(slug, lesson_id)
+    if edit_view is None:
+        return templates.TemplateResponse(
+            request,
+            "not_found.html",
+            {
+                "title": "Урок не найден",
+                "message": "Запрошенный урок недоступен или не существует.",
+            },
+            status_code=404,
+        )
+
+    form = await request.form()
+    try:
+        if str(form.get("operation") or "") == "remove":
+            edit_service.remove_image(slug, lesson_id)
+        else:
+            upload = form.get("image_file")
+            filename = getattr(upload, "filename", None)
+            read = getattr(upload, "read", None)
+            content = (
+                await read(MAX_ADMIN_IMAGE_BYTES + 1)
+                if callable(read)
+                else b""
+            )
+            edit_service.save_image(slug, lesson_id, filename, content)
+    except AdminLessonEditError as exc:
+        return _render_admin_lesson_edit_page(
+            request,
+            edit_view,
+            error_message=exc.message,
+        )
+
+    return RedirectResponse(
+        url=f"/admin/courses/{slug}/lessons/{lesson_id}/edit",
         status_code=303,
     )
 
@@ -5619,6 +5716,27 @@ def courses_page(
     )
 
 
+@router.get("/courses/{slug}/cover", include_in_schema=False)
+def course_cover_image(
+    slug: str,
+    content_runtime: ContentRuntime = Depends(get_tenant_content_runtime),
+    identity: WebIdentity = Depends(require_web_identity),
+) -> FileResponse:
+    """Serve a course cover only from the signed-in tenant runtime."""
+    course = content_runtime.get_course(slug)
+    if (
+        course is None
+        or course.cover_path is None
+        or not course.cover_path.is_file()
+    ):
+        raise HTTPException(status_code=404, detail="Course cover not found")
+    return FileResponse(
+        course.cover_path,
+        media_type=image_media_type(course.cover_path),
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
 @router.get(
     "/courses/{slug}",
     response_class=HTMLResponse,
@@ -5744,6 +5862,37 @@ def _render_learner_lesson_page(
             "practical_task_error": practical_task_error,
             "practical_task_notice": practical_task_notice,
         },
+    )
+
+
+@router.get(
+    "/courses/{slug}/lessons/{lesson_id}/image",
+    include_in_schema=False,
+)
+def lesson_content_image(
+    slug: str,
+    lesson_id: str,
+    content_runtime: ContentRuntime = Depends(get_tenant_content_runtime),
+    identity: WebIdentity = Depends(require_web_identity),
+) -> FileResponse:
+    """Serve a lesson illustration only from the signed-in tenant runtime."""
+    course = content_runtime.get_course(slug)
+    if course is None:
+        raise HTTPException(status_code=404, detail="Lesson image not found")
+    lesson = next(
+        (item for item in course.lessons if item.path.name == lesson_id),
+        None,
+    )
+    if (
+        lesson is None
+        or lesson.image_path is None
+        or not lesson.image_path.is_file()
+    ):
+        raise HTTPException(status_code=404, detail="Lesson image not found")
+    return FileResponse(
+        lesson.image_path,
+        media_type=image_media_type(lesson.image_path),
+        headers={"Cache-Control": "private, max-age=300"},
     )
 
 

@@ -125,6 +125,47 @@ class AdminCourseEditPageTests(unittest.TestCase):
         self.assertIn('value="kk"', html)
         self.assertIn("Қазақша", html)
 
+    def test_admin_can_upload_and_render_course_cover(self) -> None:
+        _write_course(self.courses_dir, "alpha", title="Alpha Course")
+        self.app.state.content_runtime.refresh()
+
+        response = self.client.post(
+            "/admin/courses/alpha/cover",
+            files={
+                "cover_file": (
+                    "cover.png",
+                    b"\x89PNG\r\n\x1a\ncourse-cover",
+                    "image/png",
+                )
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertTrue((self.courses_dir / "alpha" / "cover.png").is_file())
+        image_response = self.client.get("/courses/alpha/cover")
+        self.assertEqual(image_response.status_code, 200)
+        self.assertEqual(image_response.headers["content-type"], "image/png")
+
+    def test_course_cover_rejects_mismatched_file_content(self) -> None:
+        _write_course(self.courses_dir, "alpha", title="Alpha Course")
+        self.app.state.content_runtime.refresh()
+
+        response = self.client.post(
+            "/admin/courses/alpha/cover",
+            files={
+                "cover_file": (
+                    "cover.jpg",
+                    b"\x89PNG\r\n\x1a\nnot-a-jpeg",
+                    "image/jpeg",
+                )
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("не соответствует формату изображения", response.text)
+        self.assertFalse((self.courses_dir / "alpha" / "cover.jpg").exists())
+
     def test_unknown_slug_returns_404(self) -> None:
         response = self.client.get("/admin/courses/missing-course/edit")
 

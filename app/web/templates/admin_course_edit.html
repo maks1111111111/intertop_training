@@ -69,4 +69,39 @@
         <button class="button button-primary" type="submit">Сохранить изменения</button>
     </div>
 </form>
+
+<section class="admin-media-section" aria-labelledby="course-cover-heading">
+    <div class="admin-media-copy">
+        <h2 class="section-title" id="course-cover-heading">Обложка курса</h2>
+        <p>Загрузите JPG, PNG или WebP размером не более 10 МБ.</p>
+    </div>
+    {% if edit.has_cover %}
+    <img class="admin-media-preview admin-media-preview--cover" src="{{ edit.cover_url }}" alt="Текущая обложка курса">
+    {% endif %}
+    <form
+        class="admin-media-form"
+        action="/admin/courses/{{ edit.slug }}/cover"
+        method="post"
+        enctype="multipart/form-data"
+    >
+        <label class="admin-form-label" for="course-cover-file">Файл изображения</label>
+        <input
+            class="admin-form-input"
+            id="course-cover-file"
+            name="cover_file"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            required
+        >
+        <button class="button button-primary" type="submit">
+            {% if edit.has_cover %}Заменить обложку{% else %}Загрузить обложку{% endif %}
+        </button>
+    </form>
+    {% if edit.has_cover %}
+    <form action="/admin/courses/{{ edit.slug }}/cover" method="post">
+        <input type="hidden" name="operation" value="remove">
+        <button class="button button-secondary" type="submit">Удалить обложку</button>
+    </form>
+    {% endif %}
+</section>
 {% endblock %}

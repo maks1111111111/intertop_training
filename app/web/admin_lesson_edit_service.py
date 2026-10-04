@@ -9,11 +9,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from app.content.contract import COURSE_JSON_FILENAME, LESSON_JSON_FILENAME
+from app.content.contract import (
+    COURSE_JSON_FILENAME,
+    LESSON_IMAGE_FILENAMES,
+    LESSON_IMAGE_STEM,
+    LESSON_JSON_FILENAME,
+)
 from app.content.runtime import ContentRuntime
 from app.content.runtime_manager import ContentRuntimeManager
 from app.services.runtime_refresh_service import RuntimeRefreshService
 from app.web.admin_course_edit_service import _atomic_write_json
+from app.web.admin_image_service import (
+    AdminImageError,
+    remove_image_slot,
+    replace_image_slot,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -42,6 +52,8 @@ class AdminLessonEditView:
     application_tips_text: str
     detail_url: str
     cancel_url: str
+    has_image: bool
+    image_url: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -205,7 +217,69 @@ class AdminLessonEditService:
             application_tips_text=_list_to_text(lesson.application_tips),
             detail_url=f"/admin/courses/{course.slug}",
             cancel_url=f"/admin/courses/{course.slug}",
+            has_image=lesson.image_path is not None,
+            image_url=(
+                f"/courses/{course.slug}/lessons/{lesson.path.name}/image"
+                if lesson.image_path is not None
+                else None
+            ),
         )
+
+    def save_image(
+        self,
+        slug: str,
+        lesson_id: str,
+        filename: Optional[str],
+        content: bytes,
+    ) -> None:
+        """Validate and replace one lesson illustration."""
+        try:
+            lesson_dir = _resolve_lesson_json_path(
+                self._courses_dir, slug, lesson_id
+            ).parent
+            replace_image_slot(
+                lesson_dir,
+                stem=LESSON_IMAGE_STEM,
+                slot_filenames=LESSON_IMAGE_FILENAMES,
+                filename=filename,
+                content=content,
+            )
+        except AdminImageError as exc:
+            raise AdminLessonEditError(str(exc)) from exc
+        try:
+            RuntimeRefreshService(ContentRuntimeManager(self._runtime)).refresh()
+        except Exception as exc:
+            _logger.exception(
+                "Lesson image saved but runtime refresh failed for slug=%s lesson_id=%s",
+                slug,
+                lesson_id,
+            )
+            raise AdminLessonEditError(
+                "Изображение сохранено, но каталог курсов не обновился. "
+                "Обновите страницу или попробуйте снова."
+            ) from exc
+
+    def remove_image(self, slug: str, lesson_id: str) -> None:
+        """Remove the illustration from one lesson when present."""
+        try:
+            lesson_dir = _resolve_lesson_json_path(
+                self._courses_dir, slug, lesson_id
+            ).parent
+            remove_image_slot(lesson_dir, slot_filenames=LESSON_IMAGE_FILENAMES)
+        except AdminImageError as exc:
+            raise AdminLessonEditError(str(exc)) from exc
+        try:
+            RuntimeRefreshService(ContentRuntimeManager(self._runtime)).refresh()
+        except Exception as exc:
+            _logger.exception(
+                "Lesson image removed but runtime refresh failed for slug=%s lesson_id=%s",
+                slug,
+                lesson_id,
+            )
+            raise AdminLessonEditError(
+                "Изображение удалено, но каталог курсов не обновился. "
+                "Обновите страницу или попробуйте снова."
+            ) from exc
 
     def update_lesson(self, request: AdminLessonEditRequest) -> AdminLessonEditResult:
         """Validate, persist, and refresh one lesson."""

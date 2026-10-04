@@ -539,6 +539,37 @@ class AdminLessonEditPageTests(unittest.TestCase):
 
         self.assertNotIn(str(self.courses_dir.resolve()), response.text)
 
+    def test_admin_can_upload_and_render_lesson_image(self) -> None:
+        _write_lesson_with_quality_fields(self.courses_dir)
+        self.app.state.content_runtime.refresh()
+
+        response = self.client.post(
+            "/admin/courses/quality-course/lessons/lesson_01/image",
+            files={
+                "image_file": (
+                    "lesson.webp",
+                    b"RIFFxxxxWEBPlesson-image",
+                    "image/webp",
+                )
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 303)
+        self.assertTrue(
+            (
+                self.courses_dir
+                / "quality-course"
+                / "lesson_01"
+                / "image.webp"
+            ).is_file()
+        )
+        image_response = self.client.get(
+            "/courses/quality-course/lessons/lesson_01/image"
+        )
+        self.assertEqual(image_response.status_code, 200)
+        self.assertEqual(image_response.headers["content-type"], "image/webp")
+
     def test_admin_detail_has_edit_link(self) -> None:
         _write_lesson_with_quality_fields(self.courses_dir)
         self.app.state.content_runtime.refresh()
