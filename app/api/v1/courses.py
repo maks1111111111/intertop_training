@@ -47,11 +47,7 @@ def get_tenant_content_runtime(
     return registry.get_runtime(identity.company_id)
 
 
-@router.get(
-    "/courses",
-    response_model=CourseListDTO,
-    response_model_exclude_none=True,
-)
+@router.get("/courses", response_model=CourseListDTO)
 def list_courses(
     content_runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> CourseListDTO:
@@ -62,7 +58,6 @@ def list_courses(
 @router.get(
     "/courses/{slug}",
     response_model=CourseDetailDTO,
-    response_model_exclude_none=True,
     responses={
         404: {
             "description": "Course not found.",
@@ -101,7 +96,6 @@ def get_course(
 @router.get(
     "/courses/{slug}/lessons/{lesson_id}",
     response_model=LessonDetailDTO,
-    response_model_exclude_none=True,
     responses={
         404: {
             "description": "Course or lesson not found.",

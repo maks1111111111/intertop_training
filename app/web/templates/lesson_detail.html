@@ -31,9 +31,9 @@
             <h1 class="lesson-title">{{ lesson.title }}</h1>
         </header>
 
-        {% if lesson.image_url %}
+        {% if lesson_image_url %}
         <figure class="lesson-image">
-            <img src="{{ lesson.image_url }}" alt="Иллюстрация к уроку «{{ lesson.title }}»">
+            <img src="{{ lesson_image_url }}" alt="Иллюстрация к уроку «{{ lesson.title }}»">
         </figure>
         {% endif %}
 

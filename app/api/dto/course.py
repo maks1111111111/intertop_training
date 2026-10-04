@@ -13,7 +13,6 @@ class CourseSummaryDTO(BaseModel):
     slug: str
     title: str
     description: str
-    cover_url: Optional[str] = None
 
 
 class CourseListDTO(BaseModel):
@@ -38,7 +37,6 @@ class CourseDetailDTO(BaseModel):
     description: str
     language: str
     lessons: list[LessonSummaryDTO]
-    cover_url: Optional[str] = None
 
 
 class LessonDetailDTO(BaseModel):
@@ -53,7 +51,6 @@ class LessonDetailDTO(BaseModel):
     common_mistakes: list[str]
     key_takeaways: list[str]
     application_tips: list[str]
-    image_url: Optional[str] = None
     previous_lesson_id: Optional[str] = None
     next_lesson_id: Optional[str] = None
     is_first: bool = False

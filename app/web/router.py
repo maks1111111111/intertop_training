@@ -5705,12 +5705,18 @@ def courses_page(
     """Render the published course catalog."""
     courses = content_runtime.get_courses()
     course_list = course_mapper.to_summary_list(courses)
+    cover_urls = {
+        course.slug: f"/courses/{course.slug}/cover"
+        for course in courses
+        if course.cover_path is not None
+    }
     return templates.TemplateResponse(
         request,
         "courses.html",
         {
             "courses": course_list.items,
             "courses_count": len(course_list.items),
+            "cover_urls": cover_urls,
             "active_nav": "courses",
         },
     )
@@ -5775,6 +5781,11 @@ def course_detail_page(
         "course_detail.html",
         {
             "course": course_detail,
+            "course_cover_url": (
+                f"/courses/{course.slug}/cover"
+                if course.cover_path is not None
+                else None
+            ),
             "progress": progress,
             "quiz": quiz_summary,
         },
@@ -5856,6 +5867,11 @@ def _render_learner_lesson_page(
         {
             "course": course_mapper.to_detail(course),
             "lesson": lesson_detail,
+            "lesson_image_url": (
+                f"/courses/{course.slug}/lessons/{lesson.path.name}/image"
+                if lesson.image_path is not None
+                else None
+            ),
             "structured_practical_task": structured_task,
             "practical_task_attempt": display_attempt,
             "form_learner_answer": form_learner_answer or "",

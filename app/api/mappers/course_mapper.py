@@ -20,7 +20,6 @@ def to_summary(course: Course) -> CourseSummaryDTO:
         slug=course.slug,
         title=course.title,
         description=course.description,
-        cover_url=(f"/courses/{course.slug}/cover" if course.cover_path else None),
     )
 
 
@@ -46,7 +45,6 @@ def to_detail(course: Course) -> CourseDetailDTO:
         description=course.description,
         language=course.language,
         lessons=[to_lesson_summary(lesson) for lesson in course.lessons],
-        cover_url=(f"/courses/{course.slug}/cover" if course.cover_path else None),
     )
 
 
@@ -85,11 +83,6 @@ def to_lesson_detail(course: Course, lesson: Lesson) -> LessonDetailDTO:
         common_mistakes=list(lesson.common_mistakes),
         key_takeaways=list(lesson.key_takeaways),
         application_tips=list(lesson.application_tips),
-        image_url=(
-            f"/courses/{course.slug}/lessons/{lesson.path.name}/image"
-            if lesson.image_path
-            else None
-        ),
         previous_lesson_id=previous_lesson_id,
         next_lesson_id=next_lesson_id,
         is_first=is_first,

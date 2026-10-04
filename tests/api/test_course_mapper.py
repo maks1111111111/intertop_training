@@ -58,34 +58,6 @@ class CourseMapperTests(unittest.TestCase):
         self.assertEqual(summary.slug, "alpha")
         self.assertEqual(summary.title, "Alpha Course")
         self.assertEqual(summary.description, "Course overview for learners.")
-        self.assertIsNone(summary.cover_url)
-
-    def test_mapper_exposes_authenticated_course_and_lesson_image_urls(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            courses_dir = Path(tmp)
-            _write_course(courses_dir, "alpha")
-            (courses_dir / "alpha" / "cover.png").write_bytes(
-                b"\x89PNG\r\n\x1a\ncover"
-            )
-            (courses_dir / "alpha" / "lesson_01" / "image.jpg").write_bytes(
-                b"\xff\xd8\xfflesson"
-            )
-            runtime = ContentRuntime(courses_dir)
-            course = runtime.get_course("alpha")
-
-        self.assertIsNotNone(course)
-        assert course is not None
-
-        summary = course_mapper.to_summary(course)
-        detail = course_mapper.to_detail(course)
-        lesson = course_mapper.to_lesson_detail(course, course.lessons[0])
-
-        self.assertEqual(summary.cover_url, "/courses/alpha/cover")
-        self.assertEqual(detail.cover_url, "/courses/alpha/cover")
-        self.assertEqual(
-            lesson.image_url,
-            "/courses/alpha/lessons/lesson_01/image",
-        )
 
     def test_to_summary_list_preserves_order(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
