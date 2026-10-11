@@ -64,6 +64,24 @@ class UserPasswordService:
         ):
             raise UserPasswordError("Не удалось изменить пароль.")
 
+    def confirm_current_password(
+        self, db_path: Path, *, user_id: int, current_password: str
+    ) -> bool:
+        """Freshly verify an active user's password for a sensitive action."""
+        credential = self._credentials.get_by_user_id(db_path, user_id)
+        if credential is None or not credential.is_active or not current_password:
+            return False
+        verification = self._passwords.verify_password(
+            current_password, credential.password_hash
+        )
+        if not verification.valid:
+            return False
+        if verification.updated_hash is not None:
+            return self._credentials.update_password_hash(
+                db_path, user_id, verification.updated_hash
+            )
+        return True
+
     def reset_to_temporary_password(
         self,
         db_path: Path,

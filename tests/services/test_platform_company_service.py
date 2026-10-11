@@ -96,6 +96,37 @@ class PlatformCompanyServiceTests(unittest.TestCase):
         self.assertIn('"old_name": "North Shpo"', event.reason)
         self.assertIn('"new_name": "North Shop"', event.reason)
 
+    def test_owner_can_disable_one_company_admin_without_disabling_user(self) -> None:
+        self.companies.create(self.db_path, "north-shop", "North Shop")
+        admin_id = self._create_user("north-admin")
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO company_memberships (company_id, user_id, role)
+                VALUES ('north-shop', ?, 'admin')
+                """,
+                (admin_id,),
+            )
+
+        membership = self.service.set_company_admin_active(
+            self.db_path,
+            actor_user_id=self.owner_id,
+            company_id="north-shop",
+            target_user_id=admin_id,
+            is_active=False,
+            reason="Administrator left the company",
+        )
+
+        self.assertFalse(membership.is_active)
+        with get_connection(self.db_path) as connection:
+            user = connection.execute(
+                "SELECT is_active FROM users WHERE id = ?", (admin_id,)
+            ).fetchone()
+        self.assertEqual(user["is_active"], 1)
+        event = self.admins.list_audit_events(self.db_path)[0]
+        self.assertEqual(event.action, "company_admin.deactivated")
+        self.assertEqual(event.target_id, f"north-shop:{admin_id}")
+
     def test_owner_can_record_verified_export_only_while_company_is_active(self) -> None:
         self.companies.create(self.db_path, "north-shop", "North Shop")
         archive_sha256 = "a" * 64

@@ -93,6 +93,22 @@ class UserPasswordServiceTests(unittest.TestCase):
         self.assertEqual(credential.password_hash, "hash:Another-temp-9")
         self.assertTrue(credential.must_change_password)
 
+    def test_confirm_current_password_is_non_mutating(self) -> None:
+        self.assertTrue(
+            self.service.confirm_current_password(
+                self.db_path,
+                user_id=self.actor_id,
+                current_password="Actor-password-1",
+            )
+        )
+        self.assertFalse(
+            self.service.confirm_current_password(
+                self.db_path,
+                user_id=self.actor_id,
+                current_password="wrong",
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

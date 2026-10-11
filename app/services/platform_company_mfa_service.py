@@ -16,6 +16,7 @@ class CompanyAdminMFAStatus:
     user_id: int
     email: str
     display_name: str
+    is_active: bool
     is_enrolled: bool
 
 
@@ -41,6 +42,7 @@ class PlatformCompanyMFAService:
                 SELECT
                     memberships.company_id,
                     users.id AS user_id,
+                    memberships.is_active AS membership_is_active,
                     credentials.email,
                     COALESCE(
                         NULLIF(TRIM(
@@ -57,10 +59,10 @@ class PlatformCompanyMFAService:
                 LEFT JOIN user_mfa_credentials AS mfa
                   ON mfa.user_id = users.id
                 WHERE memberships.role = 'admin'
-                  AND memberships.is_active = 1
                   AND users.is_active = 1
                   AND credentials.is_active = 1
-                ORDER BY memberships.company_id, credentials.email COLLATE NOCASE
+                ORDER BY memberships.company_id, memberships.is_active DESC,
+                         credentials.email COLLATE NOCASE
                 """
             ).fetchall()
         return tuple(
@@ -69,6 +71,7 @@ class PlatformCompanyMFAService:
                 user_id=int(row["user_id"]),
                 email=str(row["email"]),
                 display_name=str(row["display_name"]),
+                is_active=bool(row["membership_is_active"]),
                 is_enrolled=bool(row["mfa_is_active"]),
             )
             for row in rows

@@ -5665,6 +5665,13 @@ a:focus-visible,
     grid-column: 1 / -1;
 }
 
+.platform-company-admin-statuses {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: end;
+    gap: 0.4rem;
+}
+
 /* Company cards combine short operational forms with explanatory text. Keep
  * headings, safety notes and the administrator summary out of the input grid,
  * otherwise they consume columns intended for controls on wide screens. */
@@ -5785,6 +5792,10 @@ a:focus-visible,
 
     .platform-company-admin-item {
         grid-template-columns: 1fr;
+    }
+
+    .platform-company-admin-statuses {
+        justify-content: start;
     }
 
     .platform-usage-meta {

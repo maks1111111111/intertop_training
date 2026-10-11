@@ -8,6 +8,10 @@ import sqlite3
 from pathlib import Path
 
 from app.repositories.company_repository import Company, CompanyRepository
+from app.repositories.company_membership_repository import (
+    CompanyMembership,
+    CompanyMembershipRepository,
+)
 from app.repositories.platform_admin_repository import PlatformAdminRepository
 
 
@@ -27,9 +31,11 @@ class PlatformCompanyService:
         self,
         company_repository: CompanyRepository,
         platform_admin_repository: PlatformAdminRepository,
+        membership_repository: CompanyMembershipRepository | None = None,
     ) -> None:
         self._companies = company_repository
         self._platform_admins = platform_admin_repository
+        self._memberships = membership_repository or CompanyMembershipRepository()
 
     def create_company(
         self,
@@ -142,6 +148,57 @@ class PlatformCompanyService:
             ),
         )
         return renamed
+
+    def set_company_admin_active(
+        self,
+        db_path: Path,
+        *,
+        actor_user_id: int,
+        company_id: str,
+        target_user_id: int,
+        is_active: bool,
+        reason: str,
+    ) -> CompanyMembership:
+        """Enable or disable one administrator only inside the chosen company."""
+        self._require_owner(db_path, actor_user_id)
+        normalized_company_id = _validate_company_id(company_id)
+        normalized_reason = _validate_text(reason, "reason")
+        if not isinstance(is_active, bool):
+            raise PlatformCompanyError("is_active must be a boolean")
+
+        company = self._companies.get_by_id(db_path, normalized_company_id)
+        if company is None:
+            raise PlatformCompanyError("company not found")
+        try:
+            membership = self._memberships.get(
+                db_path, normalized_company_id, target_user_id
+            )
+        except ValueError as error:
+            raise PlatformCompanyError("target_user_id is invalid") from error
+        if membership is None or membership.role != "admin":
+            raise PlatformCompanyError("Администратор компании не найден.")
+        if membership.is_active == is_active:
+            return membership
+        if not self._memberships.set_active(
+            db_path, normalized_company_id, target_user_id, is_active
+        ):
+            raise RuntimeError("failed to update company administrator state")
+        updated = self._memberships.get(db_path, normalized_company_id, target_user_id)
+        if updated is None:
+            raise RuntimeError("failed to load company administrator after update")
+        self._platform_admins.append_audit_event(
+            db_path,
+            actor_user_id=actor_user_id,
+            action=(
+                "company_admin.activated"
+                if is_active
+                else "company_admin.deactivated"
+            ),
+            target_type="company_member",
+            target_id=f"{normalized_company_id}:{target_user_id}",
+            reason=normalized_reason,
+        )
+        return updated
 
     def record_company_data_export(
         self,

@@ -99,6 +99,23 @@ class PlatformCompanyMFAServiceTests(unittest.TestCase):
             )
         self.assertIsNotNone(self.mfa.get(self.db_path, self.admin_id))
 
+    def test_list_keeps_disabled_company_admin_visible(self) -> None:
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                UPDATE company_memberships
+                SET is_active = 0
+                WHERE company_id = 'company-a' AND user_id = ?
+                """,
+                (self.admin_id,),
+            )
+
+        statuses = self.service.list_admins(self.db_path)
+
+        self.assertEqual(len(statuses), 1)
+        self.assertFalse(statuses[0].is_active)
+        self.assertTrue(statuses[0].is_enrolled)
+
 
 if __name__ == "__main__":
     unittest.main()

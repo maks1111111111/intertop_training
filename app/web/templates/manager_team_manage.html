@@ -62,5 +62,33 @@
         <p class="page-meta">Для добавления сотрудников менеджеру нужно назначенное подразделение.</p>
     </div>
     {% endif %}
+
+    {% if identity.role == "admin" %}
+    <div class="team-management-section">
+        <h3 class="section-subtitle">Доступ менеджеров</h3>
+        <p class="page-meta">Отключение сохраняет данные и назначенные курсы, но закрывает менеджеру вход и управление командой этой компании.</p>
+        {% if managers %}
+        <div class="platform-company-admin-list">
+            {% for manager in managers %}
+            <article class="platform-company-admin-item">
+                <div>
+                    <strong>{{ manager.display_name }}</strong>
+                    <p>{{ manager.email }}{% if manager.department_name %} · {{ manager.department_name }}{% endif %}</p>
+                </div>
+                <span class="platform-status {% if manager.is_active %}is-active{% else %}is-inactive{% endif %}">{% if manager.is_active %}Доступ включён{% else %}Доступ отключён{% endif %}</span>
+                <form method="post" action="/manager/team/managers/{{ manager.user_id }}/status" class="platform-inline-form">
+                    <input type="hidden" name="state" value="{% if manager.is_active %}inactive{% else %}active{% endif %}">
+                    <label class="auth-field"><span>Причина изменения доступа</span><input name="reason" required></label>
+                    <label class="auth-field"><span>Ваш текущий пароль</span><input name="current_password" type="password" autocomplete="current-password" required></label>
+                    <button type="submit" class="button button-secondary">{% if manager.is_active %}Отключить доступ{% else %}Включить доступ{% endif %}</button>
+                </form>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="page-meta">Менеджеры ещё не назначены.</p>
+        {% endif %}
+    </div>
+    {% endif %}
 </section>
 {% endblock %}

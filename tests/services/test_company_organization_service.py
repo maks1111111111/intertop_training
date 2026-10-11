@@ -81,6 +81,41 @@ class CompanyOrganizationServiceTests(unittest.TestCase):
                 email="other@example.com", password="Strong-password-123!",
             )
 
+    def test_admin_can_disable_and_restore_only_a_manager_membership(self) -> None:
+        department = self.service.create_department(
+            self.db_path, actor_user_id=self.admin.user_id, company_id="alpha", name="Sales"
+        )
+        manager = self.service.provision_manager(
+            self.db_path, actor_user_id=self.admin.user_id, company_id="alpha",
+            department_id=department.id, first_name="Mira", last_name="Manager",
+            email="manager@example.com", password="Strong-password-123!",
+        )
+
+        self.service.set_manager_active(
+            self.db_path, actor_user_id=self.admin.user_id, company_id="alpha",
+            target_user_id=manager.user_id, is_active=False,
+            reason="Manager is temporarily unavailable",
+        )
+        managers = self.service.list_managers(
+            self.db_path, actor_user_id=self.admin.user_id, company_id="alpha"
+        )
+        self.assertEqual([(member.user_id, member.is_active) for member in managers], [(manager.user_id, False)])
+        with self.assertRaises(CompanyOrganizationError):
+            self.service.provision_employee(
+                self.db_path, actor_user_id=manager.user_id, company_id="alpha",
+                first_name="Eli", last_name="Employee", email="eli@example.com",
+                password="Strong-password-123!",
+            )
+
+        self.service.set_manager_active(
+            self.db_path, actor_user_id=self.admin.user_id, company_id="alpha",
+            target_user_id=manager.user_id, is_active=True,
+            reason="Manager returned",
+        )
+        self.assertTrue(self.service.list_managers(
+            self.db_path, actor_user_id=self.admin.user_id, company_id="alpha"
+        )[0].is_active)
+
     def test_department_scoped_team_hides_other_department(self) -> None:
         sales = self.service.create_department(
             self.db_path, actor_user_id=self.admin.user_id, company_id="alpha", name="Sales"

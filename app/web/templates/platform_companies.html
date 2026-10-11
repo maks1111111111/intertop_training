@@ -87,8 +87,11 @@
             {% for admin in selected_company_admins %}
             <article class="platform-company-admin-item">
                 <div><strong>{{ admin.display_name }}</strong><p>{{ admin.email }}</p></div>
-                <span class="platform-status {% if admin.is_enrolled %}is-active{% else %}is-inactive{% endif %}">{% if admin.is_enrolled %}MFA подключена{% else %}Ожидает настройки{% endif %}</span>
-                {% if admin.is_enrolled %}
+                <div class="platform-company-admin-statuses">
+                    <span class="platform-status {% if admin.is_active %}is-active{% else %}is-inactive{% endif %}">{% if admin.is_active %}Доступ включён{% else %}Доступ отключён{% endif %}</span>
+                    <span class="platform-status {% if admin.is_enrolled %}is-active{% else %}is-inactive{% endif %}">{% if admin.is_enrolled %}MFA подключена{% else %}MFA ожидает настройки{% endif %}</span>
+                </div>
+                {% if admin.is_active and admin.is_enrolled %}
                 <form method="post" action="/platform-admin/companies/{{ selected_company.id }}/admins/{{ admin.user_id }}/mfa/reset" class="platform-inline-form">
                     <label class="auth-field"><span>Причина сброса MFA</span><input name="reason" required></label>
                     <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
@@ -96,6 +99,13 @@
                 </form>
                 <p class="field-hint">Сброс действует на аккаунт администратора во всех компаниях.</p>
                 {% endif %}
+                <form method="post" action="/platform-admin/companies/{{ selected_company.id }}/admins/{{ admin.user_id }}/status" class="platform-inline-form">
+                    <input type="hidden" name="state" value="{% if admin.is_active %}inactive{% else %}active{% endif %}">
+                    <label class="auth-field"><span>Причина изменения доступа</span><input name="reason" required></label>
+                    <label class="auth-field"><span>Текущий пароль владельца</span><input name="current_password" type="password" autocomplete="current-password" required></label>
+                    <button type="submit" class="button button-secondary">{% if admin.is_active %}Отключить доступ{% else %}Включить доступ{% endif %}</button>
+                </form>
+                <p class="field-hint">Изменяется доступ только к этой компании; другие компании и данные не затрагиваются.</p>
             </article>
             {% endfor %}
         </div>

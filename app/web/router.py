@@ -2239,6 +2239,65 @@ async def platform_company_admin_mfa_reset(
 
 
 @router.post(
+    "/platform-admin/companies/{company_id}/admins/{user_id}/status",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def platform_company_admin_status_update(
+    company_id: str,
+    user_id: int,
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    owner: PlatformAdminContext = Depends(require_platform_owner),
+    service: PlatformCompanyService = Depends(get_platform_company_service),
+    confirmation_service: PlatformOwnerConfirmationService = Depends(
+        get_platform_owner_confirmation_service
+    ),
+) -> HTMLResponse:
+    """Change a company-admin membership without disabling other tenants."""
+    form = await request.form()
+    if not confirmation_service.confirm(
+        db_path,
+        owner_user_id=owner.user_id,
+        password=str(form.get("current_password") or ""),
+    ):
+        return _render_platform_companies_page(
+            request,
+            db_path=db_path,
+            error_message="Не удалось подтвердить текущий пароль.",
+            selected_company_id=company_id,
+        )
+    state = str(form.get("state") or "")
+    if state not in {"active", "inactive"}:
+        return _render_platform_companies_page(
+            request,
+            db_path=db_path,
+            error_message="Некорректный статус доступа.",
+            selected_company_id=company_id,
+        )
+    try:
+        service.set_company_admin_active(
+            db_path,
+            actor_user_id=owner.user_id,
+            company_id=company_id,
+            target_user_id=user_id,
+            is_active=state == "active",
+            reason=str(form.get("reason") or ""),
+        )
+    except PlatformCompanyError as error:
+        return _render_platform_companies_page(
+            request,
+            db_path=db_path,
+            error_message=str(error),
+            selected_company_id=company_id,
+        )
+    return RedirectResponse(
+        url=f"/platform-admin/companies?company_id={company_id}",
+        status_code=303,
+    )
+
+
+@router.post(
     "/platform-admin/companies/{company_id}/status",
     response_class=HTMLResponse,
     include_in_schema=False,
@@ -2806,12 +2865,20 @@ def manager_team_management_page(
     departments = CompanyDepartmentRepository().list_for_company(
         db_path, identity.company_id
     )
+    managers = ()
+    if identity.role == "admin":
+        managers = get_company_organization_service().list_managers(
+            db_path,
+            actor_user_id=identity.user_id,
+            company_id=identity.company_id,
+        )
     return templates.TemplateResponse(
         request,
         "manager_team_manage.html",
         {
             "active_nav": "team_manage",
             "departments": departments,
+            "managers": managers,
             "organization_error": str(
                 request.query_params.get("organization_error") or ""
             ).strip(),
@@ -2914,6 +2981,51 @@ async def company_employee_create(
         )
     except CompanyOrganizationError as exc:
         return RedirectResponse(url=f"/manager/team/manage?organization_error={str(exc)}", status_code=303)
+    return RedirectResponse(url="/manager/team/manage", status_code=303)
+
+
+@router.post("/manager/team/managers/{user_id}/status", include_in_schema=False)
+async def company_manager_status_update(
+    user_id: int,
+    request: Request,
+    db_path: Path = Depends(get_db_path),
+    identity: WebIdentity = Depends(require_web_management_identity),
+    organization_service: CompanyOrganizationService = Depends(get_company_organization_service),
+    password_service: UserPasswordService = Depends(get_user_password_service),
+) -> RedirectResponse:
+    """Let a company admin revoke or restore one manager's tenant access."""
+    if identity.role != "admin":
+        raise HTTPException(status_code=403, detail="Company administrators only")
+    form = await request.form()
+    if not password_service.confirm_current_password(
+        db_path,
+        user_id=identity.user_id,
+        current_password=str(form.get("current_password") or ""),
+    ):
+        return RedirectResponse(
+            url="/manager/team/manage?organization_error=Не удалось подтвердить текущий пароль.",
+            status_code=303,
+        )
+    state = str(form.get("state") or "")
+    if state not in {"active", "inactive"}:
+        return RedirectResponse(
+            url="/manager/team/manage?organization_error=Некорректный статус доступа.",
+            status_code=303,
+        )
+    try:
+        organization_service.set_manager_active(
+            db_path,
+            actor_user_id=identity.user_id,
+            company_id=identity.company_id,
+            target_user_id=user_id,
+            is_active=state == "active",
+            reason=str(form.get("reason") or ""),
+        )
+    except CompanyOrganizationError as error:
+        return RedirectResponse(
+            url=f"/manager/team/manage?organization_error={str(error)}",
+            status_code=303,
+        )
     return RedirectResponse(url="/manager/team/manage", status_code=303)
 
 
