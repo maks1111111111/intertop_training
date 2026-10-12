@@ -187,7 +187,7 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         response = self.client.get("/admin/knowledge/ask")
 
         self.assertIn(
-            'placeholder="Спросите что-нибудь о корпоративных документах..."',
+            'placeholder="Спросите о документах или опубликованных курсах..."',
             response.text,
         )
 
@@ -206,10 +206,10 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         self.assertIn(">Қазақша</option>", html)
         self.assertIn(">English</option>", html)
 
-    def test_ask_page_explains_published_documents_are_used(self) -> None:
+    def test_ask_page_explains_published_materials_are_used(self) -> None:
         response = self.client.get("/admin/knowledge/ask")
 
-        self.assertIn("опубликованной базы знаний", response.text)
+        self.assertIn("корпоративным документам и опубликованным курсам", response.text)
 
     def test_knowledge_page_links_to_ask_page(self) -> None:
         response = self.client.get("/admin/knowledge")
@@ -365,7 +365,7 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         )
 
         self.assertNotIn(
-            "Недостаточно информации в опубликованных документах.",
+            "Недостаточно информации в опубликованных материалах компании.",
             response.text,
         )
         self.assertNotIn("ai-chat-message--insufficient", response.text)
@@ -574,7 +574,7 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         )
 
         self.assertIn(
-            "Недостаточно информации в опубликованных документах.",
+            "Недостаточно информации в опубликованных материалах компании.",
             response.text,
         )
         self.assertIn("ai-chat-message--insufficient", response.text)
