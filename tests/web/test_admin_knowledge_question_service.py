@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
 from unittest.mock import Mock
 
@@ -13,7 +14,11 @@ from app.ai.knowledge_answer_interfaces import (
     KnowledgeAnswerResult,
 )
 from app.database.db import initialize_database
-from app.knowledge.models import KnowledgeDocumentChunkInput, KnowledgeSourceType
+from app.knowledge.models import (
+    KnowledgeDocumentChunk,
+    KnowledgeDocumentChunkInput,
+    KnowledgeSourceType,
+)
 from app.knowledge.question_answering_service import KnowledgeQuestionAnsweringError
 from app.repositories import knowledge_chunk_repository, knowledge_document_repository
 from app.web.admin_knowledge_question_service import (
@@ -275,6 +280,41 @@ class AdminKnowledgeQuestionServiceTests(unittest.TestCase):
         self.assertEqual(view.sources[0].document_id, "missing-doc")
         self.assertEqual(view.sources[0].title, "")
         self.assertEqual(view.sources[0].original_filename, "")
+
+    def test_course_citation_uses_course_metadata_and_course_link(self) -> None:
+        course_source = Mock()
+        course_source.get_source.return_value = SimpleNamespace(
+            title="Курс: Возвраты",
+            original_filename="Опубликованные материалы курса",
+            view_url="/courses/returns",
+            chunks=(
+                KnowledgeDocumentChunk(
+                    id=-1,
+                    company_id="company-a",
+                    document_id="course:returns",
+                    chunk_index=1,
+                    text="Урок: Оформление возврата. Проверяйте чек.",
+                    start_char=0,
+                    end_char=46,
+                    created_at="",
+                ),
+            ),
+        )
+        service = AdminKnowledgeQuestionService(
+            self.db_path,
+            question_answering_service=self.question_service,
+            course_source=course_source,
+        )
+        self.question_service.result = _sample_result(
+            citations=(KnowledgeAnswerCitation(1, "course:returns", 1),),
+        )
+
+        view = service.answer_question("company-a", "Как оформить возврат?")
+
+        self.assertEqual(view.sources[0].title, "Курс: Возвраты")
+        self.assertEqual(view.source_groups[0].view_url, "/courses/returns")
+        self.assertIn("Оформление возврата", view.source_groups[0].excerpts[0].excerpt)
+        course_source.get_source.assert_called_with("company-a", "course:returns")
 
     def test_knowledge_question_answering_error_is_mapped(self) -> None:
         self.question_service.error = KnowledgeQuestionAnsweringError(

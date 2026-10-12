@@ -164,11 +164,13 @@ class KnowledgeChunkRetrievalService:
     def __init__(
         self,
         chunk_loader: Optional[ChunkLoader] = None,
+        course_chunk_loader: Optional[ChunkLoader] = None,
     ) -> None:
         if chunk_loader is None:
             self._chunk_loader = _default_chunk_loader
         else:
             self._chunk_loader = chunk_loader
+        self._course_chunk_loader = course_chunk_loader
 
     def search(
         self,
@@ -189,6 +191,15 @@ class KnowledgeChunkRetrievalService:
         if limit <= 0:
             raise KnowledgeRetrievalError("limit must be positive")
 
-        chunks = self._chunk_loader(db_path, company_id=normalized_company_id)
+        chunks = list(
+            self._chunk_loader(db_path, company_id=normalized_company_id)
+        )
+        if self._course_chunk_loader is not None:
+            chunks.extend(
+                self._course_chunk_loader(
+                    db_path,
+                    company_id=normalized_company_id,
+                )
+            )
         ranked = rank_chunks(normalized_query, chunks)
         return ranked[:limit]

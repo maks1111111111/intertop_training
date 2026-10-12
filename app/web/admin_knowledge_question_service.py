@@ -12,6 +12,7 @@ from app.ai.knowledge_answer_interfaces import (
     KnowledgeAnswerResult,
 )
 from app.ai.review_language import normalize_review_language
+from app.knowledge.course_sources import PublishedCourseKnowledgeSource
 from app.knowledge.models import KnowledgeDocument, KnowledgeDocumentChunk
 from app.knowledge.question_answering_service import (
     KnowledgeQuestionAnsweringError,
@@ -91,6 +92,7 @@ class AdminKnowledgeQuestionService:
         list_chunks: Optional[
             Callable[..., list[KnowledgeDocumentChunk]]
         ] = None,
+        course_source: Optional[PublishedCourseKnowledgeSource] = None,
     ) -> None:
         self._db_path = db_path
         self._question_answering_service = question_answering_service
@@ -100,6 +102,7 @@ class AdminKnowledgeQuestionService:
         self._list_chunks = (
             list_chunks or knowledge_chunk_repository.list_for_document
         )
+        self._course_source = course_source
 
     def answer_question(
         self,
@@ -174,19 +177,30 @@ class AdminKnowledgeQuestionService:
         groups: list[AdminKnowledgeAnswerSourceGroup] = []
         for document_id in order:
             chunk_indexes = grouped[document_id]
-            document = self._get_document(
-                self._db_path,
-                company_id=company_id,
-                document_id=document_id,
-            )
-            title = document.title if document is not None else ""
-            original_filename = (
-                document.original_filename if document is not None else ""
-            )
-            chunk_texts = self._load_chunk_texts(
-                company_id=company_id,
-                document_id=document_id,
-            )
+            course_source = self._get_course_source(company_id, document_id)
+            if course_source is not None:
+                title = course_source.title
+                original_filename = course_source.original_filename
+                view_url = course_source.view_url
+                chunk_texts = {
+                    chunk.chunk_index: chunk.text
+                    for chunk in course_source.chunks
+                }
+            else:
+                document = self._get_document(
+                    self._db_path,
+                    company_id=company_id,
+                    document_id=document_id,
+                )
+                title = document.title if document is not None else ""
+                original_filename = (
+                    document.original_filename if document is not None else ""
+                )
+                view_url = self._build_view_url(document_id, chunk_indexes)
+                chunk_texts = self._load_chunk_texts(
+                    company_id=company_id,
+                    document_id=document_id,
+                )
             excerpts = tuple(
                 AdminKnowledgeAnswerChunkExcerpt(
                     chunk_index=chunk_index,
@@ -201,7 +215,7 @@ class AdminKnowledgeQuestionService:
                     document_id=document_id,
                     title=title,
                     original_filename=original_filename,
-                    view_url=self._build_view_url(document_id, chunk_indexes),
+                    view_url=view_url,
                     excerpts=excerpts,
                     fragment_count=len(chunk_indexes),
                 )
@@ -304,6 +318,15 @@ class AdminKnowledgeQuestionService:
         *,
         company_id: str,
     ) -> AdminKnowledgeAnswerSource:
+        course_source = self._get_course_source(company_id, citation.document_id)
+        if course_source is not None:
+            return AdminKnowledgeAnswerSource(
+                source_number=citation.source_number,
+                document_id=citation.document_id,
+                chunk_index=citation.chunk_index,
+                title=course_source.title,
+                original_filename=course_source.original_filename,
+            )
         document = self._get_document(
             self._db_path,
             company_id=company_id,
@@ -324,6 +347,18 @@ class AdminKnowledgeQuestionService:
             title=document.title,
             original_filename=document.original_filename,
         )
+
+    def _get_course_source(
+        self,
+        company_id: str,
+        document_id: str,
+    ):
+        if self._course_source is None:
+            return None
+        try:
+            return self._course_source.get_source(company_id, document_id)
+        except Exception:
+            return None
 
     def _normalize_company_id(self, company_id: str) -> str:
         normalized = str(company_id or "").strip()

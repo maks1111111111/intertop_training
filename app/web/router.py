@@ -174,6 +174,9 @@ from app.ai.bootstrap import create_practical_task_review_service
 from app.knowledge.question_answering_bootstrap import (
     create_knowledge_question_answering_service,
 )
+from app.knowledge.context_service import KnowledgeRetrievalContextService
+from app.knowledge.course_sources import PublishedCourseKnowledgeSource
+from app.knowledge.retrieval import KnowledgeChunkRetrievalService
 from app.web.admin_knowledge_lifecycle_service import (
     AdminKnowledgeLifecycleError,
     AdminKnowledgeLifecycleService,
@@ -963,16 +966,27 @@ def get_admin_knowledge_lifecycle_service(
 def get_admin_knowledge_question_service(
     request: Request,
     db_path: Path = Depends(get_db_path),
+    runtime: ContentRuntime = Depends(get_tenant_content_runtime),
 ) -> AdminKnowledgeQuestionService:
-    """Return the admin Knowledge Base question answering service."""
+    """Return tenant-scoped Q&A over documents and published course material."""
     override = getattr(request.app.state, "admin_knowledge_question_service", None)
     if override is not None:
         return override
     config = OpenAIConfig.from_environment()
-    question_answering_service = create_knowledge_question_answering_service(config)
+    course_source = PublishedCourseKnowledgeSource(runtime)
+    context_service = KnowledgeRetrievalContextService(
+        retrieval_service=KnowledgeChunkRetrievalService(
+            course_chunk_loader=course_source.list_chunks,
+        )
+    )
+    question_answering_service = create_knowledge_question_answering_service(
+        config,
+        context_service=context_service,
+    )
     return AdminKnowledgeQuestionService(
         db_path,
         question_answering_service=question_answering_service,
+        course_source=course_source,
     )
 
 
