@@ -175,7 +175,7 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         html = response.text
         self.assertIn("ai-chat-empty", html)
         self.assertIn(
-            "Здравствуйте! Я помогу найти информацию в корпоративной базе знаний.",
+            "Здравствуйте! Я помогу найти информацию в корпоративной базе знаний и курсах.",
             html,
         )
 
@@ -235,7 +235,7 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
         self.assertIn('class="admin-subnav-link is-active"', html)
         self.assertNotIn("admin-subnav-linkis-active", html)
         self.assertIn(
-            "Здравствуйте! Я помогу найти информацию в корпоративной базе знаний.",
+            "Здравствуйте! Я помогу найти информацию в корпоративной базе знаний и курсах.",
             html,
         )
         self.assertNotIn("информациюв", html)
