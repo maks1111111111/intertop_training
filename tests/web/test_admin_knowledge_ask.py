@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from app.knowledge.context_service import KnowledgeRetrievalContextService
 from app.web.router import get_current_web_identity
 from app.web.web_identity_service import WebIdentity
 
@@ -680,7 +681,13 @@ class AdminKnowledgeAskPageTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         mock_from_environment.assert_called_once()
-        mock_create_service.assert_called_once_with(mock_config)
+        mock_create_service.assert_called_once()
+        factory_args, factory_kwargs = mock_create_service.call_args
+        self.assertEqual(factory_args, (mock_config,))
+        self.assertIsInstance(
+            factory_kwargs["context_service"],
+            KnowledgeRetrievalContextService,
+        )
         mock_service_class.assert_called_once()
         _, service_kwargs = mock_service_class.call_args
         self.assertIs(service_kwargs["question_answering_service"], mock_lower_service)
