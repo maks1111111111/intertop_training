@@ -11,7 +11,13 @@ from pathlib import Path
 from typing import Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.templating import Jinja2Templates
 
 from app.api.mappers import course_mapper
@@ -258,6 +264,28 @@ router = APIRouter(tags=["web"])
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 _PLATFORM_SESSION_COMPANY_ID = "__platform_admin__"
+_ROBOTS_TXT = """User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /mfa/
+Disallow: /dashboard
+Disallow: /courses
+Disallow: /manager/
+Disallow: /admin
+Disallow: /platform-admin
+Disallow: /knowledge/
+Disallow: /account/
+Disallow: /api/
+
+Sitemap: https://mentorconnect.kz/sitemap.xml
+"""
+_SITEMAP_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://mentorconnect.kz/</loc></url>
+  <url><loc>https://mentorconnect.kz/privacy</loc></url>
+  <url><loc>https://mentorconnect.kz/terms</loc></url>
+</urlset>
+"""
 
 
 def _web_template_context(request: Request) -> dict[str, object]:
@@ -2741,6 +2769,18 @@ def logout_submit() -> RedirectResponse:
         path="/mfa",
     )
     return response
+
+
+@router.get("/robots.txt", include_in_schema=False)
+def robots_txt() -> PlainTextResponse:
+    """Provide public crawler guidance without changing access control."""
+    return PlainTextResponse(_ROBOTS_TXT, media_type="text/plain")
+
+
+@router.get("/sitemap.xml", include_in_schema=False)
+def sitemap_xml() -> Response:
+    """Provide the complete, deliberately small public URL sitemap."""
+    return Response(_SITEMAP_XML, media_type="application/xml")
 
 
 @router.get("/", include_in_schema=False, response_model=None)
