@@ -3719,11 +3719,13 @@ async def admin_course_create_submit(
         )
 
     try:
-        saved = upload_service.save_uploads(
-            tuple(
+        upload_payloads = []
+        for upload_file in upload_files:
+            upload_payloads.append(
                 (getattr(upload_file, "filename", None), await upload_file.read())
-                for upload_file in upload_files
             )
+        saved = upload_service.save_uploads(
+            tuple(upload_payloads)
         )
     except AdminUploadError as exc:
         return _render_admin_course_create_page(
