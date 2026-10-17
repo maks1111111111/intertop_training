@@ -27,16 +27,18 @@
     </div>
 
     <div class="admin-upload-confirm-card">
-        <h2 class="admin-upload-confirm-title">Исходный файл</h2>
+        <h2 class="admin-upload-confirm-title">Исходные файлы</h2>
         <dl class="admin-upload-confirm-details">
+            {% for source in review.sources %}
             <div class="admin-upload-confirm-row">
                 <dt>Имя файла</dt>
-                <dd>{{ review.original_filename }}</dd>
+                <dd>{{ source.original_filename }}</dd>
             </div>
             <div class="admin-upload-confirm-row">
                 <dt>Формат</dt>
-                <dd>{{ review.file_extension }}</dd>
+                <dd>{{ source.file_extension }}</dd>
             </div>
+            {% endfor %}
         </dl>
     </div>
 
@@ -105,8 +107,10 @@
         action="{{ review.loading_url }}"
         id="admin-generation-form"
     >
-        <input type="hidden" name="upload_id" value="{{ review.upload_id }}">
-        <input type="hidden" name="original_filename" value="{{ review.original_filename }}">
+        {% for source in review.sources %}
+        <input type="hidden" name="upload_id" value="{{ source.upload_id }}">
+        <input type="hidden" name="original_filename" value="{{ source.original_filename }}">
+        {% endfor %}
         <input type="hidden" name="course_title" value="{{ review.form_values.course_title }}">
         <input type="hidden" name="description" value="{{ review.form_values.description }}">
         <input type="hidden" name="source_language" value="{{ review.form_values.source_language }}">

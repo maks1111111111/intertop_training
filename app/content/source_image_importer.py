@@ -69,7 +69,28 @@ class SourceImageImportService:
         course_directory: Path,
     ) -> SourceImageImportResult:
         """Install the first image as cover and distribute images over lessons."""
-        images = self.extract(source_path)
+        return self._install_images_into_course(
+            self.extract(source_path),
+            course_directory,
+        )
+
+    def import_sources_into_course(
+        self,
+        source_paths: Iterable[Path],
+        course_directory: Path,
+    ) -> SourceImageImportResult:
+        """Install de-duplicated images extracted from several course sources."""
+        return self._install_images_into_course(
+            self.extract_sources(source_paths),
+            course_directory,
+        )
+
+    def _install_images_into_course(
+        self,
+        images: tuple[ExtractedSourceImage, ...],
+        course_directory: Path,
+    ) -> SourceImageImportResult:
+        """Install an already validated image sequence into fixed course slots."""
         if not images:
             return SourceImageImportResult(0, False, 0)
 
@@ -134,6 +155,28 @@ class SourceImageImportService:
             seen.add(digest)
             images.append(image)
             total_bytes += len(image.content)
+        return tuple(images)
+
+    def extract_sources(
+        self,
+        source_paths: Iterable[Path],
+    ) -> tuple[ExtractedSourceImage, ...]:
+        """Extract images from sources in order with one aggregate safety limit."""
+        images: list[ExtractedSourceImage] = []
+        seen: set[str] = set()
+        total_bytes = 0
+        for source_path in source_paths:
+            for image in self.extract(source_path):
+                if len(images) >= _MAX_IMAGES:
+                    return tuple(images)
+                digest = hashlib.sha256(image.content).hexdigest()
+                if digest in seen:
+                    continue
+                if total_bytes + len(image.content) > _MAX_TOTAL_BYTES:
+                    return tuple(images)
+                seen.add(digest)
+                images.append(image)
+                total_bytes += len(image.content)
         return tuple(images)
 
 

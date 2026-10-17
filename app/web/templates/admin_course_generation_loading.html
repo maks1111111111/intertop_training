@@ -142,8 +142,10 @@
         action="{{ loading.generate_url }}"
         id="admin-generation-form"
     >
-        <input type="hidden" name="upload_id" value="{{ loading.upload_id }}">
-        <input type="hidden" name="original_filename" value="{{ loading.original_filename }}">
+        {% for source in loading.sources %}
+        <input type="hidden" name="upload_id" value="{{ source.upload_id }}">
+        <input type="hidden" name="original_filename" value="{{ source.original_filename }}">
+        {% endfor %}
         <input type="hidden" name="course_title" value="{{ loading.form_values.course_title }}">
         <input type="hidden" name="description" value="{{ loading.form_values.description }}">
         <input type="hidden" name="source_language" value="{{ loading.form_values.source_language }}">

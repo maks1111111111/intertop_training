@@ -97,7 +97,7 @@ class AdminCourseDeletePageTests(unittest.TestCase):
         self.assertIn("Удалить курс", response.text)
         self.assertIn('href="/admin/courses/alpha/delete"', response.text)
 
-    def test_used_course_shows_blocking_warning_without_submit(self) -> None:
+    def test_assigned_course_shows_assignment_removal_warning_and_submit(self) -> None:
         self._set_identity("admin")
         _write_course(self.courses_dir, "alpha", title="Alpha Course")
         self._sync_runtime()
@@ -111,11 +111,8 @@ class AdminCourseDeletePageTests(unittest.TestCase):
         response = self.client.get("/admin/courses/alpha/delete")
         html = response.text
 
-        self.assertIn(
-            "Курс использовался в обучении и не может быть удалён без потери истории.",
-            html,
-        )
-        self.assertNotIn("Удалить навсегда", html)
+        self.assertIn("При удалении будут сняты назначения на курс: 1.", html)
+        self.assertIn("Удалить навсегда", html)
 
     def test_post_unused_course_redirects_to_admin(self) -> None:
         self._set_identity("admin")
@@ -131,7 +128,7 @@ class AdminCourseDeletePageTests(unittest.TestCase):
         self.app.state.content_runtime.refresh()
         self.assertIsNone(self.app.state.content_runtime.get_course("alpha"))
 
-    def test_post_used_course_does_not_delete(self) -> None:
+    def test_post_assigned_course_deletes_course_and_assignment(self) -> None:
         self._set_identity("admin")
         _write_course(self.courses_dir, "alpha", title="Alpha Course")
         self._sync_runtime()
@@ -142,14 +139,20 @@ class AdminCourseDeletePageTests(unittest.TestCase):
             "alpha",
         )
 
-        response = self.client.post("/admin/courses/alpha/delete")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(
-            "Курс использовался в обучении и не может быть удалён без потери истории.",
-            response.text,
+        response = self.client.post(
+            "/admin/courses/alpha/delete",
+            follow_redirects=False,
         )
-        self.assertTrue((self.courses_dir / "alpha").exists())
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/admin")
+        self.assertFalse((self.courses_dir / "alpha").exists())
+        self.assertIsNone(CourseRepository().get_by_slug(self.db_path, "alpha"))
+        with get_connection(self.db_path) as connection:
+            enrollment_count = connection.execute(
+                "SELECT COUNT(*) AS count FROM enrollments"
+            ).fetchone()["count"]
+        self.assertEqual(enrollment_count, 0)
 
     def test_unknown_slug_returns_404(self) -> None:
         self._set_identity("admin")

@@ -86,6 +86,26 @@ class AdminCourseUploadTests(unittest.TestCase):
         self.assertIn("MP4", response.text)
         self.assertEqual(len(list(self.upload_dir.iterdir())), 1)
 
+    def test_multiple_sources_are_stored_for_one_course(self) -> None:
+        response = self.client.post(
+            "/admin/courses/new",
+            data=_default_form_data(),
+            files=[
+                ("source_file", ("handbook.pdf", b"%PDF handbook", "application/pdf")),
+                (
+                    "source_file",
+                    ("slides.pptx", b"PK presentation", "application/octet-stream"),
+                ),
+            ],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Файлы загружены", response.text)
+        self.assertIn("handbook.pdf", response.text)
+        self.assertIn("slides.pptx", response.text)
+        self.assertEqual(response.text.count('name="upload_id"'), 2)
+        self.assertEqual(len(list((self.upload_dir / "intertop").iterdir())), 2)
+
     def test_unsupported_extension_is_rejected(self) -> None:
         response = self._post_upload("notes.txt", b"plain text")
         self.assertEqual(response.status_code, 200)

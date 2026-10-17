@@ -39,7 +39,11 @@
 
     {% if view.can_delete %}
     <p class="page-meta">
+        {% if view.history.enrollments_count > 0 %}
+        При удалении будут сняты назначения на курс: {{ view.history.enrollments_count }}.
+        {% else %}
         Курс не использовался в обучении. Его можно удалить навсегда.
+        {% endif %}
     </p>
     <div class="admin-course-delete-actions">
         <a class="button button-secondary" href="{{ view.cancel_url }}">Отмена</a>
@@ -49,11 +53,11 @@
     </div>
     {% else %}
     <div class="admin-form-error" role="alert">
-        Курс использовался в обучении и не может быть удалён без потери истории.
+        Курс содержит историю обучения и не может быть удалён без потери истории.
         Для таких курсов используйте архивирование.
     </div>
     {% if view.history.enrollments_count > 0 %}
-    <p class="page-meta">Записей на курс: {{ view.history.enrollments_count }}</p>
+    <p class="page-meta">Назначений на курс: {{ view.history.enrollments_count }}</p>
     {% endif %}
     {% if view.history.quiz_attempts_count > 0 %}
     <p class="page-meta">Попыток теста: {{ view.history.quiz_attempts_count }}</p>

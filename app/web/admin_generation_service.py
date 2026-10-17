@@ -50,11 +50,23 @@ class AdminGenerationError(Exception):
 
 @dataclass(frozen=True)
 class AdminGenerationRequest:
-    """Validated input for one admin course generation attempt."""
+    """Validated input for one admin course generation attempt.
+
+    ``upload_id`` and ``original_filename`` remain the primary source for
+    backwards-compatible callers. The tuple fields carry all sources when an
+    administrator intentionally combines several files into one course.
+    """
 
     upload_id: str
     form_values: AdminCourseFormValues
     original_filename: str
+    upload_ids: tuple[str, ...] = ()
+    original_filenames: tuple[str, ...] = ()
+
+    @property
+    def source_upload_ids(self) -> tuple[str, ...]:
+        """Return the uploaded source identifiers in their submitted order."""
+        return self.upload_ids or (self.upload_id,)
 
 
 @dataclass(frozen=True)
@@ -226,14 +238,23 @@ class AdminGenerationService:
         )
 
     def _generate_course(self, request: AdminGenerationRequest) -> AdminGenerationSuccess:
-        resolved = self._upload_service.resolve_upload(request.upload_id)
-        options = _web_form_to_generation_options(
-            resolved.source_path,
-            request.form_values,
+        resolved_uploads = self._upload_service.resolve_uploads(
+            request.source_upload_ids
         )
-        prepared = CourseGenerationWizard().prepare(options)
+        prepared: Optional[PreparedCourseGeneration] = None
+        for resolved in resolved_uploads:
+            options = _web_form_to_generation_options(
+                resolved.source_path,
+                request.form_values,
+            )
+            candidate = CourseGenerationWizard().prepare(options)
+            if prepared is None:
+                prepared = candidate
+        if prepared is None:
+            raise AdminReviewError("Не указан загруженный файл. Загрузите файл заново.")
 
-        text = self._importer.read_source(resolved.source_path)
+        source_paths = tuple(item.source_path for item in resolved_uploads)
+        text = self._read_source_texts(source_paths)
         output_language = prepared.output_language.value
         text_generation_service = self._resolve_text_generation_service()
         lesson_result = text_generation_service.generate_from_text(
@@ -256,10 +277,16 @@ class AdminGenerationService:
         )
 
         try:
-            image_result = self._source_image_import_service.import_into_course(
-                resolved.source_path,
-                workflow_result.course_directory,
-            )
+            if len(source_paths) == 1:
+                image_result = self._source_image_import_service.import_into_course(
+                    source_paths[0],
+                    workflow_result.course_directory,
+                )
+            else:
+                image_result = self._source_image_import_service.import_sources_into_course(
+                    source_paths,
+                    workflow_result.course_directory,
+                )
             if image_result.extracted_count:
                 _logger.info(
                     "Imported %s source images into generated course %s "
@@ -299,6 +326,20 @@ class AdminGenerationService:
             admin_url="/admin",
             manage_url=f"/admin/courses/{slug}",
         )
+
+    def _read_source_texts(self, source_paths: tuple[Path, ...]) -> str:
+        """Read one or more sources as a single ordered generation context."""
+        if len(source_paths) == 1:
+            return self._importer.read_source(source_paths[0])
+
+        fragments: list[str] = []
+        for index, source_path in enumerate(source_paths, start=1):
+            extracted = self._importer.read_source(source_path).strip()
+            if extracted:
+                fragments.append(f"Источник {index}:\n{extracted}")
+        if not fragments:
+            raise ValueError("Source files did not contain readable text")
+        return "\n\n---\n\n".join(fragments)
 
     def _resolve_text_generation_service(self) -> ImportedTextGenerationService:
         if self._text_generation_service is not None:

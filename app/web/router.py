@@ -3703,22 +3703,28 @@ async def admin_course_create_submit(
     admin_service: AdminService = Depends(get_admin_service),
     upload_service: AdminUploadService = Depends(get_upload_service),
 ) -> HTMLResponse:
-    """Validate and store an uploaded source file, then show confirmation."""
+    """Validate and store one or more course sources, then show confirmation."""
     form = await request.form()
     form_values = parse_admin_course_form(form)
-    upload_file = form.get("source_file")
-
-    filename = getattr(upload_file, "filename", None)
-    if upload_file is None or not filename:
+    upload_files = tuple(
+        item
+        for item in form.getlist("source_file")
+        if getattr(item, "filename", None)
+    )
+    if not upload_files:
         return _render_admin_course_create_page(
             request,
             admin_service,
             error_message="Файл не выбран. Загрузите документ или видео.",
         )
 
-    content = await upload_file.read()
     try:
-        saved = upload_service.save_upload(filename, content)
+        saved = upload_service.save_uploads(
+            tuple(
+                (getattr(upload_file, "filename", None), await upload_file.read())
+                for upload_file in upload_files
+            )
+        )
     except AdminUploadError as exc:
         return _render_admin_course_create_page(
             request,
@@ -3831,6 +3837,17 @@ async def admin_manual_course_create_submit(
     )
 
 
+def _course_generation_form_values(form, field_name: str) -> tuple[str, ...]:
+    """Return non-empty repeated wizard form values in submitted order."""
+    getlist = getattr(form, "getlist", None)
+    raw_values = getlist(field_name) if callable(getlist) else (form.get(field_name),)
+    return tuple(
+        value
+        for value in (str(item or "").strip() for item in raw_values)
+        if value
+    )
+
+
 @admin_router.post(
     "/admin/courses/new/review",
     response_class=HTMLResponse,
@@ -3844,10 +3861,10 @@ async def admin_course_generation_review(
     """Validate uploaded source and wizard options, then show review page."""
     form = await request.form()
     form_values = parse_admin_course_form(form)
-    upload_id = str(form.get("upload_id") or "").strip()
-    original_filename = str(form.get("original_filename") or "").strip()
+    upload_ids = _course_generation_form_values(form, "upload_id")
+    original_filenames = _course_generation_form_values(form, "original_filename")
 
-    if not upload_id:
+    if not upload_ids:
         return _render_admin_course_create_page(
             request,
             admin_service,
@@ -3857,9 +3874,11 @@ async def admin_course_generation_review(
     try:
         review_view = build_generation_review_view(
             upload_service,
-            upload_id,
+            upload_ids[0],
             form_values,
-            original_filename=original_filename,
+            original_filename=original_filenames[0] if original_filenames else "",
+            upload_ids=upload_ids,
+            original_filenames=original_filenames,
         )
     except AdminReviewError as exc:
         return _render_admin_course_create_page(
@@ -3891,10 +3910,10 @@ async def admin_course_generation_loading(
     """Show the AI generation loading screen before starting course generation."""
     form = await request.form()
     form_values = parse_admin_course_form(form)
-    upload_id = str(form.get("upload_id") or "").strip()
-    original_filename = str(form.get("original_filename") or "").strip()
+    upload_ids = _course_generation_form_values(form, "upload_id")
+    original_filenames = _course_generation_form_values(form, "original_filename")
 
-    if not upload_id:
+    if not upload_ids:
         return _render_admin_course_create_page(
             request,
             admin_service,
@@ -3904,9 +3923,11 @@ async def admin_course_generation_loading(
     try:
         loading_view = build_generation_loading_view(
             upload_service,
-            upload_id,
+            upload_ids[0],
             form_values,
-            original_filename=original_filename,
+            original_filename=original_filenames[0] if original_filenames else "",
+            upload_ids=upload_ids,
+            original_filenames=original_filenames,
         )
     except AdminReviewError as exc:
         return _render_admin_course_create_page(
@@ -3931,18 +3952,20 @@ def _render_admin_generation_review_error(
     upload_service: AdminUploadService,
     *,
     form_values: AdminCourseFormValues,
-    upload_id: str,
-    original_filename: str,
+    upload_ids: tuple[str, ...],
+    original_filenames: tuple[str, ...],
     error_message: str,
 ) -> HTMLResponse:
     """Return review page with a safe generation error message."""
     try:
         review_view = build_generation_review_view(
             upload_service,
-            upload_id,
+            upload_ids[0],
             form_values,
-            original_filename=original_filename,
+            original_filename=original_filenames[0] if original_filenames else "",
             error_message=error_message,
+            upload_ids=upload_ids,
+            original_filenames=original_filenames,
         )
     except AdminReviewError:
         return _render_admin_course_create_page(
@@ -3974,10 +3997,10 @@ async def admin_course_generate(
     """Generate a course from validated upload and wizard options."""
     form = await request.form()
     form_values = parse_admin_course_form(form)
-    upload_id = str(form.get("upload_id") or "").strip()
-    original_filename = str(form.get("original_filename") or "").strip()
+    upload_ids = _course_generation_form_values(form, "upload_id")
+    original_filenames = _course_generation_form_values(form, "original_filename")
 
-    if not upload_id:
+    if not upload_ids:
         return _render_admin_course_create_page(
             request,
             admin_service,
@@ -3987,9 +4010,11 @@ async def admin_course_generate(
     try:
         result = generation_service.generate_course(
             AdminGenerationRequest(
-                upload_id=upload_id,
+                upload_id=upload_ids[0],
                 form_values=form_values,
-                original_filename=original_filename,
+                original_filename=original_filenames[0] if original_filenames else "",
+                upload_ids=upload_ids,
+                original_filenames=original_filenames,
             )
         )
     except AdminGenerationError as exc:
@@ -3998,8 +4023,8 @@ async def admin_course_generate(
             admin_service,
             upload_service,
             form_values=form_values,
-            upload_id=upload_id,
-            original_filename=original_filename,
+            upload_ids=upload_ids,
+            original_filenames=original_filenames,
             error_message=exc.message,
         )
 

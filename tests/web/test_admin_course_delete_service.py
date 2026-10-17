@@ -105,7 +105,7 @@ class AdminCourseDeleteServiceTests(unittest.TestCase):
         with self.assertRaises(AdminCourseDeleteError):
             self.service.delete_course("../alpha")
 
-    def test_enrollment_blocks_delete(self) -> None:
+    def test_enrollment_is_removed_with_course_delete(self) -> None:
         _write_course(self.courses_dir, "alpha", title="Alpha Course")
         self._refresh()
         user_id = self._create_user()
@@ -117,13 +117,18 @@ class AdminCourseDeleteServiceTests(unittest.TestCase):
 
         view = self.service.get_delete_view("alpha")
         assert view is not None
-        self.assertFalse(view.can_delete)
+        self.assertTrue(view.can_delete)
         self.assertEqual(view.history.enrollments_count, 1)
 
         result = self.service.delete_course("alpha")
-        self.assertFalse(result.success)
-        self.assertEqual(result.code, "course_has_history")
-        self.assertTrue((self.courses_dir / "alpha").exists())
+        self.assertTrue(result.success)
+        self.assertEqual(result.code, "deleted")
+        self.assertFalse((self.courses_dir / "alpha").exists())
+        with get_connection(self.db_path) as connection:
+            enrollment_count = connection.execute(
+                "SELECT COUNT(*) AS count FROM enrollments"
+            ).fetchone()["count"]
+        self.assertEqual(enrollment_count, 0)
 
     def test_quiz_attempt_blocks_delete(self) -> None:
         _write_course(self.courses_dir, "alpha", title="Alpha Course")
@@ -289,7 +294,7 @@ class AdminCourseDeleteServiceTests(unittest.TestCase):
             CourseRepository().get_by_slug(self.db_path, "alpha"),
         )
 
-    def test_post_recheck_blocks_when_history_appears(self) -> None:
+    def test_post_recheck_blocks_when_learning_history_appears(self) -> None:
         _write_course(self.courses_dir, "alpha", title="Alpha Course")
         self._refresh()
 
@@ -298,11 +303,20 @@ class AdminCourseDeleteServiceTests(unittest.TestCase):
         self.assertTrue(view_before.can_delete)
 
         user_id = self._create_user()
-        ProgressRepository().assign_course_to_user(
-            self.db_path,
-            user_id,
-            "alpha",
-        )
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO quiz_attempts (
+                    user_id,
+                    course_slug,
+                    quiz_version,
+                    started_at,
+                    questions_count
+                )
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?)
+                """,
+                (user_id, "alpha", 1, 1),
+            )
 
         result = self.service.delete_course("alpha")
         self.assertEqual(result.code, "course_has_history")

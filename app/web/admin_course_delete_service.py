@@ -29,7 +29,7 @@ class AdminCourseDeleteError(Exception):
 
 @dataclass(frozen=True)
 class AdminCourseDeleteHistoryCounts:
-    """Learner history counts that block permanent course deletion."""
+    """Learner records associated with a course deletion request."""
 
     enrollments_count: int
     quiz_attempts_count: int
@@ -43,6 +43,23 @@ class AdminCourseDeleteHistoryCounts:
             + self.quiz_attempts_count
             + self.practical_task_attempts_count
             + self.web_lesson_progress_count
+        )
+
+    @property
+    def has_learning_history(self) -> bool:
+        """Whether learner activity would be lost by deleting the course.
+
+        An enrollment without activity is only an assignment. Deleting a course
+        removes those assignments through the database foreign-key cascade and
+        must not prevent an administrator from removing an unpublished or
+        mistaken course.
+        """
+        return any(
+            (
+                self.quiz_attempts_count,
+                self.practical_task_attempts_count,
+                self.web_lesson_progress_count,
+            )
         )
 
 
@@ -155,7 +172,7 @@ def _count_course_history(
 
 
 class AdminCourseDeleteService:
-    """Delete unused published courses from disk and refresh runtime/database."""
+    """Delete courses without learner activity and refresh runtime/database."""
 
     def __init__(
         self,
@@ -201,14 +218,19 @@ class AdminCourseDeleteService:
             slug=normalized_slug,
             title=course.title,
             lesson_count=len(course.lessons),
-            can_delete=history.total == 0,
+            can_delete=not history.has_learning_history,
             history=history,
             detail_url=detail_url,
             cancel_url=detail_url,
         )
 
     def delete_course(self, slug: str) -> AdminCourseDeleteResult:
-        """Permanently delete one unused course when learner history is absent."""
+        """Permanently delete a course when learner activity is absent.
+
+        Active course assignments are represented by enrollments. They are
+        removed automatically when the course row is deleted; quiz attempts,
+        practical-task attempts, and lesson progress remain a safety boundary.
+        """
         normalized_slug = self._normalize_slug(slug)
         view = self.get_delete_view(normalized_slug)
         if view is None:

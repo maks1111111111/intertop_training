@@ -116,6 +116,32 @@ class SourceImageImportServiceTests(unittest.TestCase):
 
         self.assertEqual(len(images), 1)
 
+    def test_combines_images_from_multiple_sources_without_duplicates(self) -> None:
+        first = self.root / "first.png"
+        second = self.root / "second.png"
+        first.write_bytes(_png_bytes("red"))
+        second.write_bytes(_png_bytes("blue"))
+        first_source = self.root / "first.docx"
+        second_source = self.root / "second.docx"
+        first_document = Document()
+        first_document.add_picture(str(first))
+        first_document.save(first_source)
+        second_document = Document()
+        second_document.add_picture(str(first))
+        second_document.add_picture(str(second))
+        second_document.save(second_source)
+
+        course_dir = self.root / "course"
+        _write_course(course_dir, lessons=3)
+        result = self.service.import_sources_into_course(
+            (first_source, second_source),
+            course_dir,
+        )
+
+        self.assertEqual(result.extracted_count, 2)
+        self.assertTrue(result.cover_installed)
+        self.assertEqual(result.lesson_images_installed, 2)
+
     def test_unsupported_source_has_no_images(self) -> None:
         source = self.root / "source.txt"
         source.write_text("text", encoding="utf-8")

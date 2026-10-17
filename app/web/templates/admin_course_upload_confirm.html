@@ -12,22 +12,24 @@
 </nav>
 
 <section class="page-header admin-create-page-header">
-    <h1 class="page-title">Файл загружен</h1>
+    <h1 class="page-title">{% if confirm.sources|length == 1 %}Файл загружен{% else %}Файлы загружены{% endif %}</h1>
     <p class="page-lead">Проверьте параметры курса перед продолжением генерации.</p>
 </section>
 
 <section class="admin-upload-confirm">
     <div class="admin-upload-confirm-card">
-        <h2 class="admin-upload-confirm-title">Исходный файл</h2>
+        <h2 class="admin-upload-confirm-title">Исходные файлы</h2>
         <dl class="admin-upload-confirm-details">
+            {% for source in confirm.sources %}
             <div class="admin-upload-confirm-row">
                 <dt>Имя файла</dt>
-                <dd>{{ confirm.original_filename }}</dd>
+                <dd>{{ source.original_filename }}</dd>
             </div>
             <div class="admin-upload-confirm-row">
                 <dt>Формат</dt>
-                <dd>{{ confirm.file_extension }}</dd>
+                <dd>{{ source.file_extension }}</dd>
             </div>
+            {% endfor %}
         </dl>
     </div>
 
@@ -90,8 +92,10 @@
         method="post"
         aria-label="Продолжение создания курса"
     >
-        <input type="hidden" name="upload_id" value="{{ confirm.upload_id }}">
-        <input type="hidden" name="original_filename" value="{{ confirm.original_filename }}">
+        {% for source in confirm.sources %}
+        <input type="hidden" name="upload_id" value="{{ source.upload_id }}">
+        <input type="hidden" name="original_filename" value="{{ source.original_filename }}">
+        {% endfor %}
         <input type="hidden" name="course_title" value="{{ confirm.form_values.course_title }}">
         <input type="hidden" name="description" value="{{ confirm.form_values.description }}">
         <input type="hidden" name="source_language" value="{{ confirm.form_values.source_language }}">

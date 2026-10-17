@@ -7,7 +7,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Sequence, Union
 
 from app.content.course_generation_wizard import (
     CourseGenerationOptions,
@@ -31,6 +31,7 @@ _LEGACY_COMPANY_ID = "intertop"
 # Web generation uses adaptive quiz sizing (questions_per_lesson=0) when quiz
 # is enabled. Actual per-lesson counts are computed by quiz_coverage policy.
 _ADAPTIVE_QUESTIONS_PER_LESSON = 0
+MAX_COURSE_SOURCE_FILES = 10
 
 
 class AdminUploadError(Exception):
@@ -87,6 +88,15 @@ class ResolvedUpload:
 
 
 @dataclass(frozen=True)
+class AdminSourceFileView:
+    """A safely displayed source file carried through the creation wizard."""
+
+    upload_id: str
+    original_filename: str
+    file_extension: str
+
+
+@dataclass(frozen=True)
 class AdminUploadConfirmView:
     """View model for the upload confirmation step."""
 
@@ -107,6 +117,7 @@ class AdminUploadConfirmView:
     include_explanations: bool
     edit_url: str
     review_url: str
+    sources: tuple[AdminSourceFileView, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -134,6 +145,7 @@ class AdminGenerationReviewView:
     status_message: str
     generation_note: str
     error_message: str = ""
+    sources: tuple[AdminSourceFileView, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -144,6 +156,7 @@ class AdminGenerationLoadingView:
     original_filename: str
     form_values: AdminCourseFormValues
     generate_url: str
+    sources: tuple[AdminSourceFileView, ...] = ()
 
 
 def _safe_filename(name: str) -> str:
@@ -190,14 +203,26 @@ def parse_admin_course_form(form: Mapping[str, object]) -> AdminCourseFormValues
 
 
 def build_upload_confirm_view(
-    saved: SavedUpload,
+    saved: Union[SavedUpload, Sequence[SavedUpload]],
     form_values: AdminCourseFormValues,
 ) -> AdminUploadConfirmView:
     """Build the confirmation page view from upload and form data."""
+    saved_uploads = (saved,) if isinstance(saved, SavedUpload) else tuple(saved)
+    if not saved_uploads:
+        raise AdminUploadError("Файл не выбран. Загрузите документ или видео.")
+    primary = saved_uploads[0]
+    sources = tuple(
+        AdminSourceFileView(
+            upload_id=item.upload_id,
+            original_filename=item.original_filename,
+            file_extension=_extension_label(item.extension),
+        )
+        for item in saved_uploads
+    )
     return AdminUploadConfirmView(
-        upload_id=saved.upload_id,
-        original_filename=saved.original_filename,
-        file_extension=_extension_label(saved.extension),
+        upload_id=primary.upload_id,
+        original_filename=primary.original_filename,
+        file_extension=_extension_label(primary.extension),
         form_values=form_values,
         course_title=form_values.course_title,
         description=form_values.description,
@@ -224,6 +249,7 @@ def build_upload_confirm_view(
         include_explanations=form_values.include_explanations,
         edit_url="/admin/courses/new/ai",
         review_url="/admin/courses/new/review",
+        sources=sources,
     )
 
 
@@ -309,24 +335,44 @@ def build_generation_review_view(
     *,
     original_filename: str,
     error_message: str = "",
+    upload_ids: Optional[Sequence[str]] = None,
+    original_filenames: Optional[Sequence[str]] = None,
 ) -> AdminGenerationReviewView:
     """Validate upload and wizard options, then build the review page view."""
-    resolved = upload_service.resolve_upload(upload_id)
-    options = _web_form_to_generation_options(resolved.source_path, form_values)
-    try:
-        CourseGenerationWizard().prepare(options)
-    except FileNotFoundError as exc:
-        raise AdminReviewError(
-            "Загруженный файл не найден. Загрузите файл заново."
-        ) from exc
-    except (ValueError, IsADirectoryError) as exc:
-        raise AdminReviewError(_format_wizard_error(exc)) from exc
+    requested_ids = tuple(upload_ids or (upload_id,))
+    requested_filenames = tuple(original_filenames or (original_filename,))
+    if not requested_ids:
+        raise AdminReviewError("Не указан загруженный файл. Загрузите файл заново.")
+    if len(requested_ids) != len(requested_filenames):
+        raise AdminReviewError("Данные загруженных файлов некорректны. Загрузите их заново.")
 
-    safe_filename = _safe_filename(original_filename) if original_filename else "upload"
+    resolved_uploads = upload_service.resolve_uploads(requested_ids)
+    for resolved in resolved_uploads:
+        options = _web_form_to_generation_options(resolved.source_path, form_values)
+        try:
+            CourseGenerationWizard().prepare(options)
+        except FileNotFoundError as exc:
+            raise AdminReviewError(
+                "Загруженный файл не найден. Загрузите файл заново."
+            ) from exc
+        except (ValueError, IsADirectoryError) as exc:
+            raise AdminReviewError(_format_wizard_error(exc)) from exc
+
+    sources = tuple(
+        AdminSourceFileView(
+            upload_id=resolved.upload_id,
+            original_filename=(
+                _safe_filename(filename) if filename else "upload"
+            ),
+            file_extension=_extension_label(resolved.extension),
+        )
+        for resolved, filename in zip(resolved_uploads, requested_filenames)
+    )
+    primary = sources[0]
     return AdminGenerationReviewView(
-        upload_id=resolved.upload_id,
-        original_filename=safe_filename,
-        file_extension=_extension_label(resolved.extension),
+        upload_id=primary.upload_id,
+        original_filename=primary.original_filename,
+        file_extension=primary.file_extension,
         form_values=form_values,
         course_title=form_values.course_title,
         description=form_values.description,
@@ -359,6 +405,7 @@ def build_generation_review_view(
             "Проверьте параметры и нажмите «Создать курс» для запуска генерации."
         ),
         error_message=error_message,
+        sources=sources,
     )
 
 
@@ -368,6 +415,8 @@ def build_generation_loading_view(
     form_values: AdminCourseFormValues,
     *,
     original_filename: str,
+    upload_ids: Optional[Sequence[str]] = None,
+    original_filenames: Optional[Sequence[str]] = None,
 ) -> AdminGenerationLoadingView:
     """Validate upload and wizard options, then build the loading page view."""
     review_view = build_generation_review_view(
@@ -375,12 +424,15 @@ def build_generation_loading_view(
         upload_id,
         form_values,
         original_filename=original_filename,
+        upload_ids=upload_ids,
+        original_filenames=original_filenames,
     )
     return AdminGenerationLoadingView(
         upload_id=review_view.upload_id,
         original_filename=review_view.original_filename,
         form_values=review_view.form_values,
         generate_url=review_view.generate_url,
+        sources=review_view.sources,
     )
 
 
@@ -480,6 +532,36 @@ class AdminUploadService:
             extension=extension,
         )
 
+    def save_uploads(
+        self,
+        uploads: Sequence[tuple[Optional[str], bytes]],
+    ) -> tuple[SavedUpload, ...]:
+        """Validate and persist a bounded group of course source files.
+
+        Every source remains isolated to the current company. If saving one
+        file fails after earlier files were stored, the earlier temporary
+        files are removed so a partial wizard submission is not retained.
+        """
+        if not uploads:
+            raise AdminUploadError("Файл не выбран. Загрузите документ или видео.")
+        if len(uploads) > MAX_COURSE_SOURCE_FILES:
+            raise AdminUploadError(
+                f"За один курс можно загрузить не более {MAX_COURSE_SOURCE_FILES} файлов."
+            )
+
+        saved_uploads: list[SavedUpload] = []
+        try:
+            for filename, content in uploads:
+                saved_uploads.append(self.save_upload(filename, content))
+        except Exception:
+            for saved in saved_uploads:
+                try:
+                    saved.stored_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise
+        return tuple(saved_uploads)
+
     def resolve_upload(self, upload_id: str) -> ResolvedUpload:
         """Resolve a stored upload by its server-generated identifier.
 
@@ -522,3 +604,17 @@ class AdminUploadService:
             source_path=source_path,
             extension=extension,
         )
+
+    def resolve_uploads(self, upload_ids: Sequence[str]) -> tuple[ResolvedUpload, ...]:
+        """Resolve a bounded, non-duplicated group of tenant source uploads."""
+        if not upload_ids:
+            raise AdminReviewError("Не указан загруженный файл. Загрузите файл заново.")
+        if len(upload_ids) > MAX_COURSE_SOURCE_FILES:
+            raise AdminReviewError(
+                f"За один курс можно использовать не более {MAX_COURSE_SOURCE_FILES} файлов."
+            )
+
+        normalized_ids = tuple(str(item or "").strip().lower() for item in upload_ids)
+        if len(set(normalized_ids)) != len(normalized_ids):
+            raise AdminReviewError("Один и тот же файл указан несколько раз.")
+        return tuple(self.resolve_upload(upload_id) for upload_id in normalized_ids)

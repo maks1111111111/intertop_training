@@ -534,6 +534,55 @@ class AdminGenerationServiceUnitTests(unittest.TestCase):
             course_dir,
         )
 
+    def test_multiple_sources_are_combined_into_one_generation_request(self) -> None:
+        first_id, form_values = self._saved_upload()
+        second = self.upload_service.save_upload("second.pdf", b"%PDF-1.4 second")
+        self.mock_importer.read_source.side_effect = ("First source", "Second source")
+        self.mock_text_service.generate_from_text.return_value = LessonGenerationResult(
+            lessons=[LessonCandidate(title="Lesson one", content="Content.")],
+            course=GeneratedCourseMetadata(
+                language="ru",
+                title="AI title",
+                description="AI description",
+            ),
+        )
+        course_dir = self.courses_dir / "generated-course"
+        course_dir.mkdir()
+        (course_dir / "course.json").write_text(
+            json.dumps({"slug": "generated-course"}),
+            encoding="utf-8",
+        )
+        workflow_result = MagicMock()
+        workflow_result.course_directory = course_dir
+        workflow_result.quiz_path = None
+        self.mock_course_with_quiz.generate_and_persist.return_value = workflow_result
+        self.mock_source_image_import.import_sources_into_course.return_value = MagicMock(
+            extracted_count=0,
+            lesson_images_installed=0,
+        )
+
+        self.service.generate_course(
+            AdminGenerationRequest(
+                upload_id=first_id,
+                form_values=form_values,
+                original_filename="source.pdf",
+                upload_ids=(first_id, second.upload_id),
+                original_filenames=("source.pdf", "second.pdf"),
+            )
+        )
+
+        self.mock_text_service.generate_from_text.assert_called_once_with(
+            "Источник 1:\nFirst source\n\n---\n\nИсточник 2:\nSecond source",
+            output_language="ru",
+        )
+        self.mock_source_image_import.import_sources_into_course.assert_called_once_with(
+            (
+                self.upload_service.resolve_upload(first_id).source_path,
+                self.upload_service.resolve_upload(second.upload_id).source_path,
+            ),
+            course_dir,
+        )
+
     def test_web_form_uses_adaptive_quiz_not_fixed_three(self) -> None:
         upload_id, form_values = self._saved_upload()
         resolved = self.upload_service.resolve_upload(upload_id)
