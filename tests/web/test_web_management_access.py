@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from fastapi import HTTPException
@@ -27,6 +28,10 @@ def _identity(role: str) -> WebIdentity:
         company_name="Intertop Retail",
         role=role,
     )
+
+
+def _request(method: str = "POST") -> SimpleNamespace:
+    return SimpleNamespace(method=method)
 
 
 class WebManagementAccessTests(unittest.TestCase):
@@ -99,14 +104,18 @@ class WebManagementAccessTests(unittest.TestCase):
     def test_manager_is_allowed(self) -> None:
         service = WebAuthorizationService()
 
-        result = require_web_management_identity(_identity("manager"), service)
+        result = require_web_management_identity(
+            _request(), _identity("manager"), service
+        )
 
         self.assertEqual(result.role, "manager")
 
     def test_admin_is_allowed(self) -> None:
         service = WebAuthorizationService()
 
-        result = require_web_management_identity(_identity("admin"), service)
+        result = require_web_management_identity(
+            _request(), _identity("admin"), service
+        )
 
         self.assertEqual(result.role, "admin")
 
@@ -114,7 +123,9 @@ class WebManagementAccessTests(unittest.TestCase):
         service = WebAuthorizationService()
 
         with self.assertRaises(HTTPException) as context:
-            require_web_management_identity(_identity("student"), service)
+            require_web_management_identity(
+                _request(), _identity("student"), service
+            )
 
         self.assertEqual(context.exception.status_code, 403)
         self.assertEqual(context.exception.detail, "Forbidden")
@@ -123,7 +134,7 @@ class WebManagementAccessTests(unittest.TestCase):
         service = WebAuthorizationService()
 
         with self.assertRaises(HTTPException) as context:
-            require_web_management_identity(None, service)
+            require_web_management_identity(_request(), None, service)
 
         self.assertEqual(context.exception.status_code, 403)
 
@@ -133,7 +144,7 @@ class WebManagementAccessTests(unittest.TestCase):
         identity = _identity("manager")
 
         with self.assertRaises(HTTPException):
-            require_web_management_identity(identity, service)
+            require_web_management_identity(_request(), identity, service)
 
         service.can_manage_learning.assert_called_once_with(identity)
 

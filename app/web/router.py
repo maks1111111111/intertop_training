@@ -302,6 +302,26 @@ templates = Jinja2Templates(
 )
 
 
+class ManagementPageForbidden(Exception):
+    """Signal a browser-facing forbidden response for a management GET page."""
+
+
+async def management_page_forbidden_handler(
+    request: Request,
+    _: ManagementPageForbidden,
+) -> HTMLResponse:
+    """Render a normal HTML denial page without changing API error handling."""
+    return templates.TemplateResponse(
+        request,
+        "forbidden.html",
+        {
+            "title": "Доступ ограничен",
+            "message": "У вас нет прав для открытия этого раздела.",
+        },
+        status_code=403,
+    )
+
+
 def get_content_runtime(request: Request) -> ContentRuntime:
     """Return the ContentRuntime instance attached to the application."""
     return request.app.state.content_runtime
@@ -621,13 +641,26 @@ def get_tenant_content_runtime(
 
 
 def require_web_management_identity(
+    request: Request,
     identity: Optional[WebIdentity] = Depends(get_current_web_identity),
     authorization_service: WebAuthorizationService = Depends(
         get_web_authorization_service
     ),
 ) -> WebIdentity:
     """Require manager/admin permission for a resolved Web identity."""
-    if identity is None or not authorization_service.can_manage_learning(identity):
+    if identity is None:
+        _logger.info("management_access_denied category=identity_unresolved")
+        if request.method.upper() == "GET":
+            raise HTTPException(
+                status_code=303,
+                detail="Authentication required",
+                headers={"Location": "/login"},
+            )
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not authorization_service.can_manage_learning(identity):
+        _logger.info("management_access_denied category=role_forbidden")
+        if request.method.upper() == "GET":
+            raise ManagementPageForbidden()
         raise HTTPException(status_code=403, detail="Forbidden")
     if identity.must_change_password:
         raise HTTPException(

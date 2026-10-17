@@ -19,7 +19,11 @@ from app.services.tenant_content_runtime_registry import (
 )
 from app.web.csrf import SameOriginCSRFMiddleware
 from app.web.login_attempt_guard import LoginAttemptGuard
-from app.web.router import router as web_router
+from app.web.router import (
+    ManagementPageForbidden,
+    management_page_forbidden_handler,
+    router as web_router,
+)
 from app.web.security_headers import SecurityHeadersMiddleware
 
 
@@ -30,6 +34,10 @@ def create_app() -> FastAPI:
     runtime_paths = RuntimePathsConfig.from_environment()
     deployment_config.validate_runtime_paths(runtime_paths)
     application = FastAPI(title="Intertop Training API")
+    application.add_exception_handler(
+        ManagementPageForbidden,
+        management_page_forbidden_handler,
+    )
     application.add_middleware(SameOriginCSRFMiddleware)
     application.add_middleware(
         TrustedHostMiddleware,

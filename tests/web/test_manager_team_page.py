@@ -1831,8 +1831,9 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(self.team_analytics_service.calls, [])
 
     def test_anonymous_cannot_open_team_page_does_not_call_analytics(self) -> None:
-        response = self.client.get("/manager/team")
-        self.assertEqual(response.status_code, 403)
+        response = self.client.get("/manager/team", follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/login")
         self.assertEqual(self.team_service.calls, [])
         self.assertEqual(self.analytics_service.calls, [])
         self.assertEqual(self.team_analytics_service.calls, [])
@@ -2894,9 +2895,10 @@ class ManagerTeamPageTests(unittest.TestCase):
         self.assertEqual(self.assignment_history_service.calls, [])
 
     def test_anonymous_cannot_open_team_member_page(self) -> None:
-        response = self.client.get("/manager/team/2")
+        response = self.client.get("/manager/team/2", follow_redirects=False)
 
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/login")
         self.assertEqual(self.team_service.calls, [])
         self.assertEqual(self.dashboard_service.calls, [])
         self.assertEqual(self.analytics_service.calls, [])
@@ -2969,9 +2971,11 @@ class ManagerTeamPageTests(unittest.TestCase):
         response = self.client.get(
             "/manager/team/recommendation",
             params={"code": "quiz_attention"},
+            follow_redirects=False,
         )
 
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/login")
         self.assertEqual(self.team_analytics_service.detail_calls, [])
 
     def test_unknown_recommendation_returns_404(self) -> None:

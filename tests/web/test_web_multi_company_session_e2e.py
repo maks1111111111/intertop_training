@@ -152,6 +152,7 @@ class WebMultiCompanySessionE2ETests(unittest.TestCase):
         dashboard_a = self.client.get("/dashboard", headers=company_a_headers)
         catalog_a = self.client.get("/api/v1/courses", headers=company_a_headers)
         manager_a = self.client.get("/manager/team", headers=company_a_headers)
+        manage_a = self.client.get("/manager/team/manage", headers=company_a_headers)
 
         self.assertEqual(dashboard_a.status_code, 200)
         self.assertIn("Alpha A", dashboard_a.text)
@@ -162,11 +163,14 @@ class WebMultiCompanySessionE2ETests(unittest.TestCase):
             ["Alpha A"],
         )
         self.assertEqual(manager_a.status_code, 403)
+        self.assertEqual(manage_a.status_code, 403)
+        self.assertIn("text/html", manage_a.headers["content-type"])
 
         company_b_headers = self._headers_for_company("company-b")
         dashboard_b = self.client.get("/dashboard", headers=company_b_headers)
         catalog_b = self.client.get("/api/v1/courses", headers=company_b_headers)
         manager_b = self.client.get("/manager/team", headers=company_b_headers)
+        manage_b = self.client.get("/manager/team/manage", headers=company_b_headers)
         company_a_profile = self.client.get(
             f"/manager/team/{self.company_a_user_id}",
             headers=company_b_headers,
@@ -185,6 +189,7 @@ class WebMultiCompanySessionE2ETests(unittest.TestCase):
             ["Beta B"],
         )
         self.assertEqual(manager_b.status_code, 200)
+        self.assertEqual(manage_b.status_code, 200)
         self.assertIn("B Learner", manager_b.text)
         self.assertNotIn("A Learner", manager_b.text)
         self.assertEqual(company_a_profile.status_code, 404)
