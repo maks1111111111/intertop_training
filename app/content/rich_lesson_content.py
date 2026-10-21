@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Optional, Union
+from typing import ClassVar, Optional, Union
 
 
 _SUPPORTED_CONTENT_VERSIONS = frozenset({1, 2})
@@ -49,17 +49,20 @@ class LessonAsset:
 
 @dataclass(frozen=True)
 class ParagraphBlock:
+    type: ClassVar[str] = "paragraph"
     text: str
 
 
 @dataclass(frozen=True)
 class HeadingBlock:
+    type: ClassVar[str] = "heading"
     level: int
     text: str
 
 
 @dataclass(frozen=True)
 class ImageBlock:
+    type: ClassVar[str] = "image"
     asset_id: str
     alt: str
     caption: str = ""
@@ -67,6 +70,7 @@ class ImageBlock:
 
 @dataclass(frozen=True)
 class KeyFactBlock:
+    type: ClassVar[str] = "key_fact"
     label: str
     value: str
     text: str = ""
@@ -81,17 +85,20 @@ class Step:
 
 @dataclass(frozen=True)
 class StepsBlock:
+    type: ClassVar[str] = "steps"
     items: tuple[Step, ...]
 
 
 @dataclass(frozen=True)
 class TableBlock:
+    type: ClassVar[str] = "table"
     columns: tuple[str, ...]
     rows: tuple[tuple[str, ...], ...]
 
 
 @dataclass(frozen=True)
 class CalloutBlock:
+    type: ClassVar[str] = "callout"
     variant: str
     title: str
     text: str

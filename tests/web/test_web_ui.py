@@ -295,6 +295,109 @@ class WebUiTests(unittest.TestCase):
         html = response.text
         self.assertIn("First lesson", html)
         self.assertIn("Body text.", html)
+        self.assertNotIn("rich-lesson-content", html)
+
+    def _write_v2_lesson(self, blocks: list[dict], *, assets: list[dict] | None = None) -> None:
+        lesson_path = self.courses_dir / "alpha" / "lesson_01" / "lesson.json"
+        lesson_path.write_text(
+            json.dumps(
+                {
+                    "title": "Rich lesson",
+                    "order": 1,
+                    "description": "Legacy fallback.",
+                    "content_version": 2,
+                    "assets": assets or [],
+                    "blocks": blocks,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        self.app.state.content_runtime.refresh()
+
+    def test_v2_lesson_renders_paragraph_and_semantic_heading_escaped(self) -> None:
+        self._write_v2_lesson(
+            [
+                {"type": "heading", "level": 2, "text": "Основы <script>bad()</script>"},
+                {"type": "paragraph", "text": "Текст <strong>безопасный</strong>."},
+            ]
+        )
+
+        response = self.client.get("/courses/alpha/lessons/lesson_01")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('<h2 class="rich-lesson-heading rich-lesson-heading--2">', response.text)
+        self.assertIn("&lt;script&gt;bad()&lt;/script&gt;", response.text)
+        self.assertIn("&lt;strong&gt;безопасный&lt;/strong&gt;", response.text)
+        self.assertNotIn("<script>bad()</script>", response.text)
+        self.assertNotIn("Legacy fallback.", response.text)
+
+    def test_v2_lesson_renders_key_fact_steps_table_and_callouts(self) -> None:
+        self._write_v2_lesson(
+            [
+                {"type": "key_fact", "label": "Лимит", "value": "750 000 ₸", "text": "За смену."},
+                {
+                    "type": "steps",
+                    "items": [
+                        {"title": "Первый", "text": "Начните разговор."},
+                        {"title": "Второй", "text": "Уточните потребность."},
+                    ],
+                },
+                {
+                    "type": "table",
+                    "columns": ["Случай", "Срок"],
+                    "rows": [["Возврат", "14 дней"]],
+                },
+                {"type": "callout", "variant": "info", "title": "Подсказка", "text": "Спросите клиента."},
+                {"type": "callout", "variant": "warning", "text": "Проверьте чек."},
+                {"type": "callout", "variant": "important", "text": "Не передавайте данные."},
+            ]
+        )
+
+        response = self.client.get("/courses/alpha/lessons/lesson_01")
+        html = response.text
+
+        self.assertIn("rich-lesson-key-fact", html)
+        self.assertIn("750 000 ₸", html)
+        self.assertLess(html.index("Первый"), html.index("Второй"))
+        self.assertIn("<table class=\"rich-lesson-table\">", html)
+        self.assertIn("<th scope=\"col\">Случай</th>", html)
+        self.assertIn("<td>14 дней</td>", html)
+        self.assertIn("rich-lesson-callout--info", html)
+        self.assertIn("rich-lesson-callout--warning", html)
+        self.assertIn("rich-lesson-callout--important", html)
+
+    def test_v2_unservable_image_renders_safe_placeholder(self) -> None:
+        self._write_v2_lesson(
+            [
+                {"type": "image", "asset_id": "guide", "alt": "Схема продажи", "caption": "Шаг 1"}
+            ],
+            assets=[
+                {"id": "guide", "file": "assets/guide.webp", "kind": "image"}
+            ],
+        )
+
+        response = self.client.get("/courses/alpha/lessons/lesson_01")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("rich-lesson-image-unavailable", response.text)
+        self.assertIn("Иллюстрация пока недоступна", response.text)
+        self.assertIn("Схема продажи", response.text)
+        self.assertIn("Шаг 1", response.text)
+        self.assertNotIn("assets/guide.webp", response.text)
+
+    def test_legacy_lesson_image_still_uses_existing_private_route(self) -> None:
+        image_path = self.courses_dir / "alpha" / "lesson_01" / "image.webp"
+        image_path.write_bytes(b"RIFFxxxxWEBPlegacy-image")
+        self.app.state.content_runtime.refresh()
+
+        response = self.client.get("/courses/alpha/lessons/lesson_01")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            'src="/courses/alpha/lessons/lesson_01/image"',
+            response.text,
+        )
 
     def test_lesson_page_shows_quality_sections_when_present(self) -> None:
         lesson_path = self.courses_dir / "alpha" / "lesson_01" / "lesson.json"

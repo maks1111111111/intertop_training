@@ -4546,6 +4546,7 @@ def admin_lesson_preview_page(
                     "course_has_quiz": course.quiz is not None,
                     "active_nav": "admin",
                     "structured_practical_task": lesson.structured_practical_task,
+                    "rich_lesson_content": lesson.rich_content,
                     "practical_task_attempt": None,
                     "form_learner_answer": "",
                     "practical_task_error": None,
@@ -6283,6 +6284,7 @@ def _render_learner_lesson_page(
                 if lesson.image_path is not None
                 else None
             ),
+            "rich_lesson_content": lesson.rich_content,
             "structured_practical_task": structured_task,
             "practical_task_attempt": display_attempt,
             "form_learner_answer": form_learner_answer or "",

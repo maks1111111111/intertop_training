@@ -37,7 +37,82 @@
         </figure>
         {% endif %}
 
-        {% if lesson.content %}
+        {% if rich_lesson_content %}
+        <div class="rich-lesson-content">
+            {% for block in rich_lesson_content.blocks %}
+                {% if block.type == "paragraph" %}
+                <p class="rich-lesson-paragraph">{{ block.text }}</p>
+                {% elif block.type == "heading" %}
+                    {% if block.level == 2 %}
+                    <h2 class="rich-lesson-heading rich-lesson-heading--2">{{ block.text }}</h2>
+                    {% elif block.level == 3 %}
+                    <h3 class="rich-lesson-heading rich-lesson-heading--3">{{ block.text }}</h3>
+                    {% else %}
+                    <h4 class="rich-lesson-heading rich-lesson-heading--4">{{ block.text }}</h4>
+                    {% endif %}
+                {% elif block.type == "image" %}
+                <figure class="rich-lesson-image">
+                    <div class="rich-lesson-image-unavailable" role="status">
+                        <p>Иллюстрация пока недоступна</p>
+                        <p class="rich-lesson-image-alt">{{ block.alt }}</p>
+                    </div>
+                    {% if block.caption %}
+                    <figcaption>{{ block.caption }}</figcaption>
+                    {% endif %}
+                </figure>
+                {% elif block.type == "key_fact" %}
+                <section class="rich-lesson-key-fact" aria-label="Ключевой факт">
+                    <p class="rich-lesson-key-fact-label">{{ block.label }}</p>
+                    <p class="rich-lesson-key-fact-value">{{ block.value }}</p>
+                    {% if block.text %}
+                    <p class="rich-lesson-key-fact-text">{{ block.text }}</p>
+                    {% endif %}
+                </section>
+                {% elif block.type == "steps" %}
+                <ol class="rich-lesson-steps">
+                    {% for item in block.items %}
+                    <li class="rich-lesson-step">
+                        <h3 class="rich-lesson-step-title">{{ item.title }}</h3>
+                        <p class="rich-lesson-step-text">{{ item.text }}</p>
+                        {% if item.asset_id %}
+                        <p class="rich-lesson-step-media-note">Иллюстрация к шагу пока недоступна</p>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% elif block.type == "table" %}
+                <div class="rich-lesson-table-scroll" tabindex="0">
+                    <table class="rich-lesson-table">
+                        <caption class="visually-hidden">Таблица к уроку</caption>
+                        <thead>
+                            <tr>
+                                {% for column in block.columns %}
+                                <th scope="col">{{ column }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in block.rows %}
+                            <tr>
+                                {% for cell in row %}
+                                <td>{{ cell }}</td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% elif block.type == "callout" %}
+                <aside class="rich-lesson-callout rich-lesson-callout--{{ block.variant }}">
+                    {% if block.title %}
+                    <h2 class="rich-lesson-callout-title">{{ block.title }}</h2>
+                    {% endif %}
+                    <p class="rich-lesson-callout-text">{{ block.text }}</p>
+                </aside>
+                {% endif %}
+            {% endfor %}
+        </div>
+        {% elif lesson.content %}
         <div class="lesson-content">
             {{ lesson.content }}
         </div>
