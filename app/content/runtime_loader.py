@@ -21,6 +21,11 @@ from app.content.contract import (
     QUIZ_JSON_FILENAME,
 )
 from app.content.practical_task import PracticalTask
+from app.content.rich_lesson_content import (
+    RichLessonContent,
+    RichLessonContentError,
+    parse_rich_lesson_content,
+)
 
 _PUBLISHED_STATUS = "published"
 _COURSE_STATUSES = frozenset({"draft", "published", "archived"})
@@ -40,6 +45,8 @@ class Lesson:
     common_mistakes: tuple[str, ...] = ()
     key_takeaways: tuple[str, ...] = ()
     application_tips: tuple[str, ...] = ()
+    content_version: int = 1
+    rich_content: Optional[RichLessonContent] = None
 
 
 @dataclass(frozen=True)
@@ -283,6 +290,11 @@ def _load_lesson(lesson_dir: Path) -> Optional[Lesson]:
     if metadata is None:
         return None
 
+    try:
+        rich_content = parse_rich_lesson_content(metadata)
+    except RichLessonContentError:
+        return None
+
     title = str(metadata.get("title") or lesson_dir.name)
     description = str(metadata.get("description") or "")
 
@@ -334,6 +346,8 @@ def _load_lesson(lesson_dir: Path) -> Optional[Lesson]:
         common_mistakes=common_mistakes,
         key_takeaways=key_takeaways,
         application_tips=application_tips,
+        content_version=2 if rich_content is not None else 1,
+        rich_content=rich_content,
     )
 
 

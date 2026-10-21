@@ -20,6 +20,10 @@ from app.content.contract import (
 )
 from app.content.json_loader import load_json_file
 from app.content.models import ValidationReport
+from app.content.rich_lesson_content import (
+    RichLessonContentError,
+    parse_rich_lesson_content,
+)
 from app.content.quality import validate_quality
 
 _VALID_COURSE_STATUSES = frozenset({"draft", "published", "archived"})
@@ -464,6 +468,16 @@ def _validate_lesson_manifest(
             message="Field description must be a string",
             path=lesson_json_path,
             location=f"{location}.description",
+        )
+
+    try:
+        parse_rich_lesson_content(data)
+    except RichLessonContentError as error:
+        report.add_error(
+            code=error.code,
+            message=error.message,
+            path=lesson_json_path,
+            location=f"{location}.{error.location}",
         )
 
     if "order" in data:

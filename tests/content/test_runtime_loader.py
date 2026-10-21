@@ -783,5 +783,56 @@ class AllStatusLoaderTests(unittest.TestCase):
         self.assertIsNone(course)
 
 
+class RichLessonContentLoaderTests(unittest.TestCase):
+    """Loading typed v2 blocks must not change legacy lesson behavior."""
+
+    def test_loads_v2_content_without_changing_legacy_description(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            courses_dir = Path(tmp)
+            course_dir = _write_course_with_status(
+                courses_dir,
+                "rich",
+                status="published",
+            )
+            (course_dir / "lesson_01" / "lesson.json").write_text(
+                json.dumps(
+                    {
+                        "title": "Rich lesson",
+                        "order": 1,
+                        "description": "Legacy fallback",
+                        "content_version": 2,
+                        "assets": [
+                            {
+                                "id": "guide",
+                                "file": "assets/guide.webp",
+                                "kind": "image",
+                            }
+                        ],
+                        "blocks": [
+                            {"type": "heading", "level": 2, "text": "Guide"},
+                            {
+                                "type": "image",
+                                "asset_id": "guide",
+                                "alt": "Guide image",
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            course = get_course(courses_dir, "rich")
+
+        self.assertIsNotNone(course)
+        assert course is not None
+        lesson = course.lessons[0]
+        self.assertEqual(lesson.content_version, 2)
+        self.assertEqual(lesson.description, "Legacy fallback")
+        self.assertIsNotNone(lesson.rich_content)
+        assert lesson.rich_content is not None
+        self.assertEqual(len(lesson.rich_content.blocks), 2)
+        self.assertEqual(lesson.rich_content.assets[0].file, "assets/guide.webp")
+
+
 if __name__ == "__main__":
     unittest.main()

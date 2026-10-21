@@ -444,5 +444,143 @@ class ValidationReportReleaseTests(unittest.TestCase):
         )
 
 
+class RichLessonContentValidationTests(unittest.TestCase):
+    """Validation of optional, block-based lesson content version 2."""
+
+    def _report_for_lesson(self, lesson_manifest: dict):
+        with tempfile.TemporaryDirectory() as tmp:
+            course_dir = _create_course_dir(Path(tmp))
+            lesson_path = course_dir / "lesson_01" / "lesson.json"
+            lesson_path.write_text(json.dumps(lesson_manifest), encoding="utf-8")
+            return validate_course(course_dir)
+
+    @staticmethod
+    def _valid_v2_manifest() -> dict:
+        return {
+            "title": "Rich lesson",
+            "order": 1,
+            "description": "Legacy plain-text fallback.",
+            "content_version": 2,
+            "assets": [
+                {
+                    "id": "sale-step-01",
+                    "file": "assets/sale-step-01.webp",
+                    "kind": "image",
+                    "alt": "Первый шаг продажи",
+                    "caption": "Оформление продажи",
+                    "source": {"document": "sales.pdf", "page": 4},
+                }
+            ],
+            "blocks": [
+                {"type": "paragraph", "text": "Начните с потребности клиента."},
+                {"type": "heading", "level": 2, "text": "Основные шаги"},
+                {
+                    "type": "image",
+                    "asset_id": "sale-step-01",
+                    "alt": "Первый шаг продажи",
+                    "caption": "Оформление продажи",
+                },
+                {
+                    "type": "key_fact",
+                    "label": "Лимит наличных",
+                    "value": "750 000 ₸",
+                    "text": "Проверьте лимит до оплаты.",
+                },
+                {
+                    "type": "steps",
+                    "items": [
+                        {
+                            "title": "Поздоровайтесь",
+                            "text": "Установите контакт.",
+                            "asset_id": "sale-step-01",
+                        }
+                    ],
+                },
+                {
+                    "type": "table",
+                    "columns": ["Случай", "Срок"],
+                    "rows": [["Возврат", "14 дней"]],
+                },
+                {
+                    "type": "callout",
+                    "variant": "important",
+                    "title": "Важно",
+                    "text": "Всегда оформляйте чек.",
+                },
+            ],
+        }
+
+    def test_legacy_v1_lesson_remains_valid_without_content_version(self) -> None:
+        report = self._report_for_lesson(
+            {"title": "Legacy", "order": 1, "description": "Body"}
+        )
+
+        self.assertEqual(report.errors, [])
+
+    def test_valid_v2_lesson_accepts_all_supported_block_types(self) -> None:
+        report = self._report_for_lesson(self._valid_v2_manifest())
+
+        self.assertEqual(report.errors, [])
+
+    def test_unknown_v2_block_type_is_rejected(self) -> None:
+        manifest = self._valid_v2_manifest()
+        manifest["blocks"] = [{"type": "html", "markup": "<b>unsafe</b>"}]
+
+        report = self._report_for_lesson(manifest)
+
+        self.assertEqual([issue.code for issue in report.errors], ["lesson_block_type_unknown"])
+
+    def test_malformed_v2_block_is_rejected(self) -> None:
+        manifest = self._valid_v2_manifest()
+        manifest["blocks"] = [{"type": "heading", "level": 1, "text": "Title"}]
+
+        report = self._report_for_lesson(manifest)
+
+        self.assertEqual([issue.code for issue in report.errors], ["lesson_heading_level_invalid"])
+
+    def test_unsafe_v2_asset_path_is_rejected(self) -> None:
+        manifest = self._valid_v2_manifest()
+        manifest["assets"][0]["file"] = "../private.webp"
+
+        report = self._report_for_lesson(manifest)
+
+        self.assertEqual([issue.code for issue in report.errors], ["lesson_asset_path_unsafe"])
+
+    def test_duplicate_v2_asset_ids_are_rejected(self) -> None:
+        manifest = self._valid_v2_manifest()
+        manifest["assets"].append(
+            {
+                "id": "sale-step-01",
+                "file": "assets/second.webp",
+                "kind": "image",
+            }
+        )
+
+        report = self._report_for_lesson(manifest)
+
+        self.assertEqual([issue.code for issue in report.errors], ["lesson_asset_id_duplicate"])
+
+    def test_image_block_referencing_missing_asset_is_rejected(self) -> None:
+        manifest = self._valid_v2_manifest()
+        manifest["blocks"] = [
+            {"type": "image", "asset_id": "missing", "alt": "Missing"}
+        ]
+
+        report = self._report_for_lesson(manifest)
+
+        self.assertEqual([issue.code for issue in report.errors], ["lesson_block_asset_missing"])
+
+    def test_unsupported_content_version_is_rejected(self) -> None:
+        manifest = self._valid_v2_manifest()
+        manifest["content_version"] = 3
+
+        report = self._report_for_lesson(manifest)
+
+        self.assertEqual(
+            [issue.code for issue in report.errors],
+            ["lesson_content_version_unsupported"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
