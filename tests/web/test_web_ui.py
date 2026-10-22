@@ -386,6 +386,103 @@ class WebUiTests(unittest.TestCase):
         self.assertIn("Шаг 1", response.text)
         self.assertNotIn("assets/guide.webp", response.text)
 
+    def test_v2_declared_image_renders_and_serves_private_asset_url(self) -> None:
+        self._write_v2_lesson(
+            [{"type": "image", "asset_id": "guide", "alt": "Схема продажи", "caption": "Шаг 1"}],
+            assets=[
+                {"id": "guide", "file": "assets/guide.webp", "kind": "image"}
+            ],
+        )
+        assets_dir = self.courses_dir / "alpha" / "lesson_01" / "assets"
+        assets_dir.mkdir()
+        image = assets_dir / "guide.webp"
+        image.write_bytes(b"RIFFxxxxWEBPguide")
+
+        page = self.client.get("/courses/alpha/lessons/lesson_01")
+        asset = self.client.get(
+            "/courses/alpha/lessons/lesson_01/assets/guide"
+        )
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(
+            'src="/courses/alpha/lessons/lesson_01/assets/guide"',
+            page.text,
+        )
+        self.assertIn('alt="Схема продажи"', page.text)
+        self.assertIn("Шаг 1", page.text)
+        self.assertNotIn("rich-lesson-image-unavailable", page.text)
+        self.assertEqual(asset.status_code, 200)
+        self.assertEqual(asset.headers["content-type"], "image/webp")
+        self.assertEqual(asset.content, image.read_bytes())
+
+    def test_v2_asset_route_rejects_undeclared_missing_other_lesson_and_path_input(self) -> None:
+        self._write_v2_lesson(
+            [{"type": "image", "asset_id": "missing", "alt": "Схема"}],
+            assets=[
+                {"id": "missing", "file": "assets/missing.webp", "kind": "image"}
+            ],
+        )
+        other_lesson = self.courses_dir / "alpha" / "lesson_02"
+        (other_lesson / "assets").mkdir(parents=True)
+        (other_lesson / "assets" / "other.webp").write_bytes(b"RIFFxxxxWEBPother")
+        (other_lesson / "lesson.json").write_text(
+            json.dumps(
+                {
+                    "title": "Other lesson",
+                    "order": 2,
+                    "description": "",
+                    "content_version": 2,
+                    "blocks": [
+                        {"type": "image", "asset_id": "other", "alt": "Other"}
+                    ],
+                    "assets": [
+                        {
+                            "id": "other",
+                            "file": "assets/other.webp",
+                            "kind": "image",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.app.state.content_runtime.refresh()
+
+        paths = (
+            "/courses/alpha/lessons/lesson_01/assets/not-declared",
+            "/courses/alpha/lessons/lesson_01/assets/missing",
+            "/courses/alpha/lessons/lesson_01/assets/other",
+            "/courses/alpha/lessons/lesson_01/assets/%2E%2E%2Flesson.json",
+            "/courses/alpha/lessons/lesson_01/assets/%2Ftmp%2Fsecret.webp",
+        )
+
+        for path in paths:
+            with self.subTest(path=path):
+                response = self.client.get(path)
+
+                self.assertEqual(response.status_code, 404)
+                self.assertNotIn(str(self.courses_dir), response.text)
+
+    def test_v2_unsupported_declared_image_keeps_page_working(self) -> None:
+        self._write_v2_lesson(
+            [{"type": "image", "asset_id": "guide", "alt": "Схема"}],
+            assets=[
+                {"id": "guide", "file": "assets/guide.svg", "kind": "image"}
+            ],
+        )
+        assets_dir = self.courses_dir / "alpha" / "lesson_01" / "assets"
+        assets_dir.mkdir()
+        (assets_dir / "guide.svg").write_text("<svg></svg>", encoding="utf-8")
+
+        page = self.client.get("/courses/alpha/lessons/lesson_01")
+        asset = self.client.get(
+            "/courses/alpha/lessons/lesson_01/assets/guide"
+        )
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("rich-lesson-image-unavailable", page.text)
+        self.assertEqual(asset.status_code, 404)
+
     def test_legacy_lesson_image_still_uses_existing_private_route(self) -> None:
         image_path = self.courses_dir / "alpha" / "lesson_01" / "image.webp"
         image_path.write_bytes(b"RIFFxxxxWEBPlegacy-image")
@@ -398,6 +495,11 @@ class WebUiTests(unittest.TestCase):
             'src="/courses/alpha/lessons/lesson_01/image"',
             response.text,
         )
+        image_response = self.client.get(
+            "/courses/alpha/lessons/lesson_01/image"
+        )
+        self.assertEqual(image_response.status_code, 200)
+        self.assertEqual(image_response.headers["content-type"], "image/webp")
 
     def test_lesson_page_shows_quality_sections_when_present(self) -> None:
         lesson_path = self.courses_dir / "alpha" / "lesson_01" / "lesson.json"

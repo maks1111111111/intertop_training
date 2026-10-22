@@ -26,6 +26,34 @@ def _write_course(base_dir: Path, slug: str, title: str) -> None:
     )
 
 
+def _write_v2_image_lesson(course_dir: Path, *, asset_id: str) -> None:
+    lesson_dir = course_dir / "lesson_01"
+    assets_dir = lesson_dir / "assets"
+    assets_dir.mkdir(parents=True)
+    (assets_dir / f"{asset_id}.webp").write_bytes(b"RIFFxxxxWEBPtenant-image")
+    (lesson_dir / "lesson.json").write_text(
+        json.dumps(
+            {
+                "title": "Tenant image lesson",
+                "order": 1,
+                "description": "",
+                "content_version": 2,
+                "blocks": [
+                    {"type": "image", "asset_id": asset_id, "alt": "Tenant image"}
+                ],
+                "assets": [
+                    {
+                        "id": asset_id,
+                        "file": f"assets/{asset_id}.webp",
+                        "kind": "image",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 class TenantContentRuntimeWebTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
@@ -34,6 +62,14 @@ class TenantContentRuntimeWebTests(unittest.TestCase):
         _write_course(courses_root, "legacy", "Legacy only")
         _write_course(courses_root / "company-a", "alpha", "Alpha only")
         _write_course(courses_root / "company-b", "beta", "Beta only")
+        _write_v2_image_lesson(
+            courses_root / "company-a" / "alpha",
+            asset_id="company-a-image",
+        )
+        _write_v2_image_lesson(
+            courses_root / "company-b" / "beta",
+            asset_id="company-b-image",
+        )
 
         registry = TenantContentRuntimeRegistry(courses_root)
         self._identity = WebIdentity(
@@ -65,6 +101,19 @@ class TenantContentRuntimeWebTests(unittest.TestCase):
         self.assertIn("Alpha only", response.text)
         self.assertNotIn("Beta only", response.text)
         self.assertNotIn("Legacy only", response.text)
+
+    def test_lesson_asset_route_remains_confined_to_session_company_runtime(self) -> None:
+        own = self.client.get(
+            "/courses/alpha/lessons/lesson_01/assets/company-a-image"
+        )
+        foreign = self.client.get(
+            "/courses/beta/lessons/lesson_01/assets/company-b-image"
+        )
+
+        self.assertEqual(own.status_code, 200)
+        self.assertEqual(own.headers["content-type"], "image/webp")
+        self.assertEqual(foreign.status_code, 404)
+        self.assertNotIn("Beta only", foreign.text)
 
 
 if __name__ == "__main__":

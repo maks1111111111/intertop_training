@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from urllib.parse import quote
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -22,6 +23,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.api.mappers import course_mapper
 from app.content.runtime import ContentRuntime
+from app.content.rich_lesson_assets import resolve_rich_lesson_image_asset
 from app.database.db import get_connection
 from app.repositories import practical_task_attempt_repository, quiz_repository
 from app.repositories.company_membership_repository import CompanyMembershipRepository
@@ -6273,6 +6275,15 @@ def _render_learner_lesson_page(
             attempt_id,
         )
 
+    rich_asset_urls = {}
+    if lesson.rich_content is not None:
+        for asset in lesson.rich_content.assets:
+            if resolve_rich_lesson_image_asset(lesson, asset.id) is not None:
+                rich_asset_urls[asset.id] = (
+                    f"/courses/{course.slug}/lessons/{lesson.path.name}/assets/"
+                    f"{quote(asset.id, safe='')}"
+                )
+
     return templates.TemplateResponse(
         request,
         "lesson_detail.html",
@@ -6285,6 +6296,7 @@ def _render_learner_lesson_page(
                 else None
             ),
             "rich_lesson_content": lesson.rich_content,
+            "rich_asset_urls": rich_asset_urls,
             "structured_practical_task": structured_task,
             "practical_task_attempt": display_attempt,
             "form_learner_answer": form_learner_answer or "",
@@ -6321,6 +6333,38 @@ def lesson_content_image(
     return FileResponse(
         lesson.image_path,
         media_type=image_media_type(lesson.image_path),
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
+@router.get(
+    "/courses/{slug}/lessons/{lesson_id}/assets/{asset_id}",
+    include_in_schema=False,
+)
+def rich_lesson_content_image_asset(
+    slug: str,
+    lesson_id: str,
+    asset_id: str,
+    content_runtime: ContentRuntime = Depends(get_tenant_content_runtime),
+    identity: WebIdentity = Depends(require_web_identity),
+) -> FileResponse:
+    """Serve one declared v2 lesson image from the signed-in tenant runtime."""
+    course = content_runtime.get_course(slug)
+    if course is None:
+        raise HTTPException(status_code=404, detail="Lesson asset not found")
+    lesson = next(
+        (item for item in course.lessons if item.path.name == lesson_id),
+        None,
+    )
+    if lesson is None:
+        raise HTTPException(status_code=404, detail="Lesson asset not found")
+
+    asset_path = resolve_rich_lesson_image_asset(lesson, asset_id)
+    if asset_path is None:
+        raise HTTPException(status_code=404, detail="Lesson asset not found")
+    return FileResponse(
+        asset_path.path,
+        media_type=asset_path.media_type,
         headers={"Cache-Control": "private, max-age=300"},
     )
 

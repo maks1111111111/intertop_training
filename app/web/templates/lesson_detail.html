@@ -52,10 +52,15 @@
                     {% endif %}
                 {% elif block.type == "image" %}
                 <figure class="rich-lesson-image">
+                    {% set asset_url = rich_asset_urls.get(block.asset_id) %}
+                    {% if asset_url %}
+                    <img src="{{ asset_url }}" alt="{{ block.alt }}">
+                    {% else %}
                     <div class="rich-lesson-image-unavailable" role="status">
                         <p>Иллюстрация пока недоступна</p>
                         <p class="rich-lesson-image-alt">{{ block.alt }}</p>
                     </div>
+                    {% endif %}
                     {% if block.caption %}
                     <figcaption>{{ block.caption }}</figcaption>
                     {% endif %}
