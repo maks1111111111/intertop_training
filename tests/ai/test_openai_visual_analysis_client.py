@@ -17,6 +17,7 @@ from app.ai.openai_visual_analysis_client import (
     VisualAnalysisRefusalError,
     VisualAnalysisResponseError,
     VisualAnalysisTransientError,
+    build_visual_analysis_response_schema,
 )
 from app.ai.visual_analysis_config import OpenAIVisualAnalysisConfig
 from app.ai.visual_analysis_interfaces import (
@@ -30,6 +31,11 @@ from app.content.source_document import (
     build_source_image,
 )
 from app.content.visual_enrichment import build_visual_id, compute_content_hash
+from app.content.visual_enrichment import (
+    MAX_DESCRIPTION_LENGTH,
+    MAX_DETECTED_TEXT_ITEMS,
+    MAX_UI_CONTROLS_PER_ANALYSIS,
+)
 from app.services.course_generation_flow_service import CourseGenerationFlowService
 from app.services.course_generation_pipeline_service import CourseGenerationPipelineService
 
@@ -107,10 +113,187 @@ class OpenAIVisualAnalysisClientTests(unittest.TestCase):
         payload["unexpected"] = "not allowed"
         sdk = _FakeSDK([_response({"analyses": [payload]})])
 
-        with self.assertRaises(VisualAnalysisResponseError):
+        with self.assertRaises(VisualAnalysisResponseError) as raised:
             OpenAIVisualAnalysisClient(self.config, sdk_client=sdk).analyze(
                 _request((b"image",))
             )
+
+        self.assertEqual(raised.exception.error_code, "schema_mapping_error")
+        self.assertEqual(raised.exception.field_path, "analyses[0]")
+        self.assertEqual(raised.exception.validation_kind, "object_shape")
+
+    def test_out_of_range_confidence_keeps_safe_metadata_and_path(self) -> None:
+        payload = _analysis("Visible")
+        payload["confidence"] = 1.5
+
+        error = _rejected_error(payload)
+
+        self.assertEqual(error.error_code, "local_validation_error")
+        self.assertEqual(error.field_path, "analyses[0].confidence")
+        self.assertEqual(error.validation_kind, "confidence_range")
+        self.assertEqual(error.response_metadata.request_id, "req-test-123")
+        self.assertEqual(error.response_metadata.model, "vision-model")
+        self.assertEqual(error.response_metadata.input_tokens, 11)
+        self.assertEqual(error.response_metadata.output_tokens, 7)
+        self.assertEqual(error.response_metadata.reasoning_tokens, 3)
+        self.assertEqual(error.response_metadata.cached_input_tokens, 2)
+        self.assertEqual(error.response_metadata.total_tokens, 18)
+
+    def test_too_many_detected_text_items_reports_collection_path(self) -> None:
+        payload = _analysis("Visible")
+        payload["detected_text"] = ["text"] * (MAX_DETECTED_TEXT_ITEMS + 1)
+
+        error = _rejected_error(payload)
+
+        self.assertEqual(error.error_code, "local_validation_error")
+        self.assertEqual(error.field_path, "analyses[0].detected_text")
+        self.assertEqual(error.validation_kind, "collection_limit")
+
+    def test_too_many_ui_controls_reports_collection_path(self) -> None:
+        payload = _analysis("Visible")
+        payload["ui_controls"] = [
+            {"kind": "button", "label": "Continue", "state": None}
+        ] * (MAX_UI_CONTROLS_PER_ANALYSIS + 1)
+
+        error = _rejected_error(payload)
+
+        self.assertEqual(error.error_code, "local_validation_error")
+        self.assertEqual(error.field_path, "analyses[0].ui_controls")
+        self.assertEqual(error.validation_kind, "collection_limit")
+
+    def test_empty_table_columns_report_local_table_path(self) -> None:
+        payload = _analysis("Visible")
+        payload["tables"] = [{"columns": [], "rows": []}]
+
+        error = _rejected_error(payload)
+
+        self.assertEqual(error.error_code, "local_validation_error")
+        self.assertEqual(error.field_path, "analyses[0].tables[0].columns")
+        self.assertEqual(error.validation_kind, "table_columns")
+
+    def test_table_row_width_mismatch_reports_row_path(self) -> None:
+        payload = _analysis("Visible")
+        payload["tables"] = [{"columns": ["A", "B"], "rows": [["one"]]}]
+
+        error = _rejected_error(payload)
+
+        self.assertEqual(error.error_code, "local_validation_error")
+        self.assertEqual(error.field_path, "analyses[0].tables[0].rows[0]")
+        self.assertEqual(error.validation_kind, "table_row_width")
+
+    def test_diagram_missing_node_reference_reports_exact_edge_field(self) -> None:
+        payload = _analysis("Visible")
+        payload["diagrams"][0]["edges"] = [
+            {
+                "source_node_id": "step-1",
+                "target_node_id": "missing",
+                "kind": "flows_to",
+                "label": None,
+            }
+        ]
+
+        error = _rejected_error(payload)
+
+        self.assertEqual(error.error_code, "local_validation_error")
+        self.assertEqual(
+            error.field_path,
+            "analyses[0].diagrams[0].edges[0].target_node_id",
+        )
+        self.assertEqual(error.validation_kind, "diagram_edge_reference")
+
+    def test_diagram_self_edge_reports_exact_edge_field(self) -> None:
+        payload = _analysis("Visible")
+        payload["diagrams"][0]["edges"] = [
+            {
+                "source_node_id": "step-1",
+                "target_node_id": "step-1",
+                "kind": "flows_to",
+                "label": None,
+            }
+        ]
+
+        error = _rejected_error(payload)
+
+        self.assertEqual(error.error_code, "local_validation_error")
+        self.assertEqual(
+            error.field_path,
+            "analyses[0].diagrams[0].edges[0].target_node_id",
+        )
+        self.assertEqual(error.validation_kind, "diagram_self_edge")
+
+    def test_empty_required_string_reports_safe_field_path(self) -> None:
+        payload = _analysis("")
+
+        error = _rejected_error(payload)
+
+        self.assertEqual(error.error_code, "local_validation_error")
+        self.assertEqual(error.field_path, "analyses[0].description")
+        self.assertEqual(error.validation_kind, "string_constraints")
+
+    def test_overlong_required_string_reports_safe_field_path(self) -> None:
+        error = _rejected_error(_analysis("x" * (MAX_DESCRIPTION_LENGTH + 1)))
+
+        self.assertEqual(error.error_code, "local_validation_error")
+        self.assertEqual(error.field_path, "analyses[0].description")
+        self.assertEqual(error.validation_kind, "string_constraints")
+
+    def test_malformed_json_keeps_safe_metadata_without_raw_output(self) -> None:
+        raw_output = '{"analyses": ["customer-only text"'
+        error = _rejected_error(raw_output=raw_output)
+
+        self.assertEqual(error.error_code, "malformed_json")
+        self.assertIsNone(error.field_path)
+        self.assertEqual(error.response_metadata.request_id, "req-test-123")
+        self.assertNotIn(raw_output, str(error))
+
+    def test_missing_output_keeps_safe_metadata(self) -> None:
+        sdk = _FakeSDK([_response(None)])
+        client = OpenAIVisualAnalysisClient(self.config, sdk_client=sdk)
+
+        with self.assertRaises(VisualAnalysisResponseError) as raised:
+            client.analyze(_request((b"image",)))
+
+        error = raised.exception
+        self.assertEqual(error.error_code, "missing_output")
+        self.assertEqual(error.response_metadata.model, "vision-model")
+
+    def test_cardinality_mismatch_has_category_path_and_metadata(self) -> None:
+        sdk = _FakeSDK([_response({"analyses": [_analysis("Only one")]})])
+        client = OpenAIVisualAnalysisClient(self.config, sdk_client=sdk)
+
+        with self.assertRaises(VisualAnalysisResponseError) as raised:
+            client.analyze(_request((b"one", b"two")))
+
+        error = raised.exception
+        self.assertEqual(error.error_code, "cardinality_mismatch")
+        self.assertEqual(error.field_path, "analyses")
+        self.assertEqual(error.validation_kind, "batch_cardinality")
+        self.assertEqual(error.response_metadata.total_tokens, 18)
+
+    def test_rejected_value_and_raw_provider_output_never_appear_in_error_string(self) -> None:
+        rejected_value = "customer-secret-that-must-not-leak-" * 200
+        payload = _analysis(rejected_value)
+
+        error = _rejected_error(payload)
+
+        self.assertNotIn(rejected_value, str(error))
+        self.assertNotIn("customer-secret-that-must-not-leak", str(error))
+
+    def test_provider_schema_allows_shapes_that_local_contract_rejects(self) -> None:
+        schema = build_visual_analysis_response_schema()
+        analysis_schema = schema["$defs"]["analysis"]
+        self.assertNotIn("maximum", analysis_schema["properties"]["confidence"])
+        self.assertNotIn(
+            "minItems",
+            schema["$defs"]["table"]["properties"]["columns"],
+        )
+
+        payload = _analysis("Visible")
+        payload["confidence"] = 2.0
+        error = _rejected_error(payload)
+
+        self.assertEqual(error.error_code, "local_validation_error")
+        self.assertEqual(error.field_path, "analyses[0].confidence")
 
     def test_refusal_is_not_retried(self) -> None:
         sdk = _FakeSDK([SimpleNamespace(output_text=None, refusal="cannot assist", output=[])])
@@ -251,8 +434,40 @@ def _request(contents: tuple[bytes, ...]) -> VisualAnalysisRequest:
     return VisualAnalysisRequest(source=source, inputs=tuple(inputs))
 
 
-def _response(payload: dict[str, object]) -> SimpleNamespace:
-    return SimpleNamespace(output_text=json.dumps(payload), output=[])
+def _response(payload: object, *, raw_output: str | None = None) -> SimpleNamespace:
+    if raw_output is None:
+        output_text = None if payload is None else json.dumps(payload)
+    else:
+        output_text = raw_output
+    return SimpleNamespace(
+        output_text=output_text,
+        output=[],
+        _request_id="req-test-123",
+        model="vision-model",
+        usage=SimpleNamespace(
+            input_tokens=11,
+            output_tokens=7,
+            total_tokens=18,
+            input_tokens_details=SimpleNamespace(cached_tokens=2),
+            output_tokens_details=SimpleNamespace(reasoning_tokens=3),
+        ),
+    )
+
+
+def _rejected_error(
+    payload: dict[str, object] | None = None,
+    *,
+    raw_output: str | None = None,
+) -> VisualAnalysisResponseError:
+    response_payload = None if payload is None else {"analyses": [payload]}
+    sdk = _FakeSDK([_response(response_payload, raw_output=raw_output)])
+    client = OpenAIVisualAnalysisClient(
+        OpenAIVisualAnalysisConfig(api_key="test-api-key", model="vision-model"),
+        sdk_client=sdk,
+    )
+    with unittest.TestCase().assertRaises(VisualAnalysisResponseError) as raised:
+        client.analyze(_request((b"image",)))
+    return raised.exception
 
 
 def _valid_payload(description: str) -> dict[str, object]:
