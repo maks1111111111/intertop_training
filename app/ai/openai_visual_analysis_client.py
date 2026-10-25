@@ -49,6 +49,9 @@ from app.content.visual_enrichment import (
     MAX_DIAGRAM_EDGES,
     MAX_DIAGRAM_NODES,
     MAX_SECTIONS_PER_ANALYSIS,
+    MAX_TABLE_CELL_LENGTH,
+    MAX_TABLE_COLUMNS,
+    MAX_TABLE_ROWS,
     MAX_TABLES_PER_ANALYSIS,
     MAX_UI_CONTROLS_PER_ANALYSIS,
     UI_CONTROL_KINDS,
@@ -419,10 +422,11 @@ def _map_analysis_payload(payload: object, input_item: object, *, index: int) ->
             tables=tuple(
                 _parse_table(item, path=f"{path}.tables[{item_index}]")
                 for item_index, item in enumerate(
-                    _bounded_list(
+                    _bounded_table_list(
                         data["tables"],
                         maximum=MAX_TABLES_PER_ANALYSIS,
                         path=f"{path}.tables",
+                        validation_kind="too_many_tables",
                     )
                 )
             ),
@@ -475,28 +479,43 @@ def _parse_section(value: object, *, path: str) -> VisualSection:
 
 def _parse_table(value: object, *, path: str) -> VisualTable:
     data = _strict_object(value, {"columns", "rows"}, path=path)
-    columns_data = _strict_list(data["columns"], path=f"{path}.columns")
+    columns_data = _bounded_table_list(
+        data["columns"],
+        maximum=MAX_TABLE_COLUMNS,
+        path=f"{path}.columns",
+        validation_kind="too_many_columns",
+    )
     if not columns_data:
         raise _local_validation_error(
             f"{path}.columns",
-            validation_kind="table_columns",
+            validation_kind="empty_columns",
         )
     columns = tuple(
-        _string(item, path=f"{path}.columns[{index}]")
+        _table_column(item, path=f"{path}.columns[{index}]")
         for index, item in enumerate(columns_data)
     )
-    rows_data = _strict_list(data["rows"], path=f"{path}.rows")
+    rows_data = _bounded_table_list(
+        data["rows"],
+        maximum=MAX_TABLE_ROWS,
+        path=f"{path}.rows",
+        validation_kind="too_many_rows",
+    )
     rows: list[tuple[str, ...]] = []
     for row_index, row_data in enumerate(rows_data):
-        row = _strict_list(row_data, path=f"{path}.rows[{row_index}]")
+        row = _bounded_table_list(
+            row_data,
+            maximum=MAX_TABLE_COLUMNS,
+            path=f"{path}.rows[{row_index}]",
+            validation_kind="row_width_mismatch",
+        )
         if len(row) != len(columns):
             raise _local_validation_error(
                 f"{path}.rows[{row_index}]",
-                validation_kind="table_row_width",
+                validation_kind="row_width_mismatch",
             )
         rows.append(
             tuple(
-                _string(cell, path=f"{path}.rows[{row_index}][{cell_index}]")
+                _table_cell(cell, path=f"{path}.rows[{row_index}][{cell_index}]")
                 for cell_index, cell in enumerate(row)
             )
         )
@@ -651,6 +670,19 @@ def _bounded_list(value: object, *, maximum: int, path: str) -> list[object]:
     return values
 
 
+def _bounded_table_list(
+    value: object,
+    *,
+    maximum: int,
+    path: str,
+    validation_kind: str,
+) -> list[object]:
+    values = _strict_list(value, path=path)
+    if len(values) > maximum:
+        raise _local_validation_error(path, validation_kind=validation_kind)
+    return values
+
+
 def _string(value: object, *, path: str) -> str:
     if not isinstance(value, str):
         raise VisualAnalysisResponseError(
@@ -665,6 +697,22 @@ def _required_bounded_string(value: object, *, path: str, maximum: int) -> str:
     text = _string(value, path=path)
     if not text.strip() or len(text) > maximum:
         raise _local_validation_error(path, validation_kind="string_constraints")
+    return text
+
+
+def _table_column(value: object, *, path: str) -> str:
+    text = _string(value, path=path)
+    if not text.strip():
+        raise _local_validation_error(path, validation_kind="empty_column")
+    if len(text) > MAX_TABLE_CELL_LENGTH:
+        raise _local_validation_error(path, validation_kind="column_too_long")
+    return text
+
+
+def _table_cell(value: object, *, path: str) -> str:
+    text = _string(value, path=path)
+    if len(text) > MAX_TABLE_CELL_LENGTH:
+        raise _local_validation_error(path, validation_kind="cell_too_long")
     return text
 
 
@@ -732,6 +780,7 @@ def _enum_schema(allowed: frozenset[str]) -> dict[str, object]:
 
 
 _STRING = {"type": "string"}
+_NON_EMPTY_TABLE_COLUMN = {"type": "string", "pattern": r"\S"}
 _NULLABLE_STRING = {"anyOf": [{"type": "string"}, {"type": "null"}]}
 _NULLABLE_NUMBER = {"anyOf": [{"type": "number"}, {"type": "null"}]}
 _VISUAL_ANALYSIS_RESPONSE_SCHEMA: dict[str, object] = _object_schema(
@@ -748,7 +797,11 @@ _VISUAL_ANALYSIS_RESPONSE_SCHEMA["$defs"] = {
             "description": _STRING,
             "detected_text": {"type": "array", "items": _STRING},
             "sections": {"type": "array", "items": {"$ref": "#/$defs/section"}},
-            "tables": {"type": "array", "items": {"$ref": "#/$defs/table"}},
+            "tables": {
+                "type": "array",
+                "maxItems": MAX_TABLES_PER_ANALYSIS,
+                "items": {"$ref": "#/$defs/table"},
+            },
             "ui_controls": {"type": "array", "items": {"$ref": "#/$defs/ui_control"}},
             "diagrams": {"type": "array", "items": {"$ref": "#/$defs/diagram"}},
             "confidence": _NULLABLE_NUMBER,
@@ -758,8 +811,22 @@ _VISUAL_ANALYSIS_RESPONSE_SCHEMA["$defs"] = {
     "section": _object_schema({"title": _STRING, "text": _STRING, "level": {"type": "integer"}}),
     "table": _object_schema(
         {
-            "columns": {"type": "array", "items": _STRING},
-            "rows": {"type": "array", "items": {"type": "array", "items": _STRING}},
+            "columns": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": MAX_TABLE_COLUMNS,
+                "items": _NON_EMPTY_TABLE_COLUMN,
+            },
+            "rows": {
+                "type": "array",
+                "maxItems": MAX_TABLE_ROWS,
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": MAX_TABLE_COLUMNS,
+                    "items": _STRING,
+                },
+            },
         }
     ),
     "ui_control": _object_schema(

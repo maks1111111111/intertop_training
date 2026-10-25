@@ -34,6 +34,10 @@ from app.content.visual_enrichment import build_visual_id, compute_content_hash
 from app.content.visual_enrichment import (
     MAX_DESCRIPTION_LENGTH,
     MAX_DETECTED_TEXT_ITEMS,
+    MAX_TABLE_CELL_LENGTH,
+    MAX_TABLE_COLUMNS,
+    MAX_TABLE_ROWS,
+    MAX_TABLES_PER_ANALYSIS,
     MAX_UI_CONTROLS_PER_ANALYSIS,
 )
 from app.services.course_generation_flow_service import CourseGenerationFlowService
@@ -169,7 +173,76 @@ class OpenAIVisualAnalysisClientTests(unittest.TestCase):
 
         self.assertEqual(error.error_code, "local_validation_error")
         self.assertEqual(error.field_path, "analyses[0].tables[0].columns")
-        self.assertEqual(error.validation_kind, "table_columns")
+        self.assertEqual(error.validation_kind, "empty_columns")
+
+    def test_too_many_table_columns_report_precise_safe_diagnostic(self) -> None:
+        payload = _analysis("Visible")
+        payload["tables"] = [
+            {
+                "columns": [f"Column {index}" for index in range(MAX_TABLE_COLUMNS + 1)],
+                "rows": [],
+            }
+        ]
+
+        error = _rejected_error(payload)
+
+        self.assertEqual(error.error_code, "local_validation_error")
+        self.assertEqual(error.field_path, "analyses[0].tables[0].columns")
+        self.assertEqual(error.validation_kind, "too_many_columns")
+
+    def test_too_many_table_rows_report_precise_safe_diagnostic(self) -> None:
+        payload = _analysis("Visible")
+        payload["tables"] = [
+            {
+                "columns": ["Column"],
+                "rows": [["Value"]] * (MAX_TABLE_ROWS + 1),
+            }
+        ]
+
+        error = _rejected_error(payload)
+
+        self.assertEqual(error.error_code, "local_validation_error")
+        self.assertEqual(error.field_path, "analyses[0].tables[0].rows")
+        self.assertEqual(error.validation_kind, "too_many_rows")
+
+    def test_overlong_table_cell_has_exact_path_and_keeps_metadata_private(self) -> None:
+        rejected_value = "customer-cell-value-" * (MAX_TABLE_CELL_LENGTH + 1)
+        payload = _analysis("Visible")
+        payload["tables"] = [{"columns": ["Column"], "rows": [[rejected_value]]}]
+
+        error = _rejected_error(payload)
+
+        self.assertEqual(error.error_code, "local_validation_error")
+        self.assertEqual(error.field_path, "analyses[0].tables[0].rows[0][0]")
+        self.assertEqual(error.validation_kind, "cell_too_long")
+        self.assertEqual(error.response_metadata.request_id, "req-test-123")
+        self.assertEqual(error.response_metadata.model, "vision-model")
+        self.assertNotIn(rejected_value, str(error))
+        self.assertNotIn("customer-cell-value", str(error))
+
+    def test_empty_table_cells_remain_valid_under_local_contract(self) -> None:
+        payload = _analysis("Visible")
+        payload["tables"] = [{"columns": ["Column"], "rows": [[""]]}]
+        sdk = _FakeSDK([_response({"analyses": [payload]})])
+
+        response = OpenAIVisualAnalysisClient(self.config, sdk_client=sdk).analyze(
+            _request((b"image",))
+        )
+
+        self.assertEqual(response.enriched_document.analyses[0].tables[0].rows, (("",),))
+
+    def test_too_many_tables_report_precise_safe_diagnostic(self) -> None:
+        payload = _analysis("Visible")
+        payload["tables"] = [
+            {"columns": ["Column"], "rows": [["Value"]]}
+            for _ in range(MAX_TABLES_PER_ANALYSIS + 1)
+        ]
+
+        error = _rejected_error(payload)
+
+        self.assertEqual(error.error_code, "local_validation_error")
+        self.assertEqual(error.field_path, "analyses[0].tables")
+        self.assertEqual(error.validation_kind, "too_many_tables")
 
     def test_table_row_width_mismatch_reports_row_path(self) -> None:
         payload = _analysis("Visible")
@@ -179,7 +252,7 @@ class OpenAIVisualAnalysisClientTests(unittest.TestCase):
 
         self.assertEqual(error.error_code, "local_validation_error")
         self.assertEqual(error.field_path, "analyses[0].tables[0].rows[0]")
-        self.assertEqual(error.validation_kind, "table_row_width")
+        self.assertEqual(error.validation_kind, "row_width_mismatch")
 
     def test_diagram_missing_node_reference_reports_exact_edge_field(self) -> None:
         payload = _analysis("Visible")
@@ -279,14 +352,29 @@ class OpenAIVisualAnalysisClientTests(unittest.TestCase):
         self.assertNotIn(rejected_value, str(error))
         self.assertNotIn("customer-secret-that-must-not-leak", str(error))
 
-    def test_provider_schema_allows_shapes_that_local_contract_rejects(self) -> None:
+    def test_provider_schema_table_constraints_match_local_constants(self) -> None:
+        schema = build_visual_analysis_response_schema()
+        analysis_schema = schema["$defs"]["analysis"]
+        table_schema = schema["$defs"]["table"]
+        columns_schema = table_schema["properties"]["columns"]
+        rows_schema = table_schema["properties"]["rows"]
+        row_schema = rows_schema["items"]
+
+        self.assertEqual(
+            analysis_schema["properties"]["tables"]["maxItems"],
+            MAX_TABLES_PER_ANALYSIS,
+        )
+        self.assertEqual(columns_schema["minItems"], 1)
+        self.assertEqual(columns_schema["maxItems"], MAX_TABLE_COLUMNS)
+        self.assertEqual(columns_schema["items"]["pattern"], r"\S")
+        self.assertEqual(rows_schema["maxItems"], MAX_TABLE_ROWS)
+        self.assertEqual(row_schema["minItems"], 1)
+        self.assertEqual(row_schema["maxItems"], MAX_TABLE_COLUMNS)
+
+    def test_provider_schema_still_permits_local_only_confidence_violation(self) -> None:
         schema = build_visual_analysis_response_schema()
         analysis_schema = schema["$defs"]["analysis"]
         self.assertNotIn("maximum", analysis_schema["properties"]["confidence"])
-        self.assertNotIn(
-            "minItems",
-            schema["$defs"]["table"]["properties"]["columns"],
-        )
 
         payload = _analysis("Visible")
         payload["confidence"] = 2.0
