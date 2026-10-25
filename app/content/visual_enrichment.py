@@ -48,8 +48,9 @@ MAX_VISUAL_INPUT_DIMENSION = 4_096
 
 INPUT_KINDS = frozenset({"source_image", "page_render", "slide_render"})
 VISION_MEDIA_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
-INPUT_TRANSFORM_VERSIONS = frozenset({1})
+INPUT_TRANSFORM_VERSIONS = frozenset({1, 2})
 INPUT_RESIZE_MODES = frozenset({"none", "contain"})
+VECTOR_CONVERSIONS = frozenset({"wmf_to_png", "emf_to_png"})
 UI_CONTROL_KINDS = frozenset(
     {"button", "input", "select", "checkbox", "tab", "menu_item", "link", "label", "other"}
 )
@@ -109,6 +110,7 @@ class VisualInputTransform:
     resize_mode: str
     max_dimension: Optional[int]
     output_media_type: str
+    vector_conversion: Optional[str] = None
 
     def __post_init__(self) -> None:
         if isinstance(self.version, bool) or self.version not in INPUT_TRANSFORM_VERSIONS:
@@ -117,6 +119,14 @@ class VisualInputTransform:
             raise ValueError("unsupported visual input resize mode")
         if self.output_media_type not in VISION_MEDIA_TYPES:
             raise ValueError("unsupported visual input transform media type")
+        if self.vector_conversion is not None:
+            _validate_enum("visual vector conversion", self.vector_conversion, VECTOR_CONVERSIONS)
+            if self.version != 2:
+                raise ValueError("vector conversion requires transform version 2")
+            if self.output_media_type != "image/png":
+                raise ValueError("vector conversion must produce PNG")
+        elif self.version == 2:
+            raise ValueError("transform version 2 requires vector conversion metadata")
         if self.resize_mode == "none":
             if self.max_dimension is not None:
                 raise ValueError("unresized visual input must not set max dimension")

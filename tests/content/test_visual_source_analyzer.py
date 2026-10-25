@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import unittest
 from pathlib import Path
+from typing import Union
 
 from PIL import Image
 
@@ -17,8 +18,9 @@ from app.content.source_document import (
     SourceProvenance,
     build_source_image,
 )
+from app.content.vector_image_renderer import VectorImageRenderError
 from app.content.visual_source_analyzer import VisualSourceAnalyzer
-from app.content.visual_enrichment import compute_content_hash
+from app.content.visual_enrichment import VisualInputTransform, compute_content_hash
 
 
 def _image_bytes(
@@ -49,6 +51,23 @@ def _source_with_images(
         for index, content in enumerate(contents, start=1)
     )
     return SourceDocument(name=name, source_format="pdf", elements=images)
+
+
+def _wmf_bytes(payload: bytes = b"vector") -> bytes:
+    """Minimal placeable-WMF signature for controlled analyzer tests."""
+    return b"\xd7\xcd\xc6\x9a" + payload
+
+
+class _FakeVectorRenderer:
+    def __init__(self, result: Union[bytes, VectorImageRenderError]) -> None:
+        self.result = result
+        self.calls: list[tuple[bytes, str]] = []
+
+    def render_png(self, content: bytes, *, source_format: str) -> bytes:
+        self.calls.append((content, source_format))
+        if isinstance(self.result, VectorImageRenderError):
+            raise self.result
+        return self.result
 
 
 class VisualSourceAnalyzerTests(unittest.TestCase):
@@ -216,6 +235,143 @@ class VisualSourceAnalyzerTests(unittest.TestCase):
 
         self.assertEqual(result, "legacy source text")
         self.assertEqual(reader.read_document_calls, 0)
+
+    def test_wmf_is_converted_only_for_provider_input(self) -> None:
+        original = _wmf_bytes(b"cashier-screen")
+        provenance = SourceProvenance("guide.docx", 1, 1)
+        source_image = SourceImage(
+            asset_id="source-vector",
+            content=original,
+            media_type=None,
+            extension=None,
+            provenance=provenance,
+        )
+        source = SourceDocument("guide.docx", "docx", (source_image,))
+        rendered = _image_bytes(size=(794, 1123))
+        renderer = _FakeVectorRenderer(rendered)
+
+        result = VisualSourceAnalyzer(vector_renderer=renderer).prepare(source)
+
+        self.assertEqual(renderer.calls, [(original, "wmf")])
+        item = result.requests[0].inputs[0]
+        self.assertEqual(item.content, rendered)
+        self.assertEqual(item.media_type, "image/png")
+        self.assertEqual(item.source_content_hash, compute_content_hash(original))
+        self.assertEqual(item.input_content_hash, compute_content_hash(rendered))
+        self.assertNotEqual(item.source_content_hash, item.input_content_hash)
+        self.assertEqual(
+            item.transform,
+            VisualInputTransform(2, "none", None, "image/png", "wmf_to_png"),
+        )
+        self.assertEqual(source_image.content, original)
+        self.assertEqual(result.skipped, ())
+
+    def test_wmf_without_opt_in_renderer_is_typed_skip(self) -> None:
+        original = _wmf_bytes()
+        source = SourceDocument(
+            "guide.docx",
+            "docx",
+            (
+                SourceImage(
+                    "source-vector", original, None, None,
+                    SourceProvenance("guide.docx", 1, 1),
+                ),
+            ),
+        )
+
+        result = self.analyzer.prepare(source)
+
+        self.assertEqual(result.requests, ())
+        self.assertEqual(result.skipped[0].code, "renderer_unavailable")
+
+    def test_exact_duplicate_vector_bytes_are_deduplicated_before_renderer(self) -> None:
+        original = _wmf_bytes()
+        source = SourceDocument(
+            "guide.docx",
+            "docx",
+            tuple(
+                SourceImage(
+                    f"source-vector-{index}", original, None, None,
+                    SourceProvenance("guide.docx", index, index),
+                )
+                for index in (1, 2)
+            ),
+        )
+        renderer = _FakeVectorRenderer(_image_bytes())
+
+        result = VisualSourceAnalyzer(vector_renderer=renderer).prepare(source)
+
+        self.assertEqual(len(renderer.calls), 1)
+        self.assertEqual(result.skipped[0].code, "duplicate_content")
+        self.assertEqual(result.skipped[0].canonical_source_asset_id, "source-vector-1")
+
+    def test_vector_renderer_failure_codes_become_typed_skips(self) -> None:
+        source = SourceDocument(
+            "guide.docx",
+            "docx",
+            (
+                SourceImage(
+                    "source-vector", _wmf_bytes(), None, None,
+                    SourceProvenance("guide.docx", 1, 1),
+                ),
+            ),
+        )
+        for code in (
+            "renderer_timeout",
+            "malformed_vector",
+            "rendered_output_invalid",
+            "rendered_output_too_large",
+            "rendered_dimensions_exceeded",
+            "renderer_isolation_unavailable",
+        ):
+            with self.subTest(code=code):
+                result = VisualSourceAnalyzer(
+                    vector_renderer=_FakeVectorRenderer(VectorImageRenderError(code))
+                ).prepare(source)
+                self.assertEqual(result.requests, ())
+                self.assertEqual(result.skipped[0].code, code)
+
+    def test_invalid_or_oversized_vector_renderer_output_is_typed_skip(self) -> None:
+        source = SourceDocument(
+            "guide.docx",
+            "docx",
+            (
+                SourceImage(
+                    "source-vector", _wmf_bytes(), None, None,
+                    SourceProvenance("guide.docx", 1, 1),
+                ),
+            ),
+        )
+        cases = (
+            (b"not a PNG", "rendered_output_invalid"),
+            (b"x" * (MAX_VISUAL_INPUT_BYTES + 1), "rendered_output_too_large"),
+        )
+        for rendered, reason in cases:
+            with self.subTest(reason=reason):
+                result = VisualSourceAnalyzer(
+                    vector_renderer=_FakeVectorRenderer(rendered)
+                ).prepare(source)
+                self.assertEqual(result.requests, ())
+                self.assertEqual(result.skipped[0].code, reason)
+
+    def test_vector_render_with_excessive_dimensions_is_typed_skip(self) -> None:
+        source = SourceDocument(
+            "guide.docx",
+            "docx",
+            (
+                SourceImage(
+                    "source-vector", _wmf_bytes(), None, None,
+                    SourceProvenance("guide.docx", 1, 1),
+                ),
+            ),
+        )
+
+        result = VisualSourceAnalyzer(
+            vector_renderer=_FakeVectorRenderer(_image_bytes(size=(5000, 100)))
+        ).prepare(source)
+
+        self.assertEqual(result.requests, ())
+        self.assertEqual(result.skipped[0].code, "rendered_dimensions_exceeded")
 
 
 class _LegacyReader:

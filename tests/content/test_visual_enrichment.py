@@ -194,6 +194,22 @@ class VisualEnrichmentContractTests(unittest.TestCase):
         self.assertEqual(enriched.analyses[0].source_content_hash, source_hash)
         self.assertEqual(enriched.analyses[0].input_content_hash, transformed_hash)
 
+    def test_vector_conversion_transform_is_explicit_and_versioned(self) -> None:
+        transform = VisualInputTransform(
+            2,
+            "none",
+            None,
+            "image/png",
+            "wmf_to_png",
+        )
+
+        self.assertEqual(transform.version, 2)
+        self.assertEqual(transform.vector_conversion, "wmf_to_png")
+        with self.assertRaisesRegex(ValueError, "requires transform version 2"):
+            VisualInputTransform(1, "none", None, "image/png", "wmf_to_png")
+        with self.assertRaisesRegex(ValueError, "requires vector conversion"):
+            VisualInputTransform(2, "none", None, "image/png")
+
     def test_wrong_original_source_hash_is_rejected(self) -> None:
         analysis = self._analysis(source_content_hash=compute_content_hash(b"different bytes"))
 

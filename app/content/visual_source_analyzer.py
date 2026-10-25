@@ -32,6 +32,11 @@ from app.content.visual_enrichment import (
     build_visual_id,
     compute_content_hash,
 )
+from app.content.vector_image_renderer import (
+    VectorImageRenderError,
+    VectorImageRenderer,
+    detect_legacy_vector_format,
+)
 
 
 VISUAL_SOURCE_ANALYZER_VERSION = 1
@@ -53,8 +58,16 @@ SKIP_REASON_CODES = frozenset(
         "document_byte_limit",
         "duplicate_content",
         "input_too_large",
+        "malformed_vector",
+        "renderer_isolation_unavailable",
+        "renderer_timeout",
+        "renderer_unavailable",
+        "rendered_dimensions_exceeded",
+        "rendered_output_invalid",
+        "rendered_output_too_large",
         "tiny_image",
         "unsupported_media_type",
+        "vector_source_too_large",
     }
 )
 
@@ -132,6 +145,15 @@ class VisualSourcePreparation:
 class VisualSourceAnalyzer:
     """Select source images and prepare deterministic, bounded provider batches."""
 
+    def __init__(self, *, vector_renderer: Optional[VectorImageRenderer] = None) -> None:
+        """Create an analyzer with an optional, explicitly injected renderer.
+
+        No renderer is discovered or started automatically.  Legacy vectors are
+        therefore a typed skip in normal application use until a caller supplies
+        a safe, isolated renderer.
+        """
+        self._vector_renderer = vector_renderer
+
     def prepare(self, source: SourceDocument) -> VisualSourcePreparation:
         if not isinstance(source, SourceDocument):
             raise ValueError("source must be a SourceDocument")
@@ -170,7 +192,10 @@ class VisualSourceAnalyzer:
                 continue
             seen_hashes[source_hash] = source_image
 
-            prepared, reason = _prepare_source_image(source_image)
+            prepared, reason = _prepare_source_image(
+                source_image,
+                vector_renderer=self._vector_renderer,
+            )
             if prepared is None:
                 skipped.append(
                     VisualSourceSkip(
@@ -234,6 +259,90 @@ class _PreparedSourceImage:
 
 
 def _prepare_source_image(
+    source_image: SourceImage,
+    *,
+    vector_renderer: Optional[VectorImageRenderer],
+) -> tuple[Optional[_PreparedSourceImage], Optional[str]]:
+    vector_format = detect_legacy_vector_format(source_image.content)
+    if vector_format is not None:
+        return _prepare_legacy_vector_image(
+            source_image,
+            source_format=vector_format,
+            vector_renderer=vector_renderer,
+        )
+    return _prepare_native_source_image(source_image)
+
+
+def _prepare_legacy_vector_image(
+    source_image: SourceImage,
+    *,
+    source_format: str,
+    vector_renderer: Optional[VectorImageRenderer],
+) -> tuple[Optional[_PreparedSourceImage], Optional[str]]:
+    """Convert declared vector evidence only for the bounded provider input."""
+    if vector_renderer is None:
+        return None, "renderer_unavailable"
+    try:
+        rendered = vector_renderer.render_png(
+            source_image.content,
+            source_format=source_format,
+        )
+    except VectorImageRenderError as error:
+        return None, error.code
+
+    if not isinstance(rendered, bytes) or not rendered:
+        return None, "rendered_output_invalid"
+    # Reject oversized renderer output before decoding it.  This is both a
+    # resource bound and a deliberately privacy-neutral failure path.
+    if len(rendered) > MAX_VISUAL_INPUT_BYTES:
+        return None, "rendered_output_too_large"
+    return _prepare_rendered_vector_png(rendered, source_format=source_format)
+
+
+def _prepare_rendered_vector_png(
+    rendered: bytes,
+    *,
+    source_format: str,
+) -> tuple[Optional[_PreparedSourceImage], Optional[str]]:
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(rendered)) as opened:
+                if (opened.format or "").upper() != "PNG":
+                    return None, "rendered_output_invalid"
+                width, height = opened.size
+                if width * height > MAX_DECODE_PIXELS:
+                    return None, "rendered_dimensions_exceeded"
+                if (
+                    width < MIN_IMAGE_WIDTH
+                    or height < MIN_IMAGE_HEIGHT
+                    or width * height < MIN_IMAGE_PIXELS
+                ):
+                    return None, "rendered_output_invalid"
+                image = opened.copy()
+    except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError):
+        return None, "rendered_output_invalid"
+
+    if max(width, height) > MAX_VISUAL_INPUT_DIMENSION:
+        return None, "rendered_dimensions_exceeded"
+
+    return (
+        _PreparedSourceImage(
+            content=rendered,
+            media_type="image/png",
+            transform=VisualInputTransform(
+                version=2,
+                resize_mode="none",
+                max_dimension=None,
+                output_media_type="image/png",
+                vector_conversion=f"{source_format}_to_png",
+            ),
+        ),
+        None,
+    )
+
+
+def _prepare_native_source_image(
     source_image: SourceImage,
 ) -> tuple[Optional[_PreparedSourceImage], Optional[str]]:
     try:
