@@ -6,6 +6,7 @@ import io
 import unittest
 from pathlib import Path
 import subprocess
+import sys
 
 from PIL import Image
 
@@ -99,7 +100,7 @@ class VectorImageRendererTests(unittest.TestCase):
 
         renderer = LibreOfficeVectorImageRenderer(
             soffice_path=Path("/bin/sh"),
-            sandbox_executable=Path("/usr/bin/sandbox-exec"),
+            sandbox_executable=Path(sys.executable),
             runner=fake_runner,
         )
 
